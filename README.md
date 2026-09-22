@@ -1,3 +1,3 @@
 # Kaizen
-## Monad Metropolist
+## Monad Metropolis
 
