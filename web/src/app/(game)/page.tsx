@@ -9,7 +9,7 @@ import { useWallet } from '@/lib/wallet';
 import { useApi } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { sfx } from '@/lib/sfx';
-import { Logo } from '@/components/TopBar';
+import { Logo } from '@/components/Logo';
 import { ConnectDialog } from '@/components/ConnectDialog';
 import { HeroChart } from '@/components/landing/HeroChart';
 import { Tracks } from '@/components/landing/Tracks';

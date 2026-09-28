@@ -63,10 +63,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     initLang();
     initSettings();
   }, []);
-  // soundtrack: armed outside the gate; the match track from the VS screen through the fight, menu music elsewhere
+  // soundtrack: the match track from the VS screen through the fight, menu music elsewhere
   useEffect(() => {
-    if (path !== '/gate') music.arm();
-  }, [path]);
+    music.arm();
+  }, []);
   useEffect(
     () =>
       useScene.subscribe((s) => {
@@ -83,7 +83,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
       {/* the landing page brings its own lightweight figures canvas; one WebGL context per page */}
-      {path !== '/' && path !== '/gate' && (
+      {path !== '/' && (
         <div className={`stage-wrap ${dimmed ? 'dimmed' : ''} ${off ? 'off' : ''}`}>
           <Stage />
         </div>

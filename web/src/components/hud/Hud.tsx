@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { MARKETS, MODES, MARGIN, explorerTx, fmtPx, fmtUsd, payouts, type MarketSymbol, STAKE } from '@longshort/shared';
+import { MARKETS, MODES, MARGIN, explorerTx, fmtPx, fmtUsd, type MarketSymbol } from '@longshort/shared';
 import Link from 'next/link';
 import type { FeedItem, MatchView } from '@/lib/match';
 import { useScene } from '@/lib/scene';
@@ -10,24 +10,9 @@ import { PriceChart } from './PriceChart';
 import { Scoreboard } from './Scoreboard';
 import { TradePanel, type Fill, type HudActions } from './TradePanel';
 import { Positions } from './Positions';
-import { Hint, PanelHeader } from '../ui/Hint';
+import { PanelHeader } from '../ui/Hint';
+import { ScoreBar } from './ScoreBar';
 import { useT } from '@/lib/i18n';
-
-export function TimerRing({ left, total }: { left: number; total: number }) {
-  const r = 26;
-  const c = 2 * Math.PI * r;
-  const frac = Math.max(0, Math.min(1, left / total));
-  const hot = left <= 10;
-  return (
-    <div className="relative grid h-11 w-11 place-items-center">
-      <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90">
-        <circle cx="32" cy="32" r={r} stroke="rgba(255,255,255,0.08)" strokeWidth="4" fill="none" />
-        <circle cx="32" cy="32" r={r} stroke={hot ? '#d25a55' : '#e7e1d3'} strokeWidth="4" fill="none" strokeDasharray={c} strokeDashoffset={c * (1 - frac)} strokeLinecap="butt" style={{ transition: 'stroke-dashoffset .25s linear' }} />
-      </svg>
-      <span className={`num text-sm font-bold ${hot ? 'text-red animate-pulse' : ''}`}>{Math.max(0, Math.ceil(left))}</span>
-    </div>
-  );
-}
 
 function KillFeed({ feed }: { feed: FeedItem[] }) {
   const items = [...feed].reverse().slice(0, 30);
@@ -97,7 +82,6 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
   const onFill = useCallback((f: Fill) => setFills((x) => [f, ...x].slice(0, 20)), []);
   const cfg = MODES[m.mode];
   const left = m.endAt - now;
-  const pay = payouts(m.mode, m.entry, m.maxPlayers);
 
   // countdown beeps in the last 5 seconds
   const lastBeep = useRef(0);
@@ -136,36 +120,11 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
   return (
     <>
       {danger && <div className="danger-vignette" />}
-      <div className="hud-grid">
-        {/* header */}
-        <div className="panel col-span-full flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-1.5">
-          <div className="flex items-center gap-1" title="Time left in the match">
-            <TimerRing left={live ? left : m.duration} total={m.duration} />
-          </div>
-          <div>
-            <div className="panel-title">
-              {actions.simulated ? t('hud.practice') : t('hud.ranked', { id: m.id })}
-            </div>
-            <div className="font-display text-lg leading-tight font-bold tracking-[0.12em] uppercase">{cfg.name}</div>
-          </div>
-          <Kv k={t('hud.entry')} v={`${m.entry} ${STAKE}`} />
-          <Kv k={t('hud.pot')} v={`${pay.pot} ${STAKE}`} />
-          <Kv k={t('hud.first')} v={`${pay.first.toFixed(2)} ${STAKE}`} accent />
-          <Hint text="Everyone starts with 1,000 USD of virtual margin. The best final equity wins the pot of real stakes, paid by the contract at the bell. Equity = 1,000 + realized PnL + open PnL." />
-          {m.me && <Kv k={t('hud.equity')} v={<span className={m.me.pnl >= 0 ? 'up' : 'down'}>{fmtUsd(m.me.equity)}</span>} />}
-          <div className="ml-auto flex items-center gap-2 text-[11px] text-dim">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-green" />
-            <span title="Live prices from Perpl on Monad: the same feed every trade fills at">{t('hud.prices')}</span> · {MARKETS.map((s) => `${s} ${m.prices[s as MarketSymbol]?.toPrecision(6) ?? '…'}`).join(' · ')}
-          </div>
-        </div>
-        {/* left: scoreboard */}
-        <div className="hud-left panel scroll-thin flex flex-col gap-3 overflow-y-auto p-2">
-          <Scoreboard m={m} now={now} />
-          <MatchStats m={m} left={left} />
-        </div>
-        {/* center: chart + controls */}
-        <div className="hud-center grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(200px,1fr)_auto_auto] gap-1.5">
-          <div className="panel min-h-0 p-1">
+      <div className="hud">
+        {/* centre: the fight itself. Score, chart, your trade; on phones this is the whole first screen */}
+        <section className="hud-center">
+          <ScoreBar m={m} now={now} left={left} live={live} practice={actions.simulated} />
+          <div className="hud-chart panel">
             <PriceChart
               market={MARKETS[market]}
               pos={m.me?.pos && m.me.pos.market === market ? m.me.pos : null}
@@ -180,32 +139,25 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
           ) : (
             <SpectatorBar market={market} setMarket={setMarket} prices={m.prices} mode={cfg.name} />
           )}
-        </div>
-        {/* right: feed */}
-        <div className="hud-right grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-1.5">
-          {m.me ? (
+        </section>
+        {/* detail: who's who, then the match log. Side columns on desktop, below the fold on phones */}
+        <aside className="hud-left panel scroll-thin">
+          <Scoreboard m={m} now={now} />
+          <MatchStats m={m} left={left} />
+        </aside>
+        <aside className="hud-right">
+          {m.me && (
             <div className="panel p-2">
               <Ping fills={fills} simulated={actions.simulated} />
             </div>
-          ) : (
-            <div />
           )}
-          <div className="panel flex min-h-0 flex-col gap-1.5 p-2">
+          <div className="panel flex min-h-0 flex-1 flex-col gap-1.5 p-2">
             <PanelHeader title={t('hud.feed')} sub={t('hud.feedSub')} hint="A live log of every open, close, liquidation and elimination in this match, read from contract events. Click any line to see the transaction." />
             <KillFeed feed={m.feed} />
           </div>
-        </div>
+        </aside>
       </div>
     </>
-  );
-}
-
-function Kv({ k, v, accent }: { k: string; v: React.ReactNode; accent?: boolean }) {
-  return (
-    <div>
-      <div className="panel-title !text-[9px]">{k}</div>
-      <div className={`num text-sm font-semibold ${accent ? 'text-gold' : ''}`}>{v}</div>
-    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import { useApi } from '@/lib/api';
 import { sfx } from '@/lib/sfx';
 import { useT, type Key } from '@/lib/i18n';
 import { ConnectDialog } from './ConnectDialog';
+import { Logo } from './Logo';
 import { PlayerMark } from './PlayerMark';
 import { SettingsDialog } from './Settings';
 import { describeKeys } from '@/lib/mera';
@@ -21,20 +22,6 @@ const NAV: { href: string; label: Key }[] = [
   { href: '/stats', label: 'nav.stats' },
   { href: '/information', label: 'nav.rules' },
 ];
-
-export function Logo() {
-  return (
-    <Link href="/" className="font-display flex items-center gap-2 text-lg font-bold tracking-[0.12em] uppercase" onMouseEnter={sfx.hover}>
-      <span className="relative grid h-8 w-8 place-items-center" style={{ clipPath: 'polygon(50% 0,100% 50%,50% 100%,0 50%)', background: 'var(--accent)' }}>
-        <span className="h-3 w-3 bg-[var(--bg)]" style={{ clipPath: 'polygon(50% 0,100% 50%,50% 100%,0 50%)' }} />
-      </span>
-      <span>
-        long<span className="text-violet">short</span>
-        <span className="text-dim">.fun</span>
-      </span>
-    </Link>
-  );
-}
 
 /** Close a popover on an outside press or Escape. */
 function useDismiss(open: boolean, close: () => void) {
@@ -63,7 +50,7 @@ export function TopBar() {
     return () => clearInterval(i);
   }, [address, refresh]);
   const xp = prof?.profile?.xp ?? 1000;
-  if (path === '/' || path === '/gate') return null; // title screen and gate are full-bleed
+  if (path === '/') return null; // the title screen is full-bleed
 
   return (
     <header className="relative z-20 flex h-12 items-center gap-5 border-b border-line bg-[rgba(12,13,16,0.9)] px-4 backdrop-blur-md">

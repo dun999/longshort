@@ -243,35 +243,34 @@ export function PriceChart({
   const up = shown ? shown.close >= shown.open : true;
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={el} className="h-full w-full" />
-      <div className="pointer-events-none absolute top-1 left-2 z-10 flex flex-wrap items-baseline gap-x-3 text-[10px]">
-        <span className="font-display text-[12px] font-bold tracking-wider text-[var(--text)]">{market}-PERP</span>
-        <span className="text-dim">Perpl mark · {TFS.find((x) => x.s === tf)?.label}</span>
-        {shown && (
-          <span className={`num ${up ? 'up' : 'down'}`}>
-            <span className="text-dim">O</span> {fmtPx(shown.open)} <span className="text-dim">H</span> {fmtPx(shown.high)} <span className="text-dim">L</span> {fmtPx(shown.low)}{' '}
-            <span className="text-dim">C</span> {fmtPx(shown.close)}
-          </span>
-        )}
+    <div className="pc">
+      <div className="pc-head">
+        <span className="pc-sym">{market}-PERP</span>
+        {shown && <span className={`pc-px num ${up ? 'up' : 'down'}`}>{fmtPx(shown.close)}</span>}
         {!hover && last && (
-          <span className={`num ${chg >= 0 ? 'up' : 'down'}`}>
+          <span className={`pc-chg num ${chg >= 0 ? 'up' : 'down'}`}>
             {chg >= 0 ? '+' : ''}
             {chg.toFixed(3)}%
           </span>
         )}
-      </div>
-      <div className="absolute top-1 right-16 z-10 flex items-center gap-1.5" title="Candle timeframe">
-        <span className="text-[9px] tracking-wider text-dim uppercase">{t('hud.candle')}</span>
-        <div className="seg">
+        {hover && (
+          <span className={`pc-ohlc num ${up ? 'up' : 'down'}`}>
+            <span>O</span> {fmtPx(hover.open)} <span>H</span> {fmtPx(hover.high)} <span>L</span> {fmtPx(hover.low)}
+          </span>
+        )}
+        <span className="pc-src">Perpl mark</span>
+        <div className="seg pc-tf" title={t('hud.candle')}>
           {TFS.map((x) => (
-            <button key={x.s} onClick={() => setTf(x.s)} className={`py-0.5! px-2! text-[10px]! ${tf === x.s ? 'on' : ''}`}>
+            <button key={x.s} onClick={() => setTf(x.s)} className={tf === x.s ? 'on' : ''}>
               <span>{x.label}</span>
             </button>
           ))}
         </div>
       </div>
-      <div className="pointer-events-none absolute bottom-7 left-2 z-10 text-[9px] tracking-wider text-dim uppercase">{t('hud.arenaVol')}</div>
+      <div className="pc-body">
+        <div ref={el} className="h-full w-full" />
+        <div className="pc-vol">{t('hud.arenaVol')}</div>
+      </div>
     </div>
   );
 }

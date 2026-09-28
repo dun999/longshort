@@ -15,5 +15,6 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   runtime: 'nodejs',
-  matcher: ['/((?!_next/static|_next/image|gate|favicon\\.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|woff2?|txt)$).*)'],
+  // shared results (/s/…) stay public so X, Telegram, WhatsApp… can read the card behind the gate
+  matcher: ['/((?!_next/static|_next/image|gate|s/|favicon\\.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|woff2?|txt)$).*)'],
 };

@@ -12,7 +12,7 @@ export function Positions({ m }: { m: MatchView }) {
   const rows = [...m.players].sort((a, b) => Number(b.isMe) - Number(a.isMe) || b.equity - a.equity);
   const teams = m.mode !== 2;
   return (
-    <div className="panel scroll-thin max-h-[200px] overflow-auto">
+    <div className="hud-positions panel scroll-thin max-h-[200px] overflow-auto">
       <div className="px-2 pt-1.5">
         <PanelHeader title={t('hud.positions')} sub={t('hud.positionsSub')} hint="Everyone's trades are public onchain, so you can read your rivals. uPnL is unrealized profit, Liq is the price that knocks a player out, and Equity is their current score." />
       </div>

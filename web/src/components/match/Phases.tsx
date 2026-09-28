@@ -10,7 +10,8 @@ import { PlayerMark } from '../PlayerMark';
 import { sfx } from '@/lib/sfx';
 import { useApi } from '@/lib/api';
 import { awards, compute, type Award, type Row, type Stats } from '@/lib/matchStats';
-import { shareResult } from '@/lib/shareCard';
+import { practiceCode, rankedCode, shareText, type CardData } from '@/lib/shareLink';
+import { ShareIcon, ShareSheet } from './ShareSheet';
 import { useLang, useT } from '@/lib/i18n';
 
 const fadeUp = { initial: { opacity: 0, y: 24 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -24 } };
@@ -545,7 +546,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
   const mine = m.results?.find((r) => r.addr === m.me?.addr);
   const outcome = !m.me ? 'spectate' : (mine?.result ?? 'pending');
   const [burst, setBurst] = useState(false);
-  const [shared, setShared] = useState<string>();
+  const [sharing, setSharing] = useState<{ code: string; text: string } | null>(null);
   useEffect(() => {
     if (outcome === 'win') (sfx.win(), setBurst(true));
     else if (outcome === 'loss') sfx.lose();
@@ -554,12 +555,13 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
   const router = useRouter();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (sharing) return; // the share sheet owns the keyboard while it's open
       if (e.key === 'Escape') return void (sfx.click(), router.push('/play'));
       if (e.key === 'Enter' && m.me && !busy && !['BUTTON', 'INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) (sfx.click(), onAgain());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, onAgain, router, m.me]);
+  }, [busy, onAgain, router, m.me, sharing]);
 
   const title = t(outcome === 'win' ? 'rs.victory' : outcome === 'loss' ? 'rs.defeat' : outcome === 'draw' ? 'rs.draw' : outcome === 'spectate' ? 'rs.over' : 'rs.settling');
   const tone = outcome === 'win' ? 'win' : outcome === 'loss' ? 'loss' : 'neutral';
@@ -629,23 +631,29 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
     );
   };
 
-  const share_ = async () => {
-    const me = m.me ?? standings[0];
-    if (!me) return;
-    const rival = m.mode === Mode.DUEL ? m.players.find((p) => p.addr !== me.addr) : undefined;
-    const res = await shareResult({
-      outcome: title,
-      tone,
-      roi: ((equityOf(me) - MARGIN) / MARGIN) * 100,
-      equity: equityOf(me),
-      name: me.name,
-      cls: `${CLASSES[classOf(me.leverage)].name} · ${me.leverage}x`,
-      mode: MODES[m.mode].name,
+  // your result (or the winner's, when spectating) as a link whose card unfurls wherever it's posted
+  const share_ = () => {
+    const who = m.me ?? standings[0];
+    if (!who) return;
+    const r = resultOf(who);
+    const rival = m.mode === Mode.DUEL ? m.players.find((p) => p.addr !== who.addr) : undefined;
+    const card: CardData = {
+      outcome: r?.result === 'win' || r?.result === 'loss' || r?.result === 'draw' ? r.result : 'over',
+      roi: ((equityOf(who) - MARGIN) / MARGIN) * 100,
+      equity: equityOf(who),
+      payout: r?.payout ?? 0,
+      name: who.name,
+      addr: who.addr,
+      leverage: who.leverage,
+      mode: m.mode,
       rival: rival?.name,
-      award: awardOf(me)?.k,
+      place: rankOf(who),
+      of: m.players.length,
+      award: awardOf(who)?.k,
       practice,
-    }).catch(() => 'cancelled' as const);
-    setShared(res === 'saved' ? t('rs.saved') : res === 'shared' ? t('rs.shared') : undefined);
+      id: m.id,
+    };
+    setSharing({ code: practice ? practiceCode(card) : rankedCode(m.id, who.addr), text: shareText(card, !!m.me) });
   };
 
   return (
@@ -697,8 +705,8 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
                 {t('rs.details')}
               </Link>
             )}
-            <button className="gbtn ghost" onClick={() => (sfx.click(), void share_())} onMouseEnter={sfx.hover}>
-              {shared ?? t('rs.shareBtn')}
+            <button className="gbtn ghost" onClick={() => (sfx.click(), share_())} onMouseEnter={sfx.hover}>
+              <ShareIcon /> {t('rs.shareBtn')}
             </button>
           </div>
           {m.settleTx && (
@@ -710,6 +718,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
       </div>
 
       {column(b, 1)}
+      {sharing && <ShareSheet code={sharing.code} text={sharing.text} onClose={() => setSharing(null)} />}
     </motion.div>
   );
 }

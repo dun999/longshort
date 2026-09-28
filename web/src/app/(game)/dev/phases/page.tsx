@@ -6,6 +6,7 @@ import { MARGIN, Mode, MatchState, MARKETS, type MarketSymbol } from '@longshort
 import type { MatchView, PlayerView } from '@/lib/match';
 import { useScene, type Shot } from '@/lib/scene';
 import { ClassSelect, MatchFound, Result, VsScreen, Waiting } from '@/components/match/Phases';
+import { Hud } from '@/components/hud/Hud';
 
 const ADDRS = ['0x5bf0b1240279edcbf19942dd934565eb76852384', '0x20b0c479c08e9d3402095c665ba2794990ae7149', '0x816f4de03028ed8a296ea3c3a94e2a09c7536a47', '0xf59089942a961ab9c6f790d400fabfc65616c062', '0xa92fc1336148f617792f5bc45920e6e7f9cb02ec', '0xce603ae1f275c7a4d24d99fc5429fb00df662f06', '0x752960e5f2e6c2060873c81f3a140a004f655cf9', '0xc40ebd00000000000000000000000000000000aa'];
 const NAMES = ['sigmaboy', 'bot·Vega', 'Dun', 'kira', 'bot·Nyx', 'mo', 'bot·Atlas', 'zed'];
@@ -27,7 +28,8 @@ function sample(mode: Mode, filled: number): MatchView {
   };
 }
 
-const SHOT: Record<string, Shot> = { waiting: 'queue', found: 'lobby', select: 'select', vs: 'vs', result: 'result' };
+const SHOT: Record<string, Shot> = { waiting: 'queue', found: 'lobby', select: 'select', vs: 'vs', live: 'arena', result: 'result' };
+const NOOP = { open: async () => ({ ms: 0 }), close: async () => ({ ms: 0 }), simulated: true };
 
 function Harness() {
   const q = useSearchParams();
@@ -43,6 +45,14 @@ function Harness() {
       {phase === 'found' && <MatchFound m={m} />}
       {phase === 'select' && <ClassSelect m={{ ...m, me: { ...m.me!, leverage: lev } }} left={6} onPick={setLev} pending={false} />}
       {phase === 'vs' && <VsScreen m={m} left={3} />}
+      {phase === 'live' && (
+        <Hud
+          m={{ ...m, state: MatchState.LIVE, startAt: now - 20, endAt: now + 40, results: undefined, players: m.players.map((p, i) => (mode === Mode.ROYALE && i >= 6 ? { ...p, out: true, outRank: i } : p)) }}
+          now={now}
+          actions={NOOP}
+          live
+        />
+      )}
       {phase === 'result' && <Result m={m} onAgain={() => {}} busy={false} />}
     </div>
   );

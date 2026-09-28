@@ -46,23 +46,9 @@ function DuelBoard({ m }: { m: MatchView }) {
   const t = useT();
   const a = m.players.find((p) => p.team === 0);
   const b = m.players.find((p) => p.team === 1);
-  const ea = a?.equity ?? 1000;
-  const eb = b?.equity ?? 1000;
-  const share = ea + eb > 0 ? ea / (ea + eb) : 0.5;
-  // amplify so small edges are visible: map ±5% equity edge to the full bar
-  const edge = Math.max(-1, Math.min(1, (ea - eb) / 100));
   return (
     <div className="grid gap-1.5">
-      <PanelHeader title={t('hud.scoreboard')} sub={t('hud.ahead')} hint="The bar shows each player's share of total equity. The player on the bigger side is winning. Each row shows their class, open position and PnL." />
-      <div className="relative h-6 overflow-hidden border border-line">
-        <motion.div className="absolute inset-y-0 left-0" style={{ background: TEAM_COLOR[0] }} animate={{ width: `${50 + edge * 50}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
-        <motion.div className="absolute inset-y-0 right-0" style={{ background: TEAM_COLOR[1] }} animate={{ width: `${50 - edge * 50}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
-        <div className="absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 bg-[var(--bg)]" />
-        <div className="num absolute inset-0 flex items-center justify-between px-2 text-xs font-bold">
-          <span>{(share * 100).toFixed(1)}%</span>
-          <span>{((1 - share) * 100).toFixed(1)}%</span>
-        </div>
-      </div>
+      <PanelHeader title={t('hud.players')} sub={t('hud.playersSub')} hint="Each player's class, open position and PnL. The bar at the top of the arena shows who's ahead." />
       {a && <PlayerRow p={a} />}
       <div className="font-display text-center text-xs tracking-[0.4em] text-dim">VS</div>
       {b && <PlayerRow p={b} />}

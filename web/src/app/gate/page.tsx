@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Logo } from '@/components/TopBar';
+import { Logo } from '@/components/Logo';
 import { safeNext } from '@/lib/gate';
 
 export const metadata: Metadata = { title: 'longshort.fun · private preview', robots: { index: false, follow: false } };

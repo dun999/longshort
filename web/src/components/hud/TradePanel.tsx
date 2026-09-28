@@ -1,11 +1,11 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { FEE_BPS, MARKETS, feeFor, fmtPx, fmtUsd, liqPrice, notionalFor, upnl, type MarketSymbol } from '@longshort/shared';
 import type { PlayerView } from '@/lib/match';
 import { sfx } from '@/lib/sfx';
 import { useScene } from '@/lib/scene';
-import { Hint, PanelHeader } from '../ui/Hint';
+import { Hint } from '../ui/Hint';
 import { friendly } from '@/lib/errors';
 import { useT } from '@/lib/i18n';
 
@@ -46,10 +46,8 @@ export function TradePanel({
   const t = useT();
   const [size, setSize] = useState(5000);
   const [pending, setPending] = useState<string | null>(null);
-  const px = prices[MARKETS[market]];
   const pos = me?.pos ?? null;
   const posPx = pos ? prices[MARKETS[pos.market]] : undefined;
-  const equity = me?.equity ?? 0;
   const notional = me ? notionalFor(Math.max(0, 1000 + me.realized), me.leverage, size) : 0;
   const canTrade = live && !!me && !me.out && !pending;
 
@@ -85,6 +83,20 @@ export function TradePanel({
     void run(`CLOSE ${MARKETS[pos.market]}`, actions.close);
   }, [canTrade, pos, run, actions]);
 
+  // on phones the dock is pinned to the bottom; the HUD sizes the chart to the height it leaves free
+  const dock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = dock.current;
+    const hud = el?.closest<HTMLElement>('.hud');
+    if (!el || !hud) return;
+    const ro = new ResizeObserver(() => hud.style.setProperty('--dock', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      hud.style.removeProperty('--dock');
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
@@ -101,118 +113,90 @@ export function TradePanel({
     return () => window.removeEventListener('keydown', onKey);
   }, [go, shut, setMarket]);
 
-  const pnl = pos && posPx ? upnl(pos, posPx) : 0;
-  const liq = pos ? liqPrice(me!.realized, pos) : 0;
-  const liqDist = pos && posPx ? Math.abs(posPx - liq) / posPx : 1;
-
   return (
-    <div className="grid gap-1.5">
-      {/* position card */}
-      <AnimatePresence mode="wait">
-        {pos ? (
-          <motion.div
-            key={`${pos.market}-${pos.isLong}-${pos.entryPx}`}
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="panel grid grid-cols-2 gap-x-4 gap-y-0.5 px-3 py-1.5 sm:grid-cols-[auto_repeat(5,minmax(0,1fr))]"
-            style={{ borderColor: pos.isLong ? 'rgba(74,163,124,0.5)' : 'rgba(210,90,85,0.5)' }}
-          >
-            <div className="flex items-center gap-1.5 self-center">
-              <span className="phead">
-                <h3>{t('hud.yourPos')}</h3>
+    <div className="dock panel" ref={dock}>
+      <PositionStrip me={me} px={posPx} />
+      <div className="dock-pick">
+        <div className="seg" aria-label={t('hud.market')}>
+          {MARKETS.map((m, i) => (
+            <button key={m} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
+              <span>
+                {m} <span className="seg-px num">{prices[m] ? fmtPx(prices[m]!) : '…'}</span>
               </span>
-              <Hint text="Your open trade. Unrealized PnL moves with the Perpl price. If the price reaches the liquidation price, you're knocked out of the match with zero equity. A new LONG or SHORT closes this one first." />
-            </div>
-            <Stat k={t('hud.pos')} v={<span className={pos.isLong ? 'up' : 'down'}>{pos.isLong ? '▲ LONG' : '▼ SHORT'} {MARKETS[pos.market]}</span>} />
-            <Stat k={t('hud.size')} v={fmtUsd(pos.notional)} />
-            <Stat k={t('hud.entryMark')} v={`${fmtPx(pos.entryPx)} → ${posPx ? fmtPx(posPx) : '…'}`} />
-            <Stat k={t('hud.liqPrice')} v={<span className={liqDist < 0.005 ? 'text-gold' : ''}>{fmtPx(liq)}</span>} />
-            <Stat k={t('hud.unrealized')} v={<span className={`text-sm font-bold ${pnl >= 0 ? 'up' : 'down'}`}>{fmtUsd(pnl, true)}</span>} />
-          </motion.div>
-        ) : (
-          <motion.div key="flat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="panel px-3 py-1.5 text-xs text-muted">
-            {me ? t(me.out ? 'hud.outNow' : 'hud.noPos') : t('hud.spectating')}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* controls */}
-      <div className="hud-order panel grid min-w-0 gap-2 p-2">
-        <div className="hud-order-head">
-        <PanelHeader
-          title={t('hud.order')}
-          sub={t(actions.simulated ? 'hud.orderPractice' : 'hud.orderSub')}
-          hint="Choose a market and how much of your equity to use, then go LONG (profit if price rises) or SHORT (profit if price falls). CLOSE locks in your PnL. Keyboard: 1-3 market, Z/V/C size, Q long, E short, Space close."
-        />
+            </button>
+          ))}
         </div>
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-          <div className="grid gap-1">
-            <span className="seg-label text-[9px] tracking-[0.14em] text-dim uppercase">{t('hud.market')}</span>
-            <div className="seg">
-              {MARKETS.map((m, i) => (
-                <button key={m} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
-                  <span>
-                    {m} <span className="seg-px num text-[10px] opacity-70">{prices[m] ? fmtPx(prices[m]!) : '…'}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="ml-auto grid gap-1">
-            <span className="seg-label text-[9px] tracking-[0.14em] text-dim uppercase">{t('hud.sizeShare')}</span>
-            <div className="seg">
-              {SIZES.map((sz, i) => (
-                <button key={sz} className={size === sz ? 'on' : ''} onClick={() => (sfx.click(), setSize(sz))}>
-                  <span>
-                    {sz / 100}% <span className="kbd ml-1 !border-current/40 opacity-60">{'ZVC'[i]}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="seg" aria-label={t('hud.sizeShare')} title={t('hud.sizeShare')}>
+          {SIZES.map((sz, i) => (
+            <button key={sz} className={size === sz ? 'on' : ''} onClick={() => (sfx.click(), setSize(sz))}>
+              <span>
+                {sz / 100}% <span className="kbd">{'ZVC'[i]}</span>
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
-          <button className="trade-btn long" disabled={!canTrade} onClick={() => go(true)}>
-            {pending?.startsWith('LONG') ? '…' : '▲ Long'}
-            <small>
-              <span className="kbd">Q</span> <span className="hidden sm:inline">{t('hud.betUp')}</span>
-              {me ? `${kUsd(notional)} · ${me.leverage}x` : ''}
-            </small>
-          </button>
-          <button className="gbtn ghost h-[52px] px-4" disabled={!canTrade || !pos} onClick={shut}>
-            <span className="grid text-center leading-tight">
-              {t('hud.close')}
-              <span className="text-[9px] font-medium tracking-wider opacity-60">{t('hud.lockPnl')}</span>
-              <span className="kbd mx-auto mt-0.5">SPACE</span>
-            </span>
-          </button>
-          <button className="trade-btn short" disabled={!canTrade} onClick={() => go(false)}>
-            {pending?.startsWith('SHORT') ? '…' : 'Short ▼'}
-            <small>
-              <span className="kbd">E</span> <span className="hidden sm:inline">{t('hud.betDown')}</span>
-              {me ? `${kUsd(notional)} · ${me.leverage}x` : ''}
-            </small>
-          </button>
-        </div>
-        <div className="hud-order-foot flex flex-wrap justify-between gap-2 text-[10px] text-dim">
-          <span>
-            {t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}
+      </div>
+      <div className="dock-go">
+        <button className="trade-btn long" disabled={!canTrade} onClick={() => go(true)}>
+          {pending?.startsWith('LONG') ? '…' : '▲ Long'}
+          <small>
+            <span className="kbd">Q</span> <span className="dock-why">{t('hud.betUp')}</span>
+            {me ? `${kUsd(notional)} · ${me.leverage}x` : ''}
+          </small>
+        </button>
+        <button className="gbtn ghost dock-close" disabled={!canTrade || !pos} onClick={shut}>
+          <span className="grid text-center leading-tight">
+            {t('hud.close')}
+            <span className="text-[9px] font-medium tracking-wider opacity-60">{t('hud.lockPnl')}</span>
+            <span className="kbd mx-auto mt-0.5">SPACE</span>
           </span>
-          <span className="num">
-            equity {fmtUsd(equity)} {px ? `· mark ${fmtPx(px)}` : ''}
-          </span>
-        </div>
+        </button>
+        <button className="trade-btn short" disabled={!canTrade} onClick={() => go(false)}>
+          {pending?.startsWith('SHORT') ? '…' : 'Short ▼'}
+          <small>
+            <span className="kbd">E</span> <span className="dock-why">{t('hud.betDown')}</span>
+            {me ? `${kUsd(notional)} · ${me.leverage}x` : ''}
+          </small>
+        </button>
+      </div>
+      <div className="dock-foot">
+        <span>{t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}</span>
+        <Hint text="Pick a market and how much of your equity to use, then go LONG (profit if price rises) or SHORT (profit if price falls). CLOSE locks in your PnL. A new trade closes the open one first. Keyboard: 1-3 market, Z/V/C size, Q long, E short, Space close." />
       </div>
     </div>
   );
 }
 
-function Stat({ k, v }: { k: string; v: React.ReactNode }) {
+/**
+ * Your open trade in one line, right above the buttons: side, live PnL and how far price is from
+ * knocking you out (the meter drains from full at entry to empty at the liquidation price).
+ */
+function PositionStrip({ me, px }: { me?: PlayerView; px?: number }) {
+  const t = useT();
+  const pos = me?.pos;
+  if (!me || me.out || !pos)
+    return <div className={`ps ps-idle ${me?.out ? 'down' : ''}`}>{t(!me ? 'hud.spectating' : me.out ? 'hud.outNow' : 'hud.flatHint')}</div>;
+  const pnl = px ? upnl(pos, px) : 0;
+  const liq = liqPrice(me.realized, pos);
+  const dist = px ? Math.abs(px - liq) / px : 1;
+  const full = Math.abs(pos.entryPx - liq) / pos.entryPx || 1;
+  const safe = Math.max(0, Math.min(1, dist / full));
+  const risk = safe < 0.2 ? 'hot' : safe < 0.45 ? 'warn' : '';
   return (
-    <div>
-      <div className="panel-title !text-[9px]">{k}</div>
-      <div className="num text-sm">{v}</div>
-    </div>
+    <motion.div key={`${pos.market}-${pos.isLong}-${pos.entryPx}`} className={`ps ${pos.isLong ? 'long' : 'short'}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+      <span className="ps-side">
+        {pos.isLong ? '▲ Long' : '▼ Short'} {MARKETS[pos.market]}
+      </span>
+      <span className="ps-meta num">
+        {kUsd(pos.notional)} · {me.leverage}x · {t('hud.entryAt', { px: fmtPx(pos.entryPx) })}
+      </span>
+      <b className={`ps-pnl num ${pnl >= 0 ? 'up' : 'down'}`}>{fmtUsd(pnl, true)}</b>
+      <span className={`ps-liq ${risk}`} title={`${t('hud.liqPrice')} ${fmtPx(liq)}`}>
+        <i>
+          <b style={{ width: `${safe * 100}%` }} />
+        </i>
+        <span className="num">{t('hud.toLiq', { p: (dist * 100).toFixed(1) })}</span>
+      </span>
+    </motion.div>
   );
 }
