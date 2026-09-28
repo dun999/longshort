@@ -1,0 +1,11 @@
+{
+  "arena": "0x4f64530B8805543b133A5A2FA706A0239A82c7a1",
+  "chainId": 10143,
+  "deployBlock": 66188685,
+  "mockOracle": "0x0f0e769C29E54f1A3D81a55CD0bfdeb2f7D0D665",
+  "mockOracleActive": false,
+  "perplExchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
+  "perplOracle": "0xc6C58E0B3360F293Caf646A78EB189B03C8d851d",
+  "stake": "0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC",
+  "stakeSymbol": "AUSD"
+}

@@ -1,0 +1,101 @@
+'use client';
+import dynamic from 'next/dynamic';
+import { useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useWallet } from '@/lib/wallet';
+import { startSocket, useSocket } from '@/lib/socket';
+import { startAuth } from '@/lib/auth';
+import { useScene } from '@/lib/scene';
+import { TopBar } from './TopBar';
+import { initLang } from '@/lib/i18n';
+import { music } from '@/lib/music';
+import { Invites } from './lobby/Invites';
+import { initSettings } from '@/lib/settings';
+
+const Stage = dynamic(() => import('./three/Stage'), { ssr: false });
+
+/** Reading pages get the game sub-menu treatment: the 3D world blurs and darkens behind the content. */
+const DIMMED = ['/stats', '/information', '/profile', '/leaderboard'];
+
+function Flash() {
+  const flash = useScene((s) => s.flash);
+  const shakeAt = useScene((s) => s.shakeAt);
+  if (!flash) return null;
+  return <div key={shakeAt} className="flash" style={{ background: `radial-gradient(circle, transparent 30%, ${flash})` }} />;
+}
+
+function Toast() {
+  const toast = useSocket((s) => s.toast);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => useSocket.setState({ toast: undefined }), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+  return (
+    <AnimatePresence>
+      {toast && (
+        <motion.div
+          initial={{ y: 30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 30, opacity: 0 }}
+          className="panel fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-5 py-3 text-sm"
+        >
+          {toast}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const address = useWallet((s) => s.address);
+  const joinMatch = useSocket((s) => s.joinMatch);
+  const router = useRouter();
+  const path = usePathname();
+  const dimmed = DIMMED.some((p) => path.startsWith(p)) || path.endsWith('/report');
+  // the fight HUD and the result screen sit on a plain, solid background
+  const off = useScene((s) => s.shot === 'arena' || s.shot === 'result');
+  useEffect(() => {
+    startSocket();
+    startAuth();
+    void useWallet.getState().restore();
+    initLang();
+    initSettings();
+  }, []);
+  // soundtrack: armed outside the gate; the match track from the VS screen through the fight, menu music elsewhere
+  useEffect(() => {
+    if (path !== '/gate') music.arm();
+  }, [path]);
+  useEffect(
+    () =>
+      useScene.subscribe((s) => {
+        music.setTrack(s.shot === 'vs' || s.shot === 'arena' ? 'match' : 'menu');
+        music.setIntensity(s.intensity);
+      }),
+    [],
+  );
+  useEffect(() => useSocket.getState().hello(address?.toLowerCase()), [address]);
+  // the keeper sent us to a lobby (party leader seated there) → follow; the match screen takes the seat
+  useEffect(() => {
+    if (joinMatch && path !== `/match/${joinMatch.matchId}`) router.push(`/match/${joinMatch.matchId}`);
+  }, [joinMatch, path, router]);
+  return (
+    <>
+      {/* the landing page brings its own lightweight figures canvas; one WebGL context per page */}
+      {path !== '/' && path !== '/gate' && (
+        <div className={`stage-wrap ${dimmed ? 'dimmed' : ''} ${off ? 'off' : ''}`}>
+          <Stage />
+        </div>
+      )}
+      <div className="scanlines" />
+      <Flash />
+      <div className="ui flex flex-col">
+        <TopBar />
+        <main className="relative flex-1 pe-none [&>*]:pointer-events-auto">{children}</main>
+      </div>
+      <Invites />
+      <Toast />
+    </>
+  );
+}

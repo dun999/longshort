@@ -1,0 +1,103 @@
+# longshort.fun — ArenaCore on Monad. Amounts: stake in token units (6 dp), notional/price/pnl/fee in 1e18.
+
+type Match {
+  id: ID! # "<arena>-<matchId>"
+  arena: String!
+  matchId: BigInt!
+  mode: Int! # 0 duel · 1 squad · 2 royale
+  entry: BigInt!
+  maxPlayers: Int!
+  duration: Int!
+  creator: String!
+  state: String! # OPEN · LIVE · SETTLED · CANCELLED
+  createdAt: Int!
+  startAt: Int
+  endAt: Int
+  settledAt: Int
+  playerAddrs: [String!]!
+  playerCount: Int!
+  tradeCount: Int!
+  volume: BigInt!
+  rake: BigInt!
+  paidOut: BigInt!
+  createTx: String!
+  settleTx: String
+  players: [MatchPlayer!]! @derivedFrom(field: "match")
+  trades: [Trade!]! @derivedFrom(field: "match")
+}
+
+type MatchPlayer {
+  id: ID! # "<matchEntityId>-<player>"
+  match: Match!
+  trader: Trader!
+  team: Int!
+  leverage: Int!
+  session: String!
+  trades: Int!
+  closes: Int!
+  volume: BigInt!
+  fees: BigInt!
+  realizedPnl: BigInt!
+  out: String # liquidated · eliminated
+  frozenEquity: BigInt # equity locked in when knocked out (1e18)
+  finalEquity: BigInt # equity at settlement (1e18); decides the ranking
+  result: String # win · loss · draw
+  payout: BigInt!
+  xpDelta: Int!
+}
+
+type Trade {
+  id: ID! # "<tx>-<logIndex>"
+  match: Match!
+  trader: Trader!
+  kind: String! # open · close · liquidated · eliminated
+  market: Int
+  isLong: Boolean
+  notional: BigInt
+  price: BigInt
+  pnl: BigInt
+  fee: BigInt
+  txHash: String!
+  blockNumber: Int!
+  timestamp: Int!
+}
+
+type Trader {
+  id: ID! # lowercase address
+  matches: Int!
+  wins: Int!
+  losses: Int!
+  draws: Int!
+  trades: Int!
+  liquidations: Int!
+  volume: BigInt!
+  fees: BigInt!
+  staked: BigInt!
+  earned: BigInt!
+  xp: Int!
+  firstSeen: Int!
+  lastSeen: Int!
+  entries: [MatchPlayer!]! @derivedFrom(field: "trader")
+}
+
+type ArenaStats {
+  id: ID! # "global"
+  matchesCreated: Int!
+  matchesSettled: Int!
+  matchesCancelled: Int!
+  players: Int!
+  trades: Int!
+  liquidations: Int!
+  eliminations: Int!
+  volume: BigInt!
+  staked: BigInt!
+  paidOut: BigInt!
+  rake: BigInt!
+}
+
+type DailyStat {
+  id: ID! # "YYYY-MM-DD"
+  trades: Int!
+  volume: BigInt!
+  matchesSettled: Int!
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@longshort/indexer",
+  "private": true,
+  "description": "Envio HyperIndex indexer for longshort.fun ArenaCore (Monad testnet)",
+  "scripts": {
+    "codegen": "envio codegen",
+    "dev": "envio dev",
+    "start": "envio start"
+  },
+  "dependencies": {
+    "envio": "3.12.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "type": "module"
+}

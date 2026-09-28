@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: longshort-indexer
+description: longshort.fun ArenaCore — matches, players, every onchain trade, payouts and XP on Monad
+schema: ./schema.graphql
+handlers: ./src/handlers
+field_selection:
+  transaction_fields:
+    - hash
+contracts:
+  - name: ArenaCore
+    abi_file_path: ./abis/ArenaCore.json
+    events:
+      - event: MatchCreated
+      - event: PlayerJoined
+      - event: PlayerLeft
+      - event: ClassChanged
+      - event: MatchStarted
+      - event: Opened
+      - event: Closed
+      - event: Liquidated
+      - event: Eliminated
+      - event: Settled
+      - event: Cancelled
+chains:
+  - id: 10143 # Monad testnet
+    start_block: 66188338
+    # HyperSync is used automatically when ENVIO_API_TOKEN is set; the RPC below is the fallback.
+    rpc:
+      - url: ${ENVIO_RPC_URL:-https://testnet-rpc.monad.xyz}
+        for: fallback # HyperSync is primary (ENVIO_API_TOKEN); this RPC is the backup
+    contracts:
+      - name: ArenaCore
+        address:
+          - 0x0eD849346BDE6C70071F20780150A75678651871 # tUSD arena (demo)
+          - 0x4f64530B8805543b133A5A2FA706A0239A82c7a1 # AUSD arena

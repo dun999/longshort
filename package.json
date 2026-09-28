@@ -1,0 +1,22 @@
+{
+  "name": "longshort",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "keeper",
+    "web"
+  ],
+  "scripts": {
+    "contracts:build": "cd contracts && forge build && node ../packages/shared/scripts/export-abi.mjs",
+    "contracts:test": "cd contracts && forge test",
+    "dev:chain": "anvil --block-time 1 --chain-id 31337",
+    "deploy:local": "cd contracts && USE_MOCK_ORACLE=true forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    "deploy:testnet": "cd contracts && forge script script/Deploy.s.sol --rpc-url monad_testnet --broadcast --private-key $DEPLOYER_KEY",
+    "keeper": "npm -w keeper run start",
+    "web": "npm -w web run dev",
+    "use:local": "cp packages/shared/src/addresses.local.json packages/shared/src/addresses.json",
+    "use:testnet": "cp packages/shared/src/addresses.testnet.json packages/shared/src/addresses.json",
+    "keeper:testnet": "ENV_FILE=.env.testnet npm -w keeper run start",
+    "use:testnet-ausd": "cp packages/shared/src/addresses.testnet-ausd.json packages/shared/src/addresses.json"
+  }
+}
