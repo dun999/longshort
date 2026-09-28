@@ -3387,9 +3387,26 @@ button.notch-pill:hover {
   color: var(--muted);
 }
 .st .seg > button {
-  min-height: 28px;
-  padding: 0.25rem 0.7rem;
+  min-height: 32px;
+  padding: 0.25rem 0.8rem;
   font-size: 10.5px;
+}
+/* the slant pushes the last button's corner past the row edge: pull it back in line with the dividers */
+.st .seg {
+  margin-right: 5px;
+}
+/* the settings card sits clear of phone notches and home bars */
+.st-overlay {
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+@media (pointer: coarse) {
+  .st .seg > button {
+    min-height: 40px;
+    padding: 0.4rem 0.95rem;
+  }
+  .st-range {
+    height: 32px;
+  }
 }
 .st-range {
   width: 120px;

@@ -11,7 +11,7 @@ import { sfx } from '@/lib/sfx';
 import { useT, type Key } from '@/lib/i18n';
 import { ConnectDialog } from './ConnectDialog';
 import { PlayerMark } from './PlayerMark';
-import { Settings } from './Settings';
+import { SettingsDialog } from './Settings';
 import { describeKeys } from '@/lib/mera';
 import { friendly } from '@/lib/errors';
 
@@ -55,6 +55,7 @@ export function TopBar() {
   const path = usePathname();
   const { address, kind, usd, mon, refresh } = useWallet();
   const [open, setOpen] = useState(false);
+  const [settings, setSettings] = useState(false);
   const { data: prof } = useApi<any>(address ? `/profile/${address}` : null, 10_000);
   useEffect(() => {
     if (!address) return;
@@ -84,67 +85,38 @@ export function TopBar() {
         })}
       </nav>
       <div className="ml-auto flex items-center gap-3">
-        {/* phones get settings in the menu */}
-        <span className="hidden md:inline-flex">
-          <SettingsGear />
-        </span>
         {address ? (
-          <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} />
+          <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} onSettings={() => setSettings(true)} />
         ) : (
-          <button className="gbtn sm whitespace-nowrap" onClick={() => (sfx.click(), setOpen(true))}>
-            {t('nav.signIn')}
-          </button>
+          <>
+            {/* signed out there's no account menu: a gear opens settings (phones use the menu) */}
+            <button className="chip hidden h-8 w-8 justify-center !p-0 md:inline-flex" onClick={() => (sfx.click(), setSettings(true))} aria-label={t('set.title')} title={t('set.title')}>
+              <SettingsIcon />
+            </button>
+            <button className="gbtn sm whitespace-nowrap" onClick={() => (sfx.click(), setOpen(true))}>
+              {t('nav.signIn')}
+            </button>
+          </>
         )}
-        <MobileNav path={path} />
+        <MobileNav path={path} onSettings={() => setSettings(true)} />
       </div>
       <ConnectDialog open={open} onClose={() => setOpen(false)} />
+      <SettingsDialog open={settings} onClose={() => setSettings(false)} />
     </header>
   );
 }
 
-/** Desktop: every setting in one floating card behind a gear. */
-function SettingsGear() {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const ref = useDismiss(open, () => setOpen(false));
+function SettingsIcon() {
   return (
-    <div ref={ref} className="relative">
-      <button className={`chip h-9 w-9 justify-center !p-0 ${open ? 'on' : ''}`} onClick={() => (sfx.click(), setOpen((o) => !o))} aria-label={t('set.title')} title={t('set.title')} aria-expanded={open}>
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-          <path d="M2 4h7M12 4h2M2 12h2M7 12h7" />
-          <path d="M10.5 2.5v3M5.5 10.5v3" />
-        </svg>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.15 }}
-            className="panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-80 gap-4 overflow-y-auto p-4"
-            style={{ background: 'var(--panel-solid)' }}
-          >
-            <div className="flex items-center justify-between border-b border-line pb-3">
-              <span className="phead">
-                <h3>{t('set.title')}</h3>
-              </span>
-              <button className="grid h-6 w-6 place-items-center text-dim hover:text-[var(--text)]" onClick={() => setOpen(false)} aria-label="Close">
-                <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-                  <path d="M1 1l10 10M11 1L1 11" />
-                </svg>
-              </button>
-            </div>
-            <Settings />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      <path d="M2 4h7M12 4h2M2 12h2M7 12h7" />
+      <path d="M10.5 2.5v3M5.5 10.5v3" />
+    </svg>
   );
 }
 
 /** Compact player chip; the details live in a dropdown so the bar stays clean. */
-function PlayerMenu({ address, name, kind, xp, usd, mon }: { address: string; name: string; kind?: string; xp: number; usd: bigint; mon: bigint }) {
+function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address: string; name: string; kind?: string; xp: number; usd: bigint; mon: bigint; onSettings: () => void }) {
   const t = useT();
   const guest = kind === 'guest';
   const passkey = kind === 'passkey';
@@ -276,6 +248,10 @@ function PlayerMenu({ address, name, kind, xp, usd, mon }: { address: string; na
               >
                 {t('acct.funds')}
               </button>
+              <button className="gbtn ghost sm flex w-full items-center justify-center gap-2" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
+                <SettingsIcon />
+                {t('set.title')}
+              </button>
               <button className="w-full py-1.5 text-[11px] tracking-wider text-dim uppercase hover:text-red" onClick={() => (disconnect(), setOpen(false))}>
                 {t(passkey ? 'acct.signOut' : guest ? 'acct.disconnectGuest' : 'acct.disconnectWallet')}
               </button>
@@ -289,7 +265,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon }: { address: string; na
 }
 
 /** Phones: the nav links live behind a menu button (the inline nav needs tablet width). */
-function MobileNav({ path }: { path: string }) {
+function MobileNav({ path, onSettings }: { path: string; onSettings: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
@@ -328,9 +304,10 @@ function MobileNav({ path }: { path: string }) {
             <Link href="/play?guide=1" className="mnav-link">
               {t('nav.howto')}
             </Link>
-            <div className="border-t border-line px-3.5 pt-3 pb-2">
-              <Settings />
-            </div>
+            <button className="mnav-link w-full" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
+              {t('set.title')}
+              <SettingsIcon />
+            </button>
           </motion.nav>
         )}
       </AnimatePresence>

@@ -1,11 +1,67 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { LANGS, useLang, useT } from '@/lib/i18n';
 import { music } from '@/lib/music';
 import { sfx } from '@/lib/sfx';
 import { useSettings } from '@/lib/settings';
 
-/** Bots, language, music and sound: shared by the desktop settings card and the phone menu. */
+/** Every setting in one card, centered over the page on desktop and phones alike. */
+export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useT();
+  // portalled: the top bar's backdrop-filter would otherwise trap this fixed overlay inside the bar
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('keydown', esc);
+      document.body.style.overflow = overflow;
+    };
+  }, [open, onClose]);
+  if (!mounted) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        // m-auto centers the card, yet a card taller than the screen (a phone in landscape) scrolls from its top
+        <motion.div className="st-overlay fixed inset-0 z-50 flex overflow-y-auto bg-black/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            className="panel m-auto w-full max-w-[420px] p-5 sm:p-6"
+            style={{ background: 'var(--panel-solid)' }}
+            initial={{ scale: 0.96, y: 12 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.96, y: 12 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between gap-4 border-b border-line pb-4">
+              <h2 id="settings-title" className="font-display text-2xl font-bold tracking-wide uppercase">
+                {t('set.title')}
+              </h2>
+              <button className="grid h-10 w-10 shrink-0 place-items-center border border-line text-dim transition-colors hover:border-[var(--line-hi)] hover:text-[var(--text)]" onClick={onClose} aria-label="Close">
+                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                  <path d="M1 1l10 10M11 1L1 11" />
+                </svg>
+              </button>
+            </div>
+            <Settings />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+/** Bots, language, music and sound. */
 export function Settings() {
   const t = useT();
   const { lang, set } = useLang();
