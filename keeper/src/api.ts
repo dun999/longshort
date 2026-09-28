@@ -6,6 +6,7 @@ import { ADDR, erc20Abi } from '@longshort/shared';
 import { MARKETS } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
+import { gateAllows } from './gate';
 import { GAS, keeper, log, pub } from './chain';
 import { history, onTick } from './prices';
 import { onChainEvent } from './indexer';
@@ -29,6 +30,8 @@ function playersOf(matchId: number) {
 }
 
 route('GET', '/health', () => ({ ok: true }));
+// Caddy's forward_auth asks this before serving the Envio GraphQL; handle() has already checked the gate
+route('GET', '/gate', () => ({ ok: true }));
 
 route('POST', '/lobby-options', async (_r, _p, body) => {
   const result = await configureLobby(body);
@@ -209,6 +212,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('access-control-allow-headers', 'content-type');
   if (req.method === 'OPTIONS') return void res.end();
   const path = new URL(req.url!, 'http://x').pathname;
+  if (path !== '/health' && !gateAllows(req)) {
+    res.statusCode = 401;
+    return void res.end('{"error":"private preview"}');
+  }
   for (const [method, re, h] of routes) {
     const m = path.match(re);
     if (!m || method !== req.method) continue;
@@ -367,7 +374,7 @@ function onMessage(c: Client, msg: any) {
 
 export function startApi() {
   const server = createServer((req, res) => void handle(req, res));
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ req }: { req: IncomingMessage }) => gateAllows(req) });
   wss.on('connection', (ws) => {
     const c: Client = { ws };
     clients.add(c);
