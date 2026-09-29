@@ -49,7 +49,7 @@ packages/shared/  ABIs (generated), addresses, game math shared by HUD + keeper
 - **Trading:** everyone starts with $1,000 of virtual margin. Leverage comes from the class (10/25/50x), each fill pays a 0.01% fee, and a position is liquidated at 10% of starting margin.
 - **Max loss is the entry.**
 
-**Trust UI:** fills show the oracle price, fee, and liquidation price with the contract's exact formula. Bots are always labelled. `/information` is the full risk disclosure (`/rules` redirects), and `/stats` shows public metrics derived from events.
+**Trust UI:** fills show the oracle price, fee, and liquidation price with the contract's exact formula. Bots are always labelled. `/rules` is the full risk disclosure (`/information` redirects), and `/stats` shows public metrics derived from events.
 
 ## Run locally
 

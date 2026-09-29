@@ -16,7 +16,7 @@ import { initSettings } from '@/lib/settings';
 const Stage = dynamic(() => import('./three/Stage'), { ssr: false });
 
 /** Reading pages get the game sub-menu treatment: the 3D world blurs and darkens behind the content. */
-const DIMMED = ['/stats', '/information', '/profile', '/leaderboard'];
+const DIMMED = ['/stats', '/rules', '/profile', '/leaderboard'];
 
 function Flash() {
   const flash = useScene((s) => s.flash);

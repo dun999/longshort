@@ -226,7 +226,7 @@ function ModeSelect({
                       </div>
                     )}
                     <p className="text-[11px] text-dim">
-                      {t('ms.onlyStake')} <Link href="/information" className="link">{t('lb.rules')}</Link>
+                      {t('ms.onlyStake')} <Link href="/rules" className="link">{t('lb.rules')}</Link>
                     </p>
                   </>
                 )}

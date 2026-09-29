@@ -243,7 +243,7 @@ export default function Landing() {
               ['/practice', 'Practice'],
               ['/leaderboard', 'Ranks'],
               ['/stats', 'Stats'],
-              ['/information', 'Information'],
+              ['/rules', 'Rules & Risks'],
               ['#faq', 'FAQ'],
             ].map(([href, label]) => (
               <Link key={href} href={href}>
@@ -275,8 +275,8 @@ function Faq() {
           </h2>
           <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="lp-faq-aside">
             Still unsure? The full risk disclosure lives on the{' '}
-            <Link href="/information" className="lp-textlink small">
-              information page
+            <Link href="/rules" className="lp-textlink small">
+              Rules &amp; Risks page
             </Link>
             .
           </motion.p>

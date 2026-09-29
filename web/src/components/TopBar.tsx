@@ -20,7 +20,7 @@ const NAV: { href: string; label: Key }[] = [
   { href: '/play', label: 'nav.play' },
   { href: '/leaderboard', label: 'nav.ranks' },
   { href: '/stats', label: 'nav.stats' },
-  { href: '/information', label: 'nav.rules' },
+  { href: '/rules', label: 'nav.rules' },
 ];
 
 /** Close a popover on an outside press or Escape. */
