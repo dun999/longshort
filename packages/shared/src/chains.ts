@@ -29,3 +29,7 @@ export const ADDR = addresses as {
 };
 /** Stake token symbol: AUSD on testnet, tUSD on the local faucet token. */
 export const STAKE = ADDR.stakeSymbol ?? 'tUSD';
+
+// Owners need enough for an approval plus a buffered createMatch transaction.
+// 0.03 MON can fall below the local signer's fee cap for a new lobby on Monad.
+export const OWNER_GAS_LOW = '0.08';

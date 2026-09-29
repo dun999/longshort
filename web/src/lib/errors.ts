@@ -9,7 +9,7 @@ const RULES: [RegExp, Key | null][] = [
   [/^Rematch|^Enable bot matching|^Lobby options|^Invalid lobby|^Invalid rematch/, null],
   [/user rejected|user denied|rejected the request|request rejected/i, 'err.cancelled'],
   [/passkey/i, null], // our own passkey messages are already written for players
-  [/insufficient funds/i, 'err.gas'],
+  [/insufficient funds|insufficient balance for (?:gas|transaction)|balance too low|gas required exceeds allowance/i, 'err.gas'],
   [/exceeds balance|ERC20InsufficientBalance/i, 'err.stake'],
   [/allowance|ERC20InsufficientAllowance/i, 'err.allowance'],
   [/\bFull\b|TeamFull/, 'err.full'],

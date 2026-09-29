@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { OWNER_GAS_LOW } from '@longshort/shared';
 
 // Tiny .env loader (keeps deps at zero).
 // ENV_FILE=.env.testnet npm start → run the same keeper against another network profile
@@ -38,5 +39,5 @@ export const env = {
   gasCapPerMatch: process.env.GAS_CAP_PER_MATCH ?? '0.4',
   gasReserve: process.env.GAS_RESERVE ?? '0.5',
   // owner-level gas refill (joins, approvals) when a player runs nearly dry
-  faucetGasLow: process.env.FAUCET_GAS_LOW ?? '0.03',
+  faucetGasLow: process.env.FAUCET_GAS_LOW ?? OWNER_GAS_LOW,
 };

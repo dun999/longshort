@@ -13,7 +13,7 @@ import {
   type WalletClient,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { ADDR, activeChain, erc20Abi } from '@longshort/shared';
+import { ADDR, OWNER_GAS_LOW, activeChain, erc20Abi } from '@longshort/shared';
 import { publicClient, GAS } from './clients';
 import { RPC_URL } from './config';
 import { api } from './api';
@@ -248,7 +248,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     const { address, kind } = get();
     if (!address || kind === 'injected') return; // a browser wallet manages its own gas
     await get().refresh();
-    if (get().mon >= parseEther('0.03')) return;
+    if (get().mon >= parseEther(OWNER_GAS_LOW)) return;
     await get().faucet().catch(() => {});
   },
 
