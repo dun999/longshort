@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { CameraControls, Sparkles } from '@react-three/drei';
+import { CameraControls } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { useScene, prefersReducedMotion, type Shot, type Slot } from '@/lib/scene';
@@ -107,8 +107,9 @@ function World({ children }: { children: React.ReactNode }) {
 }
 
 function Effects() {
+  const samples = useThree((s) => Math.min(4, s.gl.capabilities.maxSamples));
   return (
-    <EffectComposer multisampling={0}>
+    <EffectComposer multisampling={samples}>
       <Bloom mipmapBlur intensity={0.25} luminanceThreshold={0.85} luminanceSmoothing={0.1} />
       <Vignette eskil={false} offset={0.25} darkness={0.7} />
     </EffectComposer>
@@ -184,7 +185,8 @@ export default function Stage() {
           <Arena />
           <Jumbotron />
           <Pedestals />
-          <Sparkles count={28} scale={[26, 12, 26]} size={0.9} speed={0.2} color="#c9c2e8" opacity={0.22} />
+          {/* no drei <Sparkles>: its 0.05 / distanceToCenter is infinite when a pixel hits a sprite's
+              centre, and the NaN it blends in blacks out the frame through Bloom */}
         </World>
         <CameraRig />
         <Dimmer />

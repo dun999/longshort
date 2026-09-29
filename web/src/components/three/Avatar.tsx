@@ -11,8 +11,7 @@ export const nameplateHost: { current: HTMLElement } = { current: null as unknow
 
 const metal = new THREE.MeshStandardMaterial({ color: '#1d1f26', metalness: 0.6, roughness: 0.45 });
 
-// ─── hologram shader: fresnel rim, rolling scanlines, a little flicker ───────
-const holoTime = { value: 0 };
+// ─── hologram shader: stable fresnel rim and soft scanlines ─────────────────
 const holoVert = /* glsl */ `
   varying vec3 vN;
   varying vec3 vV;
@@ -27,16 +26,17 @@ const holoVert = /* glsl */ `
   }`;
 const holoFrag = /* glsl */ `
   uniform vec3 uColor;
-  uniform float uTime;
   uniform float uPower;
   varying vec3 vN;
   varying vec3 vV;
   varying float vY;
   void main() {
-    float fres = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
-    float scan = 0.55 + 0.45 * step(0.5, fract(vY * 16.0 - uTime * 1.4));
-    float flick = 0.93 + 0.07 * sin(uTime * 37.0) * sin(uTime * 11.0);
-    float a = (0.1 + fres * 0.95) * scan * flick * uPower;
+    // clamped: rounding can push |dot| past 1 head-on, and pow() of a negative is NaN, which Bloom
+    // spreads over the whole frame (a black flash while the camera moves)
+    float fres = pow(clamp(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 2.2);
+    // Hard, moving stripes and rapid opacity modulation shimmer at lobby distance.
+    float scan = 0.9 + 0.1 * cos(vY * 24.0);
+    float a = (0.1 + fres * 0.95) * scan * uPower;
     gl_FragColor = vec4(uColor * (0.55 + fres * 1.7), a);
   }`;
 const holoCache = new Map<string, THREE.ShaderMaterial>();
@@ -48,7 +48,7 @@ function holo(color: string, power = 1) {
       new THREE.ShaderMaterial({
         vertexShader: holoVert,
         fragmentShader: holoFrag,
-        uniforms: { uColor: { value: new THREE.Color(color) }, uTime: holoTime, uPower: { value: power } },
+        uniforms: { uColor: { value: new THREE.Color(color) }, uPower: { value: power } },
         transparent: true,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
@@ -73,7 +73,6 @@ export function Avatar({ slot, position, rotationY = 0, showName }: { slot: Slot
 
   useFrame(({ clock }, dt) => {
     const t = clock.elapsedTime + seed;
-    holoTime.value = clock.elapsedTime;
     if (body.current) {
       body.current.position.y = 0.42 + Math.sin(t * 1.6) * 0.05 + (slot.empty ? 0 : lead * 0.12);
       body.current.rotation.y = rotationY + Math.sin(t * 0.5) * 0.12;

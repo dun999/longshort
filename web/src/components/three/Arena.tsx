@@ -6,10 +6,10 @@ import * as THREE from 'three';
 import { useScene } from '@/lib/scene';
 
 /*
- * The arena: an octagonal glass stage ringed by chasing LEDs, tiered stands full of twinkling crowd
+ * The arena: an octagonal glass stage ringed by chasing LEDs, tiered stands full of steady crowd
  * lights, four unlit light towers, and an overhead LED ring.
  * Everything that glows is unlit/additive (no extra real lights, no shadow maps), so it stays cheap;
- * the scene's `intensity` (match energy) speeds up the chase, the sweep and the crowd.
+ * the scene's `intensity` (match energy) speeds up the chase and the sweep.
  */
 
 const VIOLET = new THREE.Color('#7c5cff');
@@ -156,15 +156,13 @@ function Stands() {
 const crowdVert = /* glsl */ `
   attribute float aPhase;
   attribute vec3 aColor;
-  uniform float uTime;
   varying vec3 vColor;
   varying float vA;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    float flash = pow(max(0.0, sin(uTime * (0.6 + fract(aPhase * 7.1) * 1.4) + aPhase * 6.2831)), 12.0);
-    vA = 0.16 + flash * 0.7;
+    vA = 0.2 + fract(aPhase * 7.1) * 0.12;
     vColor = aColor;
-    gl_PointSize = (1.1 + flash * 1.6) * (42.0 / -mv.z); // pin-points, not orbs
+    gl_PointSize = 1.2 * (42.0 / -mv.z); // steady pin-points, not flashing orbs
     gl_Position = projectionMatrix * mv;
   }`;
 const crowdFrag = /* glsl */ `
@@ -177,7 +175,6 @@ const crowdFrag = /* glsl */ `
   }`;
 
 function Crowd() {
-  const mat = useRef<THREE.ShaderMaterial>(null);
   const geo = useMemo(() => {
     const n = 1400;
     const pos = new Float32Array(n * 3);
@@ -200,14 +197,9 @@ function Crowd() {
     g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
     return g;
   }, []);
-  const t = useRef(0);
-  useFrame((_, dt) => {
-    t.current += dt * energy();
-    if (mat.current) mat.current.uniforms.uTime.value = t.current;
-  });
   return (
     <points geometry={geo}>
-      <shaderMaterial ref={mat} vertexShader={crowdVert} fragmentShader={crowdFrag} uniforms={{ uTime: { value: 0 } }} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
+      <shaderMaterial vertexShader={crowdVert} fragmentShader={crowdFrag} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
     </points>
   );
 }
