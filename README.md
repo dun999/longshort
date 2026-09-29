@@ -1,89 +1,107 @@
-# longshort.fun: PvP perpetuals arena on Monad
+# longshort.fun
 
-**Queue up, pick a class, and outtrade real rivals. Every click is an onchain transaction. The contract pays the winner.**
+PvP perpetual matches on Monad. Players escrow a stake, trade virtual leveraged BTC, ETH, and MON positions against each other, and `ArenaCore` pays the winners from that pot. The pot is only the escrowed stakes. Every open, close, liquidation, elimination, and payout is its own transaction, priced by Perpl's onchain mark.
 
-longshort is a new market structure: **PnL-settled trading competitions**. Players escrow a stake. Then they trade leveraged BTC/ETH/MON positions priced by Perpl's onchain mark price, where every open, close, liquidation and elimination is a Monad tx. At the bell, `ArenaCore` closes every position and pays the best performers from the pot. There's no house and no counterparty risk: the pot is only the players' stakes.
+| Mode | Shape | Clock | Who gets paid |
+|---|---|---|---|
+| Duel | 1v1 | 60s | Higher final equity takes the prize. A tie refunds both stakes. |
+| Squad | 3v3 | 120s | Higher team equity splits the prize equally. A tie refunds everyone. |
+| Royale | 8 free-for-all | 180s | Lowest equity is eliminated each round. Top 3 take 60 / 30 / 10. |
+| Practice | vs a bot | — | Offchain. Live prices, no escrow, no payout. |
 
-| Mode | Format | Winner |
-|---|---|---|
-| **Duel** | 1v1 · 60s | Higher final equity takes the pot (or the survivor, if the rival is liquidated) |
-| **Squad** | 3v3 · 120s · party with friends | Team with the higher summed equity splits the pot |
-| **Royale** | 8 FFA · 180s | Lowest equity is cut every round, and the top 3 are paid 60/30/10 |
-| **Practice** | vs bot · live prices | Nothing onchain |
+Leverage is a class stored on the player: **Tank 10x**, **Scout 25x**, **Sniper 50x**. It can be changed until the bell. Entry sizes are 5, 20, or 50 of the stake token (6 decimals).
 
-Classes are real contract parameters: **Tank 10x · Scout 25x · Sniper 50x**. You pick one on a Valorant-style agent-select screen after the match is found.
+## Why Monad
 
-## Why this needs Monad
+A duel is a minute long and a trader clicks many times. The fill has to confirm while the match is still live. Monad produces a block about every 300ms and finalizes it in about 600ms, so each click is a final onchain trade. The HUD shows that round-trip as ping, from click to fill.
 
-A 60-second match where each trader clicks 10–30 times is **hundreds of settlement events per match**. On a 12s chain, a click lands after the match has moved. On an L2 with a centralized sequencer, you've rebuilt a CEX. With 400ms blocks and 800ms finality, **each click is a real onchain fill that confirms in under a second**, so the HUD shows the measured latency of every trade. Liquidations are permissionless calls, and royale eliminations are too. The result can be verified from events alone.
+The price source is on the same chain. `PerplOracle` calls Perpl's `getPerpetualInfo` (BTC perp 16, ETH 32, MON 64) and uses whichever of mark and oracle is fresher, reverting if it is older than 60 seconds. Settlement does not trust a keeper signature.
+
+EIP-7702 is how passkey accounts play with an empty MON balance. A relayer submits the transaction and pays the gas. `ArenaCore` still sees the player, or that match's trading key, as `msg.sender`. The Arena contract did not have to learn about sponsorship.
+
+## How a match runs
+
+1. **Queue.** The browser asks the keeper where to sit. The keeper holds that seat, so two people who press Play together land in the same lobby instead of each opening their own.
+2. **Stake.** The owner key signs `approve` (if needed) and `createMatch` or `joinMatch`. The entry moves into `ArenaCore`. The join also registers this match's trading key.
+3. **Countdown.** When the lobby fills, the contract starts a 15 second countdown, then the clock (`duration`). An unfilled lobby can be left for a refund, and anyone can cancel it after 5 minutes.
+4. **Trade.** The trading key signs `open`, `close`, and `setClass`. Each player starts at $1,000 of virtual margin. Notional is equity × class leverage × size. One position at a time. Flipping side closes and reopens in the same call.
+5. **Knockouts.** Equity at or below $100 (10% of starting margin) is liquidatable by anyone. In Royale the keeper also calls `eliminate` on the lowest equity each round, until three players remain. A duel or squad can settle early once one side is entirely out. Royale can settle early once one player remains.
+6. **Payout.** At the bell, or as soon as the match is decided, anyone can call `settle`. The contract closes leftover positions at the oracle, ranks equity, and transfers the stake token. The keeper does this on a one-second loop. `liquidate`, `eliminate`, `settle`, and `cancel` are permissionless.
 
 ## Architecture
 
 ```
-contracts/        Foundry: ArenaCore (escrow, positions, liquidation, royale cuts, settlement),
-                  oracles/ (PerplOracle reads Perpl onchain, MockOracle for local), TestUSD faucet token
-keeper/           Node service: settles/eliminates/liquidates (simulate-then-send), bot fleet, gas station,
-                  SQLite event indexer, HTTP API (matchmaking, sign-in, faucet), WebSocket (party, presence, live feed)
-indexer/          Envio (HyperSync): contract events → GraphQL for public stats
-web/              Next.js 15: persistent react-three-fiber stage (camera "shots" per phase),
-                  motion HUD, lightweight-charts, procedural WebAudio SFX
-packages/shared/  ABIs (generated), addresses, game math shared by HUD + keeper
+browser (Next.js, viem, Mera)
+    │  signed calls, or a signed payload for /relay
+    ▼
+keeper (Node, SQLite, HTTP, WebSocket) ──► Monad
+    │  settle / liquidate / eliminate / bots / faucet / relay
+    ▼
+Envio (HyperSync → GraphQL)   reads the same Arena events for public stats
 ```
 
-**A match, end to end:** Play → the keeper picks a lobby and holds the seat (players who press Play together meet) → the browser stakes with `createMatch`/`joinMatch` → every trade is a tx signed by that match's trading key → at the bell the keeper calls `settle` → `ArenaCore` pays the winners. `liquidate`, `eliminate` and `settle` are permissionless; the keeper just calls them on time.
+| Piece | What it does |
+|---|---|
+| `contracts/` | Foundry. `ArenaCore` holds escrow, positions, and payouts. `PerplOracle` reads Perpl. `MockOracle` is the local stand-in. `TestUSD` is the local faucet token. `RelayDelegate` is the EIP-7702 sponsor. |
+| `keeper/` | Matchmaking, parties, the settlement loop (simulate, then send), a labelled bot fleet, the stake faucet, and `/relay`. It also tails Arena logs into SQLite about every 0.7s for the live API, and polls Perpl once a second for the charts. |
+| `indexer/` | Envio on Monad testnet (chain 10143). HyperSync is the primary source, the public RPC is the fallback. It indexes both the tUSD and AUSD arenas into GraphQL for `/stats` and rank history. |
+| `web/` | Next.js 15. A persistent react-three-fiber stage, the HUD, and lightweight-charts. Game math is imported from `packages/shared`, which mirrors the contract, so the liquidation price on screen is the liquidation price onchain. |
+| `packages/shared` | Generated ABIs, deployment addresses, and the constants the HUD and the keeper share. |
 
-**Where the data comes from**
-- **Prices:** Perpl's perpetuals exchange on Monad, via `getPerpetualInfo` (the oracle price when it is newer than the mark price). `ArenaCore` reads it onchain through `PerplOracle`; the keeper polls the same call every second for the charts.
-- **Match history:** contract events only. The keeper indexes them into SQLite every 0.7s; Envio indexes them for the public GraphQL feed.
+The keeper's SQLite database is the live game: lobbies, names, the trade feed, parties. Envio is the public history. Both are projections of Arena events. Neither is allowed to invent a fill.
 
-**Accounts**
-- **Passkey (recommended, via Mera):** one Face ID / Touch ID / PIN prompt yields WebAuthn PRF entropy. HKDF derives an owner key (holds the stake) and one key per match, registered as that match's session key: it trades without prompts and can never move funds. Nothing is stored; keys are wiped on lock, after 30 minutes idle, and when the page is hidden.
-- **Browser wallet:** you confirm the stake once; a per-browser session key signs every trade.
-- **Guest:** a burner key in the browser, funded by the keeper faucet, for one-click play.
-- **Sign-in:** one signature buys a 30-day token, so the live connection can speak for your address (parties, invites, matchmaking). Guests and unlocked passkeys sign silently.
-- **Gas:** the keeper's gas station tops up every human trading key, so nobody needs MON to trade.
+## Accounts and gas
 
-**Economics**
-- **Stake:** the entry, in tUSD on testnet, escrowed by the contract. Pot = entry × players, minus a 2.5% rake to the treasury.
-- **Payouts:** the Duel winner takes the prize, the winning Squad splits it, and Royale pays 60/30/10.
-- **Trading:** everyone starts with $1,000 of virtual margin. Leverage comes from the class (10/25/50x), each fill pays a 0.01% fee, and a position is liquidated at 10% of starting margin.
-- **Max loss is the entry.**
+Three ways in:
 
-**Trust UI:** fills show the oracle price, fee, and liquidation price with the contract's exact formula. Bots are always labelled. `/rules` is the full risk disclosure (`/information` redirects), and `/stats` shows public metrics derived from events.
+- **Passkey (Mera).** One Face ID, Touch ID, or PIN prompt returns WebAuthn PRF bytes. HKDF derives an owner key (`longshort/owner/v1`) and a trade root, then a fresh secp256k1 key per match (`longshort/match/<label>`). The owner holds the stake and signs join, leave, and approve. The match key is registered as the session and may only trade inside that match. Key material stays in memory. The keyring locks after 30 minutes idle and on page unload. A live match pins it open so a prompt cannot land mid-round. localStorage keeps the credential id and match labels, never the keys.
+- **Browser wallet.** The wallet confirms the stake. A per-browser session key signs the trades.
+- **Guest.** One burner key in the browser is both owner and trader, funded with stake from the faucet.
 
-## Run locally
+Sign-in is separate from trading. One signature buys a 30-day token so the websocket can speak for that address: parties, invites, and the queue. An unlocked passkey or a guest signs it silently.
+
+**Passkey gas.** On the tUSD deployment the owner and the match key delegate, once, to `RelayDelegate` (EIP-7702). Each action is an EIP-712 `Execute` the browser signs and posts to `/relay`. The keeper's relayer submits it and pays the MON. The first transaction carries the delegation. After that, players hold 0 MON. The delegate only forwards Arena calls (`createMatch`, `joinMatch`, `leave`, `open`, `close`, `setClass`) and an `approve` whose spender is the Arena. It checks the signature, bumps its own nonce, and calls through, so a revert comes back as the Arena error.
+
+Monad bills the gas *limit* of a transaction, including a failed one, and a delegated account cannot be the one whose MON balance drops below 10. Players never spend MON, so an empty delegated account is valid. The relayer is an ordinary EOA that sends constantly, so it keeps its own funded key, separate from the settlement keeper (a shared key collides on nonce), and it stays above 10 MON. `/relay` simulates before sending, caps the gas, and rate-limits per address and per IP.
+
+A browser wallet such as MetaMask will not delegate to an arbitrary contract, so those owner transactions still pay their own gas. The session key is a local key and is sponsored like a passkey match key.
+
+Local Anvil and the AUSD deployment have no `relayDelegate` address. There the keeper still drips a little MON to the owner and tops match keys up from a gas station. Turning sponsorship on for a deployment is the delegate address in that deployment's address file, plus `RELAYER_KEY` on the keeper.
+
+## Fees and payouts
+
+Two different fees, and they do not come out of the same balance.
+
+**Trading fee, 1 bp of notional, each side.** Charged in virtual dollars on open and again on close, subtracted from realized PnL. It changes equity and therefore who wins. It does not transfer stake tokens.
+
+**Rake, 2.5% of the pot.** Taken in the stake token at settlement and sent to the treasury. The rest is the prize. Rounding dust goes to the treasury with the rake. A tie skips the rake and refunds every entry.
+
+| Mode | Prize |
+|---|---|
+| Duel | The winner receives the whole prize. |
+| Squad | Each player on the winning team receives an equal share. |
+| Royale | 60% / 30% / 10% to 1st / 2nd / 3rd. Survivors rank by equity. Players already out rank by how late they went out. |
+
+Equity is `$1,000 + realized PnL + unrealized PnL`, floored at 0. Unrealized PnL is the oracle move on notional, signed by side. Liquidation freezes a player at 0 equity and closes their position. It does not move the stake. The stake sits in the contract until `settle` or a refund.
+
+Max loss is the entry. A player cannot owe more than they escrowed, because the virtual account is not a credit line and the contract only ever redistributes the pot.
+
+Payouts go to the owner address that joined, not to the match key. Leaving an open lobby, or a cancel after the five-minute timeout, returns the entry in full.
+
+## Run it
+
+Local chain, mock oracle, faucet token:
 
 ```bash
 npm install
 (cd contracts && forge install foundry-rs/forge-std@v1.16.2 OpenZeppelin/openzeppelin-contracts@v5.7.0)
-npm run dev:chain                 # anvil, 1s blocks
+npm run dev:chain          # anvil, 1s blocks, chain id 31337
 npm run contracts:build && npm run deploy:local
-cp keeper/.env.example keeper/.env   # defaults work for anvil
-npm run keeper                    # keeper + bots + API on :8787 (mirrors live Perpl prices)
-npm run web                       # http://localhost:3000
+cp keeper/.env.example keeper/.env
+npm run keeper             # API on :8787, bots, live Perpl prices mirrored into the mock oracle
+npm run web                # http://localhost:3000
 ```
 
-## Deploy to Monad testnet
+Monad testnet uses the deployments already recorded in `packages/shared/src/`. `npm run use:testnet` selects the tUSD arena (sponsored gas). `npm run use:testnet-ausd` selects the AUSD arena (self-paid gas). Point the keeper at `RPC_URL=https://testnet-rpc.monad.xyz` with `KEEPER_KEY` for settlement and, on tUSD, a different `RELAYER_KEY` funded above 10 MON. Point the web at that RPC and at the keeper (`NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_API_URL`).
 
-```bash
-DEPLOYER_KEY=0x… MONAD_RPC_URL=https://testnet-rpc.monad.xyz npm run deploy:testnet   # writes packages/shared/src/addresses.json
-# keeper/.env: RPC_URL=https://testnet-rpc.monad.xyz, KEEPER_KEY=<deployer>, BOT_MNEMONIC=<fresh>, FAUCET_MON=0.15
-# web/.env.local: NEXT_PUBLIC_RPC_URL=https://testnet-rpc.monad.xyz, NEXT_PUBLIC_API_URL=<keeper url>
-```
-
-## Who it's for (first users)
-
-1. **Perp DEX growth teams, starting with Perpl.** Duels are an acquisition funnel: a new user learns leverage, liquidation and PnL with a fixed downside (the stake) before ever touching a real order book. This is the most direct first partner.
-2. **Trading-competition communities and CT groups** already run PnL contests on spreadsheets and screenshots, with trust issues around fake PnL. longshort gives them verifiable, self-settling brackets.
-3. **Prop-firm-style challenge takers**: skill evaluation with a capped entry and an onchain track record, where the match history is the résumé.
-
-**Why this doesn't already exist:** PvP trading games so far are either offchain (trust the operator's PnL) or settle only the final result. Per-click onchain fills require sub-second, cheap blocks. Monad is where that becomes true.
-
-## Traction & next steps
-
-- Bots are optional in Settings (off by default). Rematch invites preserve the prior roster, teams, and stake. Nicknames are searchable in the lobby and Ranks.
-- Bots and testers generate real onchain matches continuously. `/stats` shows settled matches, trades, txs and human-vs-bot volume, all from contract events.
-- **Next:**
-  1. Testnet public launch with weekly Royale tournaments (target 1,000 matches and 250 human wallets in the first 4 weeks).
-  2. Perpl partnership for a "real-position" mode, where the arena routes hedged orders into Perpl.
-  3. Mainnet with AUSD stakes, after an audit.
+`npm run deploy:testnet` deploys a *new* Arena and overwrites `addresses.json`. It is for a fresh environment, not for restarting the live one.

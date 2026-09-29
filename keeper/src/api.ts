@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isAddress, parseEther, parseUnits, verifyMessage } from 'viem';
-import { ADDR, erc20Abi } from '@longshort/shared';
+import { ADDR, erc20Abi, relayLive } from '@longshort/shared';
 import { MARKETS } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
@@ -14,6 +14,7 @@ import { heartbeat, requestCancel } from './lobby';
 import { configureLobby, lobbyOptions, releaseRematch, rematchInvites, reserveRematch, roster } from './matchmaking';
 import { signedIn, signIn, tokenOwner } from './auth';
 import { followersOf, matchmake, opened, pendingFor, release } from './queue';
+import { relay } from './relay';
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 type Handler = (req: IncomingMessage, params: string[], body: any) => unknown | Promise<unknown>;
@@ -47,6 +48,10 @@ route('POST', '/lobby-options', async (_r, _p, body) => {
 route('POST', '/rematch', (_r, _p, body) => reserveRematch(body));
 route('POST', '/rematch-release', (_r, _p, body) => releaseRematch(body));
 route('POST', '/auth', (_r, _p, body) => signIn(body));
+route('POST', '/relay', (req, _p, body) => {
+  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
+  return relay(body, ip);
+});
 
 // Play: the keeper picks the lobby, so simultaneous players meet instead of each opening their own.
 route('POST', '/matchmake', async (_r, _p, body) => {
@@ -177,8 +182,9 @@ route('POST', '/faucet', async (req, _p, body) => {
     pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'balanceOf', args: [addr] }),
   ]);
   const txs: string[] = [];
-  // gas: refill whenever nearly dry (short cooldown), so a player is never stuck unable to join
-  if (mon < parseEther(env.faucetGasLow) && (gasDrip.get(addr) ?? 0) < now - 180_000) {
+  // gas: refill whenever nearly dry (short cooldown), so a player is never stuck unable to join.
+  // Off once the relay delegate is live: the sponsor pays, and a drip would just sit on the player.
+  if (!relayLive(ADDR.relayDelegate) && mon < parseEther(env.faucetGasLow) && (gasDrip.get(addr) ?? 0) < now - 180_000) {
     // never below the keeper's reserve: settlement and liquidations come first
     const mine = await pub.getBalance({ address: keeper.account.address });
     if (mine - parseEther(env.faucetMon) >= parseEther(env.gasReserve)) {

@@ -5,11 +5,13 @@ import { startKeeper } from './keeper';
 import { startPrices } from './prices';
 import { startGasStation } from './gas';
 import { startLobbyGuard } from './lobby';
+import { startRelay } from './relay';
 
 await startPrices();
 await startIndexer();
 startApi();
 startKeeper();
 startGasStation();
+startRelay();
 startLobbyGuard();
 await startBots();

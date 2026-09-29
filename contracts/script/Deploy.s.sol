@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {ArenaCore} from "../src/ArenaCore.sol";
+import {RelayDelegate} from "../src/RelayDelegate.sol";
 import {TestUSD} from "../src/TestUSD.sol";
 import {PerplOracle} from "../src/oracles/PerplOracle.sol";
 import {MockOracle} from "../src/oracles/MockOracle.sol";
@@ -29,6 +30,7 @@ contract Deploy is Script {
         MockOracle mock = new MockOracle(deployer); // fallback; the keeper mirrors Perpl prices into it
         IPriceOracle oracle = useMock ? IPriceOracle(address(mock)) : IPriceOracle(perpl);
         ArenaCore arena = new ArenaCore(IERC20(stake), oracle, deployer, deployer);
+        RelayDelegate relay = new RelayDelegate(address(arena), stake);
         vm.stopBroadcast();
 
         string memory j = "deploy";
@@ -40,9 +42,11 @@ contract Deploy is Script {
         vm.serializeAddress(j, "mockOracle", address(mock));
         vm.serializeAddress(j, "perplExchange", PERPL);
         vm.serializeBool(j, "mockOracleActive", useMock);
-        string memory out = vm.serializeAddress(j, "arena", address(arena));
+        vm.serializeAddress(j, "arena", address(arena));
+        string memory out = vm.serializeAddress(j, "relayDelegate", address(relay));
         vm.writeJson(out, "../packages/shared/src/addresses.json");
         console.log("ArenaCore", address(arena));
+        console.log("RelayDelegate", address(relay));
         console.log("stake", stake);
     }
 }

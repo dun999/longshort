@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import {
   createWalletClient,
   custom,
+  encodeFunctionData,
   http,
   maxUint256,
   nonceManager,
@@ -13,13 +14,14 @@ import {
   type WalletClient,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { ADDR, OWNER_GAS_LOW, activeChain, erc20Abi } from '@longshort/shared';
+import { ADDR, OWNER_GAS_LOW, activeChain, erc20Abi, relayLive } from '@longshort/shared';
 import { publicClient, GAS } from './clients';
 import { RPC_URL } from './config';
 import { api } from './api';
 import { useSocket } from './socket';
 import * as mera from './mera';
 import { friendly } from './errors';
+import { relayTx, sponsorAccount } from './relay';
 
 type Kind = 'injected' | 'guest' | 'passkey';
 const LS = { kind: 'ls.kind', guest: 'ls.guest.v1', session: 'ls.session.v1', passkeyAddr: 'ls.passkey.owner' };
@@ -49,6 +51,12 @@ function localAccount(key: string) {
   return privateKeyToAccount(pk, { nonceManager });
 }
 const localClient = (account: Account) => createWalletClient({ account, chain: activeChain, transport: http(RPC_URL) });
+
+/** Stake is still dripped. MON is dripped only while players pay their own gas. */
+function needsFunds() {
+  const { usd, mon } = useWallet.getState();
+  return usd === 0n || (!relayLive(ADDR.relayDelegate) && mon === 0n);
+}
 
 interface WalletState {
   address?: `0x${string}`;
@@ -137,7 +145,7 @@ export const useWallet = create<WalletState>((set, get) => ({
       store.set(LS.kind, 'passkey');
       store.set(LS.passkeyAddr, owner.address);
       await get().refresh();
-      if (get().usd === 0n || get().mon === 0n) await get().faucet();
+      if (needsFunds()) await get().faucet();
       await get().ensureAllowance();
     } catch (e) {
       set({ error: friendly(e) });
@@ -191,7 +199,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     store.set(LS.kind, 'guest');
     try {
       await get().refresh();
-      if (get().usd === 0n || get().mon === 0n) await get().faucet();
+      if (needsFunds()) await get().faucet();
       await get().ensureAllowance();
     } catch (e) {
       set({ error: friendly(e) });
@@ -245,6 +253,7 @@ export const useWallet = create<WalletState>((set, get) => ({
   },
 
   async ensureGas() {
+    if (relayLive(ADDR.relayDelegate)) return; // the sponsor pays; a drip would just sit on the player
     const { address, kind } = get();
     if (!address || kind === 'injected') return; // a browser wallet manages its own gas
     await get().refresh();
@@ -253,11 +262,16 @@ export const useWallet = create<WalletState>((set, get) => ({
   },
 
   async ensureAllowance() {
-    const { main, address, allowance } = get();
+    const { main, address, allowance, kind } = get();
     if (!main || !address || allowance > 10n ** 12n) return;
-    await timedTx(() =>
-      main.writeContract({ account: main.account ?? address, chain: activeChain, address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256], gas: GAS.approve }),
-    );
+    if (relayLive(ADDR.relayDelegate) && kind !== 'injected') {
+      const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256] });
+      await relayTx(sponsorAccount(main.account), ADDR.stake, data);
+    } else {
+      await timedTx(() =>
+        main.writeContract({ account: main.account ?? address, chain: activeChain, address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256], gas: GAS.approve }),
+      );
+    }
     await get().refresh();
   },
 }));

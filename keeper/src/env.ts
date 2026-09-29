@@ -38,6 +38,9 @@ export const env = {
   gasLow: process.env.GAS_LOW ?? '0.04',
   gasCapPerMatch: process.env.GAS_CAP_PER_MATCH ?? '0.4',
   gasReserve: process.env.GAS_RESERVE ?? '0.5',
-  // owner-level gas refill (joins, approvals) when a player runs nearly dry
+  // owner-level gas refill (joins, approvals) when a player runs nearly dry.
+  // Unused once RELAYER_KEY is set and addresses.relayDelegate is deployed.
   faucetGasLow: process.env.FAUCET_GAS_LOW ?? OWNER_GAS_LOW,
+  // Pays player gas. Must be a different key from KEEPER_KEY (nonce clashes).
+  relayerKey: (process.env.RELAYER_KEY ?? '') as `0x${string}`,
 };

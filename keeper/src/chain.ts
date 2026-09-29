@@ -18,6 +18,18 @@ export const walletFor = (account: Account) =>
   createWalletClient({ account, chain: activeChain, transport: http(env.rpcUrl) });
 export const keeper = walletFor(keeperAccount);
 
+// Own nonce sequence. Sharing the settlement key here collides with settle/liquidate.
+let relayerAccount: ReturnType<typeof privateKeyToAccount> | undefined;
+let relayerWallet: ReturnType<typeof walletFor> | undefined;
+export function relayer() {
+  if (!env.relayerKey) throw new Error('relay not configured');
+  if (!relayerWallet || !relayerAccount) {
+    relayerAccount = privateKeyToAccount(env.relayerKey, { nonceManager });
+    relayerWallet = walletFor(relayerAccount);
+  }
+  return { account: relayerAccount, wallet: relayerWallet };
+}
+
 /** Fallback limits if estimation fails. Monad bills the gas *limit*; see estimateGas() for the normal path. */
 export const GAS = {
   createMatch: 300_000n,

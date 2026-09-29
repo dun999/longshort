@@ -9,6 +9,7 @@ const pick = (file, name) =>
 
 const abis = {
   arenaAbi: pick('ArenaCore.sol', 'ArenaCore'),
+  relayDelegateAbi: pick('RelayDelegate.sol', 'RelayDelegate'),
   erc20Abi: pick('TestUSD.sol', 'TestUSD'),
   mockOracleAbi: pick('MockOracle.sol', 'MockOracle'),
   priceOracleAbi: pick('IPriceOracle.sol', 'IPriceOracle'),

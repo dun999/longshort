@@ -1,6 +1,6 @@
 'use client';
-import { createWalletClient, http, parseEventLogs, parseUnits, zeroAddress, type WalletClient } from 'viem';
-import { MODES, MatchState, Mode, activeChain, arenaAbi } from '@longshort/shared';
+import { createWalletClient, encodeFunctionData, http, parseEventLogs, parseUnits, zeroAddress, type Address, type WalletClient } from 'viem';
+import { ADDR, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive } from '@longshort/shared';
 import { arena, GAS, publicClient } from './clients';
 import { RPC_URL } from './config';
 import * as mera from './mera';
@@ -8,6 +8,7 @@ import { timedTx, useWallet, type TxResult } from './wallet';
 import { api } from './api';
 import { authed, signIn } from './auth';
 import { useSettings } from './settings';
+import { relayTx, sponsorAccount } from './relay';
 
 const LAST_CLASS = 'ls.class';
 export const lastLeverage = (): 10 | 25 | 50 => {
@@ -42,15 +43,28 @@ const est = (functionName: string, args: readonly unknown[], account: any, value
 async function mainCtx() {
   await useWallet.getState().ensureUnlocked(); // passkey: one biometric prompt if locked
   await signIn(); // a seated player's connection must speak for them (lobby heartbeats, party follow)
-  await useWallet.getState().ensureGas(); // passkey/guest: silent refill when nearly dry
+  if (relayLive(ADDR.relayDelegate) && useWallet.getState().kind !== 'injected') {
+    await useWallet.getState().refresh();
+    if (useWallet.getState().usd === 0n) await useWallet.getState().faucet().catch(() => {});
+  } else {
+    await useWallet.getState().ensureGas(); // passkey/guest: silent refill when nearly dry
+  }
   const w = useWallet.getState();
   if (!w.main || !w.address) throw new Error('Connect a wallet first');
   return { w, client: w.main as WalletClient, account: (w.main.account ?? w.address) as any };
 }
 
+/** Sponsor pays when the flag is on and this signer is a local key. Returns undefined to self-pay. */
+async function maybeRelay(client: WalletClient, sponsor: boolean, target: Address, functionName: string, args: readonly unknown[], value = 0n): Promise<TxResult | undefined> {
+  if (!sponsor || value !== 0n) return;
+  const data = encodeFunctionData({ abi: arenaAbi, functionName, args } as never);
+  return relayTx(sponsorAccount(client.account), target, data);
+}
+
 /**
- * The key that will sign this match's trades, registered by the join tx. Nobody sends MON with it:
- * the keeper's gas station funds every human trading key as they join (keeper/src/gas.ts).
+ * The key that will sign this match's trades, registered by the join tx. Nobody sends MON with it.
+ * When the relay delegate is live the sponsor pays its gas; otherwise the keeper's gas station does
+ * (keeper/src/gas.ts).
  * - passkey: a brand-new key derived from the passkey for this match only (one passkey, many keys)
  * - browser wallet: the per-browser session key
  * - guest: the guest key trades for itself
@@ -72,8 +86,9 @@ export async function createMatch(mode: Mode, entry: number, leverage: number, t
   const cfg = rematch ?? MODES[mode];
   const { session, value, label } = sessionArgs();
   const createArgs = [mode, parseUnits(String(entry), 6), cfg.duration, cfg.maxPlayers, team, leverage, session] as const;
-  const gas = await gasFor('createMatch', est('createMatch', createArgs, w.address!, value), GAS.createMatch, true);
-  const tx = await timedTx(() =>
+  const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'createMatch', createArgs, value);
+  const gas = relayed ? 0n : await gasFor('createMatch', est('createMatch', createArgs, w.address!, value), GAS.createMatch, true);
+  const tx = relayed ?? await timedTx(() =>
     client.writeContract({
       ...arena,
       account,
@@ -121,8 +136,9 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   const { session, value, label } = sessionArgs();
   const args = [BigInt(id), team, leverage, session] as const;
   await publicClient.simulateContract({ ...arena, account: w.address!, functionName: 'joinMatch', args, value });
-  const gas = await gasFor('joinMatch', est('joinMatch', args, w.address!, value), GAS.joinMatch, true);
-  const tx = await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'joinMatch', args, value, gas }));
+  const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'joinMatch', args, value);
+  const gas = relayed ? 0n : await gasFor('joinMatch', est('joinMatch', args, w.address!, value), GAS.joinMatch, true);
+  const tx = relayed ?? await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'joinMatch', args, value, gas }));
   if (tx.status !== 'success') throw new Error('Match join reverted');
   if (label && tx.status === 'success') mera.bindMatch(id, label);
   void w.refresh();
@@ -205,7 +221,10 @@ export async function rematch(id: number): Promise<number> {
 
 export async function leaveMatch(id: number) {
   const { w, client, account } = await mainCtx();
-  const tx = await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'leave', args: [BigInt(id)], gas: GAS.leave }));
+  const leaveArgs = [BigInt(id)] as const;
+  const tx =
+    (await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'leave', leaveArgs)) ??
+    (await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'leave', args: leaveArgs, gas: GAS.leave })));
   void w.refresh();
   return tx;
 }
@@ -227,6 +246,8 @@ async function trader(id: number): Promise<WalletClient> {
 export async function tradeOpen(id: number, market: number, isLong: boolean, sizeBps: number) {
   const t = await trader(id);
   const args = [BigInt(id), market, isLong, sizeBps] as const;
+  const relayed = await maybeRelay(t, relayLive(ADDR.relayDelegate), arena.address, 'open', args);
+  if (relayed) return relayed;
   // a flip also closes the old position, so it is costed separately from a fresh open
   const gas = await gasFor('open', est('open', args, t.account!), GAS.open);
   return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'open', args, gas: gas + 40_000n }));
@@ -234,14 +255,20 @@ export async function tradeOpen(id: number, market: number, isLong: boolean, siz
 
 export async function tradeClose(id: number) {
   const t = await trader(id);
-  const gas = await gasFor('close', est('close', [BigInt(id)], t.account!), GAS.close);
-  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'close', args: [BigInt(id)], gas }));
+  const args = [BigInt(id)] as const;
+  const relayed = await maybeRelay(t, relayLive(ADDR.relayDelegate), arena.address, 'close', args);
+  if (relayed) return relayed;
+  const gas = await gasFor('close', est('close', args, t.account!), GAS.close);
+  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'close', args, gas }));
 }
 
 export async function setClass(id: number, leverage: number) {
   rememberLeverage(leverage);
   const t = await trader(id);
-  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'setClass', args: [BigInt(id), leverage], gas: GAS.setClass }));
+  const args = [BigInt(id), leverage] as const;
+  const relayed = await maybeRelay(t, relayLive(ADDR.relayDelegate), arena.address, 'setClass', args);
+  if (relayed) return relayed;
+  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'setClass', args, gas: GAS.setClass }));
 }
 
 /**
@@ -254,6 +281,12 @@ export async function sweepMatchKey(id: number): Promise<bigint> {
   const label = mera.labelFor(id);
   if (!label) return 0n;
   const key = mera.matchKey(label);
+  // A delegated account cannot spend its own MON below Monad's 10 MON reserve. Only an undelegated
+  // key (funded by the old gas station, never sponsored) may still send the leftover home.
+  if (relayLive(ADDR.relayDelegate)) {
+    const code = await publicClient.getCode({ address: key.address }).catch(() => '0x');
+    if (delegatedTo(code) !== 'empty') return 0n;
+  }
   const [bal, gasPrice] = await Promise.all([publicClient.getBalance({ address: key.address }), publicClient.getGasPrice()]);
   const fee = (21_000n * gasPrice * 12n) / 10n;
   if (bal <= fee * 3n) return 0n;

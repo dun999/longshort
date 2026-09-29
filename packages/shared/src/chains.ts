@@ -26,6 +26,8 @@ export const ADDR = addresses as {
   perplExchange: `0x${string}`;
   mockOracleActive: boolean;
   stakeSymbol?: string;
+  /** EIP-7702 delegate. Absent until that deployment has a sponsor contract. */
+  relayDelegate?: `0x${string}`;
 };
 /** Stake token symbol: AUSD on testnet, tUSD on the local faucet token. */
 export const STAKE = ADDR.stakeSymbol ?? 'tUSD';

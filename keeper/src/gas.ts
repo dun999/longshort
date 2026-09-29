@@ -1,4 +1,5 @@
 import { formatEther, parseEther, zeroAddress, type Address } from 'viem';
+import { ADDR, relayLive } from '@longshort/shared';
 import { keeper, log, pub, send } from './chain';
 import { db } from './db';
 import { env } from './env';
@@ -53,6 +54,10 @@ async function topUp(matchId: number, addr: Address, why: 'join' | 'low') {
 }
 
 export function startGasStation() {
+  if (relayLive(ADDR.relayDelegate)) {
+    log('gas', 'off: the relay pays player gas');
+    return;
+  }
   onChainEvent((e) => {
     if (e.name !== 'PlayerJoined') return;
     const player = String(e.args.player);
