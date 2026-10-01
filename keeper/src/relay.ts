@@ -1,5 +1,7 @@
 import {
   encodeFunctionData,
+  hashTypedData,
+  keccak256,
   isAddress,
   parseEther,
   verifyTypedData,
@@ -12,6 +14,8 @@ import {
   ADDR,
   activeChain,
   delegatedTo,
+  knownRelay,
+  REAL_TRADING,
   relayAllowed,
   relayDelegateAbi,
   relayLive,
@@ -21,6 +25,28 @@ import {
 } from '@longshort/shared';
 import { log, pub, relayer } from './chain';
 import { env } from './env';
+import { db } from './db';
+
+db.exec(`CREATE TABLE IF NOT EXISTS relay_requests (
+  scope TEXT, addr TEXT, nonce TEXT, digest TEXT, hash TEXT, raw TEXT, status TEXT,
+  PRIMARY KEY(scope,addr,nonce)
+);`);
+type Submitted = {scope:string;addr:string;nonce:string;digest:Hex;hash:Hex;raw:Hex|null;status:string};
+const scope = `${activeChain.id}:${ADDR.relayDelegate?.toLowerCase()}`;
+async function confirm(row: Submitted): Promise<Hex> {
+  let receipt = await pub.getTransactionReceipt({hash:row.hash}).catch(()=>undefined);
+  if (!receipt) {
+    if (!row.raw) throw new Error(`Transaction pending: ${row.hash}`);
+    await pub.sendRawTransaction({serializedTransaction:row.raw}).catch(async(error)=>{
+      if (!/already known|nonce too low/i.test((error as Error).message) && !await pub.getTransactionReceipt({hash:row.hash}).catch(()=>undefined)) throw new Error(`Transaction pending: ${row.hash}`);
+    });
+    receipt = await pub.waitForTransactionReceipt({hash:row.hash,timeout:60_000});
+  }
+  db.prepare('UPDATE relay_requests SET status=?,raw=NULL WHERE scope=? AND addr=? AND nonce=?')
+    .run(receipt.status==='success'?'confirmed':'failed',row.scope,row.addr,row.nonce);
+  if (receipt.status !== 'success') throw new Error('relay reverted');
+  return row.hash;
+}
 
 // A busy match is a few dozen clicks. Caps stop a loop of successful approves from draining the sponsor:
 // Monad bills the gas limit of every submission, including ones that later revert.
@@ -145,22 +171,26 @@ export function relay(body: any, ip: string): Promise<{ hash: Hex }> {
 async function submit(req: Request): Promise<{ hash: Hex }> {
   const delegate = ADDR.relayDelegate as Address;
   const now = BigInt(Math.floor(Date.now() / 1000));
-  if (req.deadline < now - 15n || req.deadline > now + 600n) throw new Error('Expired');
-  const ok = await verifyTypedData({
-    address: req.from,
+  const typed = {
     domain: { name: RELAY_NAME, version: RELAY_VERSION, chainId: activeChain.id, verifyingContract: req.from },
     types: relayTypes,
-    primaryType: 'Execute',
+    primaryType: 'Execute' as const,
     message: { target: req.target, data: req.data, nonce: req.nonce, deadline: req.deadline },
-    signature: req.signature,
-  });
+  };
+  const ok = await verifyTypedData({...typed,address:req.from,signature:req.signature});
   if (!ok) throw new Error('BadSig');
+  const digest = hashTypedData(typed);
+  const prior = db.prepare('SELECT * FROM relay_requests WHERE scope=? AND addr=? AND nonce=?').get(scope,req.from.toLowerCase(),String(req.nonce)) as Submitted|undefined;
+  if (prior?.digest===digest) return {hash:await sendLock(()=>confirm(prior))};
+  if (prior && prior.status!=='failed') throw new Error('nonce already used by another request');
+  if (req.deadline < now - 15n || req.deadline > now + 600n) throw new Error('Expired');
 
   const code = await pub.getCode({ address: req.from });
   const who = delegatedTo(code);
   const delegated = who !== 'empty' && who !== 'other' && who.toLowerCase() === delegate.toLowerCase();
-  if (who === 'other' || (who !== 'empty' && !delegated)) throw new Error('account has unexpected code');
-  const execNonce = delegated ? await pub.readContract({ address: req.from, abi: relayDelegateAbi, functionName: 'nonce' }) : 0n;
+  const migrating = who !== 'empty' && who !== 'other' && knownRelay(who);
+  if (who === 'other' || (who !== 'empty' && !delegated && !migrating)) throw new Error('account has unexpected code');
+  const execNonce = delegated || migrating ? await pub.readContract({ address: req.from, abi: relayDelegateAbi, functionName: 'nonce' }) : 0n;
   if (execNonce !== req.nonce) throw new Error('nonce');
   const txNonce = delegated ? 0 : await pub.getTransactionCount({ address: req.from });
 
@@ -197,11 +227,14 @@ async function submit(req: Request): Promise<{ hash: Hex }> {
   }
   // Monad bills the limit of every submission, including ones that revert. Cap what we will actually send.
   gas = (gas * 120n) / 100n;
-  if (gas > 800_000n) throw new Error('relay rejected');
+  if (gas > (REAL_TRADING ? 2_000_000n : 800_000n)) throw new Error('relay gas limit exceeded');
 
   let cost = 0n;
   let held = false;
   const hash = await sendLock(async () => {
+    // Finish every durable submission before asking the RPC for a new sponsor nonce.
+    const pending = db.prepare("SELECT * FROM relay_requests WHERE scope=? AND status='pending'").all(scope) as Submitted[];
+    for (const row of pending) await confirm(row).catch((error)=>{if ((error as Error).message!=='relay reverted') throw error;});
     const { account: sponsor, wallet } = relayer();
     const [bal, price] = await Promise.all([pub.getBalance({ address: sponsor.address }), pub.getGasPrice()]);
     // 2x covers a fee move between this read and inclusion. The sponsor sends constantly, so it
@@ -211,12 +244,19 @@ async function submit(req: Request): Promise<{ hash: Hex }> {
     reserved += cost;
     held = true;
     try {
-      return await wallet.sendTransaction({
+      const request = await wallet.prepareTransactionRequest({
+        account: sponsor,
         to: req.from,
         data: calldata,
         gas,
         authorizationList: authorization ? [authorization] : undefined,
       });
+      const raw = await wallet.signTransaction(request as Parameters<typeof wallet.signTransaction>[0]);
+      const hash = keccak256(raw);
+      db.prepare('INSERT OR REPLACE INTO relay_requests VALUES(?,?,?,?,?,?,?)').run(scope,req.from.toLowerCase(),String(req.nonce),digest,hash,raw,'pending');
+      // Signed bytes and their hash exist on disk before the first broadcast.
+      await pub.sendRawTransaction({serializedTransaction:raw}).catch(()=>{});
+      return hash;
     } catch (e) {
       reserved -= cost;
       held = false;
@@ -224,8 +264,8 @@ async function submit(req: Request): Promise<{ hash: Hex }> {
     }
   });
   try {
-    const receipt = await pub.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('relay reverted');
+    const row = db.prepare('SELECT * FROM relay_requests WHERE scope=? AND addr=? AND nonce=?').get(scope,req.from.toLowerCase(),String(req.nonce)) as Submitted;
+    await confirm(row);
     log('relay', req.from.slice(0, 10), req.data.slice(0, 10), hash.slice(0, 10));
     return { hash };
   } finally {

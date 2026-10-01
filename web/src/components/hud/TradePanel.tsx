@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { FEE_BPS, MARKETS, feeFor, fmtPx, fmtUsd, liqPrice, notionalFor, upnl, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, FEE_BPS, MARKETS, feeFor, fmtPx, fmtUsd, liqPrice, notionalFor, upnl, type MarketSymbol } from '@longshort/shared';
 import type { PlayerView } from '@/lib/match';
 import { sfx } from '@/lib/sfx';
 import { useScene } from '@/lib/scene';
@@ -11,7 +11,7 @@ import { useT } from '@/lib/i18n';
 
 export interface HudActions {
   open: (market: number, isLong: boolean, sizeBps: number) => Promise<{ ms: number; hash?: string }>;
-  close: () => Promise<{ ms: number; hash?: string }>;
+  close: () => Promise<{ ms: number; hash?: string; partial?:boolean }>;
   simulated?: boolean;
 }
 
@@ -48,16 +48,17 @@ export function TradePanel({
   const [pending, setPending] = useState<string | null>(null);
   const pos = me?.pos ?? null;
   const posPx = pos ? prices[MARKETS[pos.market]] : undefined;
-  const notional = me ? notionalFor(Math.max(0, 1000 + me.realized), me.leverage, size) : 0;
+  const real = REAL_TRADING && !actions.simulated;
+  const notional = me ? notionalFor(Math.max(0, real ? me.equity : MARGIN + me.realized), me.leverage, size) * (real ? 0.95 : 1) : 0;
   const canTrade = live && !!me && !me.out && !pending;
 
   const run = useCallback(
-    async (label: string, fn: () => Promise<{ ms: number; hash?: string }>) => {
+    async (label: string, fn: () => Promise<{ ms: number; hash?: string;partial?:boolean }>) => {
       setPending(label);
       try {
         const r = await fn();
         sfx.confirm();
-        onFill({ id: Date.now(), label, ms: r.ms, hash: r.hash, ok: true });
+        onFill({ id: Date.now(), label: r.partial ? `${label}: ${t('live.partial')}` : label, ms: r.ms, hash: r.hash, ok: true });
       } catch (e) {
         sfx.error();
         onFill({ id: Date.now(), label: `${label}: ${friendly(e)}`, ms: 0, ok: false });
@@ -65,7 +66,7 @@ export function TradePanel({
         setPending(null);
       }
     },
-    [onFill],
+    [onFill,t],
   );
 
   const go = useCallback(
@@ -104,22 +105,22 @@ export function TradePanel({
       if (k === 'q') go(true);
       else if (k === 'e') go(false);
       else if (k === ' ' || k === 'x') (e.preventDefault(), shut());
-      else if (['1', '2', '3'].includes(k)) setMarket(Number(k) - 1);
+      else if (['1', '2', '3'].includes(k) && (!real || k === '1')) setMarket(Number(k) - 1);
       else if (k === 'z') setSize(2500);
       else if (k === 'c') setSize(10_000);
       else if (k === 'v') setSize(5000);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, shut, setMarket]);
+  }, [go, shut, setMarket, real]);
 
   return (
     <div className="dock panel" ref={dock}>
-      <PositionStrip me={me} px={posPx} />
+      <PositionStrip me={me} px={posPx} real={real} />
       <div className="dock-pick">
         <div className="seg" aria-label={t('hud.market')}>
           {MARKETS.map((m, i) => (
-            <button key={m} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
+            <button key={m} disabled={real && i !== 0} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
               <span>
                 {m} <span className="seg-px num">{prices[m] ? fmtPx(prices[m]!) : '…'}</span>
               </span>
@@ -160,7 +161,7 @@ export function TradePanel({
         </button>
       </div>
       <div className="dock-foot">
-        <span>{t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}</span>
+        <span>{real ? t('live.execution') : t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}</span>
         <Hint text="Pick a market and how much of your equity to use, then go LONG (profit if price rises) or SHORT (profit if price falls). CLOSE locks in your PnL. A new trade closes the open one first. Keyboard: 1-3 market, Z/V/C size, Q long, E short, Space close." />
       </div>
     </div>
@@ -171,12 +172,12 @@ export function TradePanel({
  * Your open trade in one line, right above the buttons: side, live PnL and how far price is from
  * knocking you out (the meter drains from full at entry to empty at the liquidation price).
  */
-function PositionStrip({ me, px }: { me?: PlayerView; px?: number }) {
+function PositionStrip({ me, px, real }: { me?: PlayerView; px?: number; real: boolean }) {
   const t = useT();
   const pos = me?.pos;
   if (!me || me.out || !pos)
     return <div className={`ps ps-idle ${me?.out ? 'down' : ''}`}>{t(!me ? 'hud.spectating' : me.out ? 'hud.outNow' : 'hud.flatHint')}</div>;
-  const pnl = px ? upnl(pos, px) : 0;
+  const pnl = real ? me.pnl - me.realized : px ? upnl(pos, px) : 0;
   const liq = liqPrice(me.realized, pos);
   const dist = px ? Math.abs(px - liq) / px : 1;
   const full = Math.abs(pos.entryPx - liq) / pos.entryPx || 1;
@@ -191,12 +192,12 @@ function PositionStrip({ me, px }: { me?: PlayerView; px?: number }) {
         {kUsd(pos.notional)} · {me.leverage}x · {t('hud.entryAt', { px: fmtPx(pos.entryPx) })}
       </span>
       <b className={`ps-pnl num ${pnl >= 0 ? 'up' : 'down'}`}>{fmtUsd(pnl, true)}</b>
-      <span className={`ps-liq ${risk}`} title={`${t('hud.liqPrice')} ${fmtPx(liq)}`}>
+      {real ? <span className="ps-liq text-muted">{t('live.isolated')}</span> : <span className={`ps-liq ${risk}`} title={`${t('hud.liqPrice')} ${fmtPx(liq)}`}>
         <i>
           <b style={{ width: `${safe * 100}%` }} />
         </i>
         <span className="num">{t('hud.toLiq', { p: (dist * 100).toFixed(1) })}</span>
-      </span>
+      </span>}
     </motion.div>
   );
 }

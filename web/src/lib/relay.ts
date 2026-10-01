@@ -5,6 +5,7 @@ import {
   ADDR,
   activeChain,
   delegatedTo,
+  knownRelay,
   relayDelegateAbi,
   relayLive,
   relayTypes,
@@ -45,6 +46,23 @@ export async function relayTx(account: LocalAccount, target: Address, data: Hex)
 async function post(account: LocalAccount, target: Address, data: Hex): Promise<Hash> {
   const delegate = ADDR.relayDelegate;
   if (!delegate) throw new Error('relay off');
+  const storageKey = `ls.pendingRelay:${activeChain.id}:${delegate}:${account.address}`;
+  const submit = async (body: any) => {
+    try { return (await api<{hash:Hash}>('/relay',body)).hash; }
+    catch(e) {
+      if (/Expired|BadSig|BadCall|NotLive|NotOpen|NoPosition|revert|gas limit|relay dry|already used/i.test((e as Error).message)) localStorage.removeItem(storageKey);
+      throw e;
+    }
+  };
+  const saved = localStorage.getItem(storageKey);
+  if (saved) {
+    const body = JSON.parse(saved);
+    const hash = await submit(body);
+    await publicClient.waitForTransactionReceipt({hash});
+    localStorage.removeItem(storageKey);
+    if (body.target.toLowerCase()===target.toLowerCase() && body.data===data) return hash;
+    throw new Error('Previous transaction confirmed. Refresh your position before trading again.');
+  }
   let nonceErr: unknown;
   const [code, txNonce, nonceRead] = await Promise.all([
     publicClient.getCode({ address: account.address }),
@@ -56,9 +74,10 @@ async function post(account: LocalAccount, target: Address, data: Hex): Promise<
   ]);
   const who = delegatedTo(code);
   const delegated = who !== 'empty' && who !== 'other' && who.toLowerCase() === delegate.toLowerCase();
-  if (who === 'other' || (who !== 'empty' && !delegated)) throw new Error('account has unexpected code');
-  if (delegated && nonceRead === null) throw nonceErr instanceof Error ? nonceErr : new Error('nonce');
-  const execNonce = delegated ? nonceRead! : 0n;
+  const migrating = who !== 'empty' && who !== 'other' && knownRelay(who);
+  if (who === 'other' || (who !== 'empty' && !delegated && !migrating)) throw new Error('account has unexpected code');
+  if ((delegated || migrating) && nonceRead === null) throw nonceErr instanceof Error ? nonceErr : new Error('nonce');
+  const execNonce = delegated || migrating ? nonceRead! : 0n;
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
   const signature = await account.signTypedData({
     domain: { name: RELAY_NAME, version: RELAY_VERSION, chainId: activeChain.id, verifyingContract: account.address },
@@ -80,7 +99,7 @@ async function post(account: LocalAccount, target: Address, data: Hex): Promise<
       yParity: signed.yParity,
     };
   }
-  const res = await api<{ hash: Hash }>('/relay', {
+  const body = {
     from: account.address,
     target,
     data,
@@ -88,6 +107,10 @@ async function post(account: LocalAccount, target: Address, data: Hex): Promise<
     deadline: deadline.toString(),
     signature,
     ...(authorization ? { authorization } : {}),
-  });
-  return res.hash;
+  };
+  localStorage.setItem(storageKey,JSON.stringify(body));
+  const hash = await submit(body);
+  // The keeper has confirmed the receipt; a lost response leaves the original signed request for retry.
+  localStorage.removeItem(storageKey);
+  return hash;
 }

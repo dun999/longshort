@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { MARGIN, MARKETS, MatchState, Mode, equityOf, feeFor, notionalFor, upnl, type Pos } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MARKETS, MatchState, Mode, equityOf, feeFor, notionalFor, upnl, type Pos } from '@longshort/shared';
 import { useMatch, type MatchView } from '@/lib/match';
 import { useChainNow } from '@/lib/clock';
 import { useScene, CLASS_COLOR, TEAM_COLOR, type Shot, type Slot } from '@/lib/scene';
@@ -25,6 +25,7 @@ function phaseOf(m: MatchView, now: number): Phase {
   if (m.state === MatchState.OPEN) return 'waiting';
   if (m.state === MatchState.CANCELLED) return 'cancelled';
   if (m.state === MatchState.SETTLED) return 'result';
+  if (m.state === MatchState.CLOSING) return 'settling';
   const toStart = m.startAt - now;
   if (toStart > 12) return 'found';
   if (toStart > 4) return m.me && !m.me.out ? 'select' : 'vs';
@@ -123,7 +124,7 @@ export function MatchScreen({ id }: { id: number }) {
       open: (market, isLong, size) => {
         const { me, prices } = mRef.current;
         const px = prices[MARKETS[market]];
-        if (me && px) setGhost({ kind: 'open', market, isLong, size, px, base: me.pos, at: Date.now() });
+        if (!REAL_TRADING && me && px) setGhost({ kind: 'open', market, isLong, size, px, base: me.pos, at: Date.now() });
         return tradeOpen(id, market, isLong, size).then(
           (r) => (mRef.current.refresh(), r),
           (e) => (setGhost(null), Promise.reject(e)),
@@ -131,7 +132,7 @@ export function MatchScreen({ id }: { id: number }) {
       },
       close: () => {
         const { me } = mRef.current;
-        if (me?.pos) setGhost({ kind: 'close', base: me.pos, at: Date.now() });
+        if (!REAL_TRADING && me?.pos) setGhost({ kind: 'close', base: me.pos, at: Date.now() });
         return tradeClose(id).then(
           (r) => (mRef.current.refresh(), r),
           (e) => (setGhost(null), Promise.reject(e)),

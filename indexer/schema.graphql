@@ -3,13 +3,15 @@
 type Match {
   id: ID! # "<arena>-<matchId>"
   arena: String!
+  asset: String!
+  tradingBudget: BigInt!
   matchId: BigInt!
   mode: Int! # 0 duel · 1 squad · 2 royale
   entry: BigInt!
   maxPlayers: Int!
   duration: Int!
   creator: String!
-  state: String! # OPEN · LIVE · SETTLED · CANCELLED
+  state: String! # OPEN · LIVE · CLOSING · SETTLED · CANCELLED
   createdAt: Int!
   startAt: Int
   endAt: Int
@@ -24,6 +26,8 @@ type Match {
   settleTx: String
   players: [MatchPlayer!]! @derivedFrom(field: "match")
   trades: [Trade!]! @derivedFrom(field: "match")
+  accounts: [TradingAccount!]! @derivedFrom(field: "match")
+  fills: [PerplFill!]! @derivedFrom(field: "match")
 }
 
 type MatchPlayer {
@@ -33,6 +37,7 @@ type MatchPlayer {
   team: Int!
   leverage: Int!
   session: String!
+  accountId: String
   trades: Int!
   closes: Int!
   volume: BigInt!
@@ -63,7 +68,10 @@ type Trade {
 }
 
 type Trader {
-  id: ID! # lowercase address
+  id: ID! # "<arena>-<address>"
+  address: String!
+  arena: String!
+  asset: String!
   matches: Int!
   wins: Int!
   losses: Int!
@@ -81,7 +89,9 @@ type Trader {
 }
 
 type ArenaStats {
-  id: ID! # "global"
+  id: ID! # arena address
+  arena: String!
+  asset: String!
   matchesCreated: Int!
   matchesSettled: Int!
   matchesCancelled: Int!
@@ -96,8 +106,48 @@ type ArenaStats {
 }
 
 type DailyStat {
-  id: ID! # "YYYY-MM-DD"
+  id: ID! # "<arena>-<YYYY-MM-DD>"
+  arena: String!
+  date: String!
+  asset: String!
   trades: Int!
   volume: BigInt!
   matchesSettled: Int!
+}
+
+# AUSD amounts below are token units (6 decimals), prices in Perpl price units (1 decimal).
+type TradingAccount {
+  id: ID! # Perpl account id (unique within the configured exchange)
+  match: Match!
+  trader: Trader!
+  address: String!
+  budget: BigInt!
+  finalBalance: BigInt
+  returned: BigInt!
+}
+
+type PerplOrder {
+  id: ID! # transaction hash; requests precede fills in Perpl log order
+  account: TradingAccount
+  orderType: Int!
+}
+
+type PerplFill {
+  id: ID! # tx-log index
+  match: Match!
+  trader: Trader!
+  account: TradingAccount!
+  orderType: Int!
+  price: BigInt!
+  lots: BigInt!
+  notional: BigInt!
+  fee: BigInt!
+  txHash: String!
+  blockNumber: Int!
+  timestamp: Int!
+}
+
+type VaultAddress {
+  id: ID! # lowercase vault address
+  account: TradingAccount!
 }

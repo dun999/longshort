@@ -1,5 +1,5 @@
 import { formatUnits, parseEventLogs, type Log } from 'viem';
-import { ADDR, MARGIN, STAKE_DECIMALS, XP, arenaAbi } from '@longshort/shared';
+import { ADDR, REAL_TRADING, MARGIN, STAKE_DECIMALS, XP, arenaAbi, perplExecutionAbi } from '@longshort/shared';
 import { arena, log, pub } from './chain';
 import { env } from './env';
 import { db, ensureProfile, getMeta, setMeta } from './db';
@@ -55,25 +55,42 @@ async function handle(l: Log & { eventName: string; args: any }) {
       break;
     case 'Opened': {
       const r = insTrade.run(id, lc(a.player), 'open', Number(a.market), a.isLong ? 1 : 0, e18(a.notional), e18(a.price), 0, e18(a.fee), tx, block, ts);
-      if (r.changes) db.prepare('UPDATE profiles SET volume = volume + ? WHERE addr = ?').run(e18(a.notional), lc(a.player));
+      if (r.changes && !REAL_TRADING) db.prepare('UPDATE profiles SET volume = volume + ? WHERE addr = ?').run(e18(a.notional), lc(a.player));
       break;
     }
     case 'Closed':
       insTrade.run(id, lc(a.player), 'close', Number(a.market), null, null, e18(a.price), e18(a.pnl), e18(a.fee), tx, block, ts);
       break;
     case 'Liquidated':
-      insTrade.run(id, lc(a.player), 'liquidated', null, null, null, e18(a.price), -MARGIN, 0, tx, block, ts);
+      {
+        const ps = REAL_TRADING ? await pub.readContract({...arena,functionName:'getPlayers',args:[BigInt(id)],blockNumber:l.blockNumber!}) : [];
+        const balance = ps.find((p)=>lc(p.addr)===lc(a.player))?.frozenEquity;
+        insTrade.run(id, lc(a.player), 'liquidated', null, null, null, e18(a.price), balance === undefined ? -MARGIN : e18(balance)-MARGIN, 0, tx, block, ts);
+      }
       break;
     case 'Eliminated':
       insTrade.run(id, lc(a.player), 'eliminated', null, null, null, null, e18(a.equity) - MARGIN, 0, tx, block, ts);
       break;
     case 'Cancelled':
       db.prepare('UPDATE matches SET state = 3 WHERE id = ?').run(id);
+      db.prepare('UPDATE trading_accounts SET final_balance=returned WHERE match_id=? AND final_balance IS NULL AND returned>0').run(id);
       break;
+    case 'Closing':
+      db.prepare('UPDATE matches SET state=4 WHERE id=?').run(id); break;
+    case 'TradingAccountCreated':
+      db.prepare('INSERT OR REPLACE INTO trading_accounts(match_id,addr,account,account_id,budget) VALUES(?,?,?,?,?)')
+        .run(id,lc(a.player),lc(a.account),String(a.accountId),usd(a.budget)); break;
+    case 'FinalBalance':
+      db.prepare('UPDATE trading_accounts SET final_balance=? WHERE match_id=? AND addr=?').run(usd(a.balance),id,lc(a.player)); break;
+    case 'CollateralReturned':
+      db.prepare('INSERT OR IGNORE INTO collateral_returns VALUES(?,?,?,?,?)').run(tx,Number(l.logIndex),id,lc(a.player),usd(a.amount));
+      db.prepare('UPDATE trading_accounts SET returned=(SELECT COALESCE(SUM(amount),0) FROM collateral_returns WHERE match_id=? AND addr=?) WHERE match_id=? AND addr=?')
+        .run(id,lc(a.player),id,lc(a.player)); break;
     case 'Settled':
       await onSettled(id, a.winners as string[], a.payouts as bigint[], a.rake as bigint, tx, l.blockNumber!);
       break;
   }
+  if (REAL_TRADING && ['Opened','Closed','Closing','CloseDeferred','CollateralReturned'].includes(l.eventName)) await recordFills(tx,block,ts);
   const args = JSON.parse(JSON.stringify(a, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
   for (const fn of listeners) {
     try {
@@ -82,6 +99,33 @@ async function handle(l: Log & { eventName: string; args: any }) {
       log('indexer', 'listener error', (e as Error).message);
     }
   }
+}
+
+const scanned = new Set<string>();
+async function recordFills(tx: string, block: number, ts: number) {
+  if (scanned.has(tx)) { reconcileFees(tx); return; }
+  const receipt = await pub.getTransactionReceipt({hash:tx as `0x${string}`});
+  const logs = parseEventLogs({abi:perplExecutionAbi,logs:receipt.logs.filter((l)=>lc(l.address)===lc(ADDR.perplExchange))});
+  let request: {accountId:bigint;perpId:bigint;orderType:number} | undefined;
+  for (const l of logs) {
+    const a = l.args as any;
+    if (l.eventName==='OrderRequest' || l.eventName==='OrderRequestV2') {request=a;continue;}
+    if (!request || !l.eventName.startsWith('TakerOrderFilled')) continue;
+    const who = db.prepare('SELECT match_id,addr FROM trading_accounts WHERE account_id=?').get(String(request.accountId)) as {match_id:number;addr:string}|undefined;
+    if (!who) continue;
+    const notional = Number(a.entryPricePNS * a.lotLNS) / 1e6;
+    const fee = Number(a.feeCNS + (a.builderFeeCNS ?? 0n))/1e6;
+    const inserted = db.prepare('INSERT OR IGNORE INTO perpl_fills VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(tx,Number(l.logIndex),who.match_id,who.addr,String(request.accountId),Number(request.perpId),Number(request.orderType),Number(a.entryPricePNS)/10,String(a.lotLNS),notional,fee,block,ts);
+    if (inserted.changes) db.prepare('UPDATE profiles SET volume=volume+? WHERE addr=?').run(notional,who.addr);
+  }
+  // Coordinator closes report net PnL. Reconstruct gross for the existing report model using actual Perpl fees.
+  reconcileFees(tx);
+  scanned.add(tx); if(scanned.size>2000) scanned.delete(scanned.values().next().value!);
+}
+function reconcileFees(tx:string) {
+  const totals = db.prepare('SELECT addr,SUM(fee) fee FROM perpl_fills WHERE tx=? AND order_type IN (2,3) GROUP BY addr').all(tx) as {addr:string;fee:number}[];
+  for(const t of totals) db.prepare("UPDATE trades SET pnl=pnl+?,fee=? WHERE tx=? AND addr=? AND kind='close' AND fee=0").run(t.fee,t.fee,tx,t.addr);
 }
 
 async function onSettled(id: number, winners: string[], payouts: bigint[], rake: bigint, tx: string, block: bigint) {
@@ -94,7 +138,7 @@ async function onSettled(id: number, winners: string[], payouts: bigint[], rake:
   const upd = db.prepare('UPDATE players SET result = ?, payout = ?, final_equity = ?, xp_delta = ? WHERE match_id = ? AND addr = ?');
   for (const p of players) {
     const addr = lc(p.addr);
-    const eq = p.out ? e18(BigInt(p.frozenEquity)) : Math.max(0, MARGIN + e18(BigInt(p.realized)));
+    const eq = REAL_TRADING || p.out ? e18(BigInt(p.frozenEquity)) : Math.max(0, MARGIN + e18(BigInt(p.realized)));
     const won = !refund && paid.has(addr);
     const result = refund ? 'draw' : won ? 'win' : 'loss';
     const prof = db.prepare('SELECT xp FROM profiles WHERE addr = ?').get(addr) as { xp: number } | undefined;
@@ -111,8 +155,9 @@ async function onSettled(id: number, winners: string[], payouts: bigint[], rake:
 export async function startIndexer() {
   let from = BigInt(getMeta('cursor') ?? ADDR.deployBlock);
   if (getMeta('arena') !== lc(ADDR.arena)) {
+    if (REAL_TRADING && getMeta('arena')) throw new Error('Use a fresh DB_PATH for the AUSD Perpl arena; preserve the old database');
     // new deployment → reset index
-    for (const t of ['matches', 'players', 'trades']) db.exec(`DELETE FROM ${t}`);
+    for (const t of ['matches', 'players', 'trades', 'trading_accounts', 'perpl_fills', 'collateral_returns']) db.exec(`DELETE FROM ${t}`);
     db.exec('UPDATE profiles SET xp = 1000, wins = 0, losses = 0, matches = 0, volume = 0, earned = 0');
     from = BigInt(ADDR.deployBlock);
     setMeta('arena', lc(ADDR.arena));

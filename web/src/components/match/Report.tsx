@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { ColorType, LineSeries, LineStyle, createChart, type UTCTimestamp } from 'lightweight-charts';
-import { CLASSES, MARGIN, MARKETS, MODES, Mode, STAKE, classOf, explorerTx, fmtPx, fmtUsd, shortAddr } from '@longshort/shared';
+import { CLASSES, MARGIN, MARKETS, MODES, Mode, REAL_TRADING, STAKE, classOf, explorerTx, fmtPx, fmtUsd, shortAddr } from '@longshort/shared';
 import { EnvioBadge, envioMatch, useIndexed } from '@/lib/envio';
 import { useWallet } from '@/lib/wallet';
 import { useScene, TEAM_COLOR } from '@/lib/scene';
@@ -14,6 +14,8 @@ import { PlayerMark } from '../PlayerMark';
 import { PanelHeader } from '../ui/Hint';
 import { BackButton } from '../ui/BackButton';
 import { awards, compute, type Row, type Stats } from '@/lib/matchStats';
+import type { MatchView } from '@/lib/match';
+import { TradingCapital } from './TradingCapital';
 
 const LINE = ['#e7e1d3', '#6f8fd0', '#cf8a52', '#4aa37c', '#c46a5e', '#b3a27a', '#8f7fc4', '#6f9fc0'];
 
@@ -47,11 +49,11 @@ function EquityChart({ stats }: { stats: Stats[] }) {
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 export function Report({ id }: { id: number }) {
-  const { data } = useIndexed<{ match: any; players: any[]; trades: Row[] }>(() => envioMatch(id), `/match/${id}`);
+  const { data, reload } = useIndexed<{ match: any; players: any[]; trades: Row[]; accounts?:MatchView['accounts']; fills?:any[] }>(() => envioMatch(id), `/match/${id}`, 5000);
   const me = useWallet((s) => s.address?.toLowerCase());
   const router = useRouter();
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
-  const stats = useMemo(() => (data?.match ? compute(data.match, data.players, data.trades) : []), [data]);
+  const stats = useMemo(() => (data?.match ? compute(data.match, data.players, data.trades, data.fills) : []), [data]);
   if (!data?.match) return <div className="grid h-[60vh] place-items-center font-display tracking-[0.4em] text-muted uppercase">Loading report #{id}…</div>;
 
   const m = data.match;
@@ -108,10 +110,21 @@ export function Report({ id }: { id: number }) {
         </div>
       </motion.div>
 
+      {REAL_TRADING && <div className="panel p-3">
+        <PanelHeader title="AUSD ledger" sub="actual balances, separate capital and prize" hint="The entry funds the prize pool. The trading budget goes into your isolated Perpl account; trading PnL and Perpl fees change it. Remaining trading capital returns to your wallet separately from the prize." />
+        <div className="scroll-thin overflow-auto">
+          <table className="num mt-2 w-full min-w-[580px] text-left text-xs">
+            <thead className="text-dim"><tr>{['Player','Entry','Trading budget','Final capital','Returned','Prize'].map((h)=><th className="p-2" key={h}>{h}</th>)}</tr></thead>
+            <tbody>{data.accounts?.map((a)=> <tr className="border-t border-line" key={a.addr}><td className="p-2">{stats.find((s)=>s.addr===a.addr)?.name??shortAddr(a.addr)}</td><td className="p-2">{m.entry.toFixed(2)}</td><td className="p-2">{a.budget.toFixed(2)}</td><td className="p-2">{a.final_balance?.toFixed(6)??'Pending'}</td><td className="p-2">{a.returned.toFixed(6)}</td><td className="p-2 text-gold">{stats.find((s)=>s.addr===a.addr)?.payout.toFixed(2)??'0'}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <TradingCapital id={id} accounts={data.accounts} onRecovered={()=>void reload()} />
+      </div>}
+
       {/* standings + equity curve */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[380px_minmax(0,1fr)]">
         <div className="panel grid content-start gap-2 p-3">
-          <PanelHeader title="Standings" sub="paid by the contract" hint="Final order after settlement. Payouts were transferred onchain by ArenaCore in the settlement transaction." />
+          <PanelHeader title="Standings" sub="paid by the contract" hint="Final order after settlement. Prize payouts were transferred onchain by the arena in the settlement transaction." />
           {ranked.map((s, i) => (
             <div key={s.addr} className={`flex items-center gap-2 border px-2 py-1.5 ${s.addr === me ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line'}`}>
               <span className="font-display w-5 text-center font-bold text-dim">{i + 1}</span>
@@ -135,7 +148,7 @@ export function Report({ id }: { id: number }) {
           ))}
         </div>
         <div className="panel grid content-start gap-2 p-3">
-          <PanelHeader title="Equity over time" sub="realized, from onchain events" hint="Each line is a player's equity (1,000 starting margin plus realized PnL minus fees), stepping at every close. The dashed line is the starting 1,000." />
+          <PanelHeader title="Equity over time" sub="realized, from onchain events" hint={`Each line starts at ${MARGIN}, then records realized PnL and fees. The last point is the actual final balance. The dashed line is the starting balance.`} />
           <EquityChart stats={stats} />
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
             {stats.map((s, i) => (
@@ -201,6 +214,14 @@ export function Report({ id }: { id: number }) {
           </div>
         ))}
       </div>
+
+      {REAL_TRADING && !!data.fills?.length && <div className="panel p-3">
+        <PanelHeader title="Perpl executions" sub={`${data.fills.length} confirmed fills`} hint="Execution prices, sizes and fees decoded from actual Perpl transaction logs. A single order can fill against several makers." />
+        <div className="scroll-thin max-h-[300px] overflow-auto"><table className="num mt-2 w-full min-w-[660px] text-left text-xs">
+          <thead className="text-dim"><tr>{['Player','Action','BTC price','Notional AUSD','Fee AUSD','Transaction'].map((h)=><th className="p-2" key={h}>{h}</th>)}</tr></thead>
+          <tbody>{data.fills.map((f)=><tr className="border-t border-line" key={`${f.tx}:${f.log_index}`}><td className="p-2">{stats.find((s)=>s.addr===f.addr)?.name??shortAddr(f.addr)}</td><td className="p-2">{['Long','Short','Close long','Close short'][f.order_type]}</td><td className="p-2">{fmtPx(f.price)}</td><td className="p-2">{f.notional.toFixed(6)}</td><td className="p-2">{f.fee.toFixed(6)}</td><td className="p-2"><a className="underline" href={explorerTx(f.tx)} target="_blank" rel="noreferrer">{f.tx.slice(0,10)}… ↗</a></td></tr>)}</tbody>
+        </table></div>
+      </div>}
 
       {/* trade log */}
       <div className="panel p-2">

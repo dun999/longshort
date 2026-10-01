@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatUnits } from 'viem';
-import { MARGIN, MARKETS, Mode, MatchState, equityOf, shortAddr, type MarketSymbol, type Pos } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MARKETS, Mode, MatchState, equityOf, shortAddr, type MarketSymbol, type Pos } from '@longshort/shared';
 import { arena, publicClient } from './clients';
 import { api } from './api';
 import { onChainEvent, useSocket, lastPx } from './socket';
@@ -68,6 +68,8 @@ export interface MatchView {
   allowBots?: boolean;
   rematchOf?: number;
   results?: { addr: string; result: string; payout: number; final_equity: number; xp_delta: number }[];
+  accounts?: {addr:string;account:string;account_id:string;budget:number;final_balance:number|null;returned:number}[];
+  fills?: {addr:string;notional:number;fee:number}[];
   refresh: () => void;
 }
 
@@ -78,7 +80,7 @@ export function useMatch(id: number): MatchView {
   const me = useWallet((s) => s.address?.toLowerCase());
   const ticks = useSocket((s) => s.prices);
   const [raw, setRaw] = useState<{ m: any; ps: readonly any[] } | null>(null);
-  const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean }>; match?: any; players?: any[]; trades?: TradeRow[] }>({ names: {} });
+  const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean }>; match?: any; players?: any[]; trades?: TradeRow[]; accounts?:MatchView['accounts'];fills?:MatchView['fills'] }>({ names: {} });
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const seen = useRef(new Set<string>());
   const nameRef = useRef(meta.names);
@@ -96,7 +98,7 @@ export function useMatch(id: number): MatchView {
     const r = await api<any>(`/match/${id}`).catch(() => null);
     if (!r?.players) return;
     const names = Object.fromEntries(r.players.map((p: any) => [p.addr, { name: p.name, bot: p.bot }]));
-    setMeta({ names, match: r.match, players: r.players, trades: r.trades });
+    setMeta({ names, match: r.match, players: r.players, trades: r.trades, accounts:r.accounts, fills:r.fills });
     // seed the feed from indexed trades once
     const items: FeedItem[] = [];
     for (const t of r.trades as any[]) {
@@ -116,7 +118,7 @@ export function useMatch(id: number): MatchView {
     const off = onChainEvent((e) => {
       if (e.matchId !== id) return;
       void load();
-      if (['PlayerJoined', 'Settled', 'MatchStarted', 'Opened', 'Closed', 'Liquidated'].includes(e.name)) setTimeout(() => void loadMeta(), 900); // after indexer catches up
+      if (['PlayerJoined', 'Settled', 'MatchStarted', 'Opened', 'Closed', 'Liquidated','CollateralReturned','Closing','FinalBalance','TradingAccountCreated'].includes(e.name)) setTimeout(() => void loadMeta(), 900);
       const who = String(e.args.player ?? '').toLowerCase();
       // same key shape as indexed trades so a trade seen via both paths shows once
       const kind = ({ Opened: 'open', Closed: 'close', Liquidated: 'liquidated', Eliminated: 'eliminated' } as Record<string, string>)[e.name] ?? e.name;
@@ -144,7 +146,7 @@ export function useMatch(id: number): MatchView {
       const addr = String(p.addr).toLowerCase();
       const pos: Pos | null = p.hasPos ? { market: Number(p.pos.market), isLong: p.pos.isLong, notional: e18(p.pos.notional), entryPx: e18(p.pos.entryPx) } : null;
       const realized = e18(BigInt(p.realized));
-      const equity = p.out ? e18(BigInt(p.frozenEquity)) : equityOf(realized, pos, pos ? prices[MKT(pos.market) as MarketSymbol] : undefined);
+      const equity = REAL_TRADING || p.out ? e18(BigInt(p.frozenEquity)) : equityOf(realized, pos, pos ? prices[MKT(pos.market) as MarketSymbol] : undefined);
       const n = meta.names[addr];
       return {
         addr,
@@ -184,6 +186,8 @@ export function useMatch(id: number): MatchView {
       allowBots: meta.match?.allow_bots ?? false,
       rematchOf: meta.match?.rematch_of ?? undefined,
       results: meta.players?.filter((p) => p.result),
+      accounts: meta.accounts,
+      fills: meta.fills,
       refresh: () => void (load(), loadMeta()),
     };
   }, [raw, meta, prices, feed, me, id, load, loadMeta]);

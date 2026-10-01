@@ -1,10 +1,10 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { formatEther, formatUnits } from 'viem';
-import { level, levelProgress, shortAddr, STAKE } from '@longshort/shared';
+import { REAL_TRADING, level, levelProgress, shortAddr, STAKE } from '@longshort/shared';
 import { useWallet } from '@/lib/wallet';
 import { useApi } from '@/lib/api';
 import { sfx } from '@/lib/sfx';
@@ -105,6 +105,7 @@ function SettingsIcon() {
 /** Compact player chip; the details live in a dropdown so the bar stays clean. */
 function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address: string; name: string; kind?: string; xp: number; usd: bigint; mon: bigint; onSettings: () => void }) {
   const t = useT();
+  const router = useRouter();
   const guest = kind === 'guest';
   const passkey = kind === 'passkey';
   const injected = kind === 'injected';
@@ -135,7 +136,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
           <span className="hex absolute -right-2 -bottom-1.5 scale-[0.8]">{lvl}</span>
         </span>
         <span className="ml-1 hidden max-w-[120px] truncate text-[12px] font-semibold sm:block">{name}</span>
-        <span className="num hidden text-[11px] text-muted md:block">
+        <span className="num text-[11px] text-muted" aria-live="polite">
           {stake.toFixed(2)} {STAKE}
         </span>
         <span className="text-[10px] text-dim">{open ? '▴' : '▾'}</span>
@@ -226,6 +227,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
               <button
                 className="gbtn ghost sm w-full"
                 onClick={() => {
+                  if (REAL_TRADING) { useWallet.setState({claimOpen:true}); setOpen(false); router.push('/play'); return; }
                   setMsg(t('acct.sending'));
                   faucet().then(
                     () => setMsg(t('acct.fundsSent')),

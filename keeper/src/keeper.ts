@@ -1,4 +1,4 @@
-import { MAINT, MARGIN, Mode, royaleRounds } from '@longshort/shared';
+import { REAL_TRADING, MAINT, MARGIN, Mode, royaleRounds } from '@longshort/shared';
 import { formatUnits } from 'viem';
 import { arena, chainNow, estimateGas, keeper, log, pub, send } from './chain';
 import { db } from './db';
@@ -29,7 +29,7 @@ async function tryWrite(scope: string, functionName: 'settle' | 'eliminate' | 'c
 
 async function tick() {
   const now = await chainNow();
-  const live = db.prepare('SELECT id, mode, max_players, duration, start_at, end_at FROM matches WHERE state = 1').all() as {
+  const live = db.prepare('SELECT id, mode, max_players, duration, start_at, end_at FROM matches WHERE state IN (1,4)').all() as {
     id: number; mode: number; max_players: number; duration: number; start_at: number; end_at: number;
   }[];
   for (const m of live) {
@@ -37,7 +37,21 @@ async function tick() {
     if (now < m.start_at) continue;
     // 1. settle at the bell (or early when decided — simulate tells us)
     if (now >= m.end_at) {
+      if (REAL_TRADING && now >= m.end_at + 300) {
+        await once(`cancel:${m.id}`, () => tryWrite('keeper', 'cancel', [id]));
+        continue;
+      }
       await once(`settle:${m.id}`, () => tryWrite('keeper', 'settle', [id]));
+      continue;
+    }
+    if (REAL_TRADING) {
+      const ps = await pub.readContract({ ...arena, functionName:'getPlayers', args:[id] });
+      for (const p of ps) {
+        const last = db.prepare('SELECT kind FROM trades WHERE match_id=? AND addr=? ORDER BY id DESC LIMIT 1').get(m.id,p.addr.toLowerCase()) as {kind:string} | undefined;
+        if (!p.out && !p.hasPos && last?.kind === 'open')
+          await once(`liq:${m.id}:${p.addr}`,()=>tryWrite('keeper','liquidate',[id,p.addr]));
+      }
+      await once(`settle:${m.id}`, () => tryWrite('keeper','settle',[id]));
       continue;
     }
     // 2. liquidations

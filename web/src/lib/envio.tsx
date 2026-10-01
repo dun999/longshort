@@ -12,6 +12,8 @@ export const ENVIO_URL = process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? '';
 export const envioEnabled = () => !!ENVIO_URL;
 
 const E18 = 1e18;
+const addressOf = (id:string) => id.slice(-42).toLowerCase();
+const currentArena = ADDR.arena.toLowerCase();
 const STAKE_DP = 1e6;
 const n18 = (v: unknown) => (v === null || v === undefined ? null : Number(v) / E18);
 const nStake = (v: unknown) => Number(v ?? 0) / STAKE_DP;
@@ -36,22 +38,26 @@ export const matchEntityId = (id: number) => `${ADDR.arena.toLowerCase()}-${id}`
 export async function envioMatch(id: number) {
   const d = await gql<{ Match_by_pk: any }>(
     `query($id: String!) { Match_by_pk(id: $id) {
-        matchId mode entry duration state startAt endAt rake settleTx createTx
+        matchId mode entry duration state startAt endAt rake settleTx createTx asset tradingBudget
         players { trader_id team leverage result payout xpDelta finalEquity out }
+        accounts { id trader_id address budget finalBalance returned }
+        fills(order_by: { blockNumber: asc }) { id trader_id account_id orderType price lots notional fee txHash blockNumber timestamp }
         trades(order_by: { timestamp: asc }) { kind trader_id market isLong notional price pnl fee txHash timestamp }
       } }`,
     { id: matchEntityId(id) },
   );
   const m = d.Match_by_pk;
   if (!m) return null;
-  const names = await profiles(m.players.map((p: any) => p.trader_id));
+  const names = await profiles(m.players.map((p: any) => addressOf(p.trader_id)));
   return {
     source: 'envio' as const,
-    match: { id: Number(m.matchId), mode: m.mode, entry: nStake(m.entry), duration: m.duration, state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3 }[m.state as string], start_at: m.startAt, end_at: m.endAt, rake: nStake(m.rake), settle_tx: m.settleTx },
+    accounts:m.accounts.map((a:any)=>({addr:addressOf(a.trader_id),account:a.address,account_id:a.id,budget:nStake(a.budget),final_balance:a.finalBalance===null?null:nStake(a.finalBalance),returned:nStake(a.returned)})),
+    fills:m.fills.map((f:any)=>({addr:addressOf(f.trader_id),account_id:f.account_id,order_type:f.orderType,price:Number(f.price)/10,lots:f.lots,notional:nStake(f.notional),fee:nStake(f.fee),tx:f.txHash,log_index:Number(f.id.split('-').at(-1)),block:f.blockNumber,ts:f.timestamp})),
+    match: { id: Number(m.matchId), mode: m.mode, entry: nStake(m.entry), duration: m.duration, state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3, CLOSING:4 }[m.state as string], start_at: m.startAt, end_at: m.endAt, asset:m.asset,trading_budget:nStake(m.tradingBudget),rake: nStake(m.rake), settle_tx: m.settleTx },
     players: m.players.map((p: any) => ({
-      addr: p.trader_id,
-      name: names[p.trader_id]?.name ?? null,
-      bot: names[p.trader_id]?.bot ?? false,
+      addr: addressOf(p.trader_id),
+      name: names[addressOf(p.trader_id)]?.name ?? null,
+      bot: names[addressOf(p.trader_id)]?.bot ?? false,
       team: p.team,
       leverage: p.leverage,
       result: p.result,
@@ -59,7 +65,10 @@ export async function envioMatch(id: number) {
       final_equity: n18(p.finalEquity),
       xp_delta: p.xpDelta,
     })),
-    trades: m.trades.map((t: any) => ({ kind: t.kind, addr: t.trader_id, market: t.market, is_long: t.isLong === null ? null : t.isLong ? 1 : 0, notional: n18(t.notional), price: n18(t.price), pnl: n18(t.pnl), fee: n18(t.fee), ts: t.timestamp, tx: t.txHash })),
+    trades: m.trades.map((t: any) => {
+      const closeFee=t.kind==='close'?m.fills.filter((f:any)=>f.txHash===t.txHash&&f.trader_id===t.trader_id&&f.orderType>=2).reduce((sum:number,f:any)=>sum+nStake(f.fee),0):0;
+      return {kind:t.kind,addr:addressOf(t.trader_id),market:t.market,is_long:t.isLong===null?null:t.isLong?1:0,notional:n18(t.notional),price:n18(t.price),pnl:t.kind==='close'?(n18(t.pnl)??0)+closeFee:n18(t.pnl),fee:t.kind==='close'?closeFee:n18(t.fee),ts:t.timestamp,tx:t.txHash};
+    }),
   };
 }
 
@@ -73,9 +82,10 @@ export async function envioSync() {
 /** Arena-wide onchain totals. */
 export async function envioStats() {
   const d = await gql<{ ArenaStats: any[]; DailyStat: any[]; live: { aggregate: { count: number } } | null; byMode: any[] }>(
-    `{ ArenaStats { matchesCreated matchesSettled matchesCancelled players trades liquidations eliminations volume staked paidOut rake }
-       DailyStat(order_by: { id: desc }, limit: 14) { id trades volume matchesSettled }
-       byMode: Match(where: { state: { _eq: "SETTLED" } }) { mode } }`,
+    `query($arena:String!) { ArenaStats(where:{arena:{_eq:$arena}}) { matchesCreated matchesSettled matchesCancelled players trades liquidations eliminations volume staked paidOut rake }
+       DailyStat(where:{arena:{_eq:$arena}},order_by: { date: desc }, limit: 14) { id date trades volume matchesSettled }
+       byMode: Match(where: {arena:{_eq:$arena}, state: { _eq: "SETTLED" } }) { mode } }`,
+    {arena:currentArena},
   );
   const s = d.ArenaStats[0];
   const byMode = [0, 1, 2].map((mode) => ({ mode, n: d.byMode.filter((m) => m.mode === mode).length }));
@@ -93,16 +103,16 @@ export async function envioStats() {
         paidOut: nStake(s.paidOut),
         rake: nStake(s.rake),
         byMode,
-        daily: d.DailyStat.map((r) => ({ d: r.id, trades: r.trades, volume: n18(r.volume) ?? 0 })),
+        daily: d.DailyStat.map((r) => ({ d: r.date, trades: r.trades, volume: n18(r.volume) ?? 0 })),
       }
     : null;
 }
 
 /** Leaderboard rows (keeper shape: addr, name, xp, wins, losses, matches, volume, earned, bot). */
 export async function envioLeaderboard() {
-  const d = await gql<{ Trader: any[] }>(`{ Trader(where: { matches: { _gt: 0 } }, order_by: [{ xp: desc }, { wins: desc }], limit: 100) { id xp wins losses matches volume earned } }`);
-  const names = await profiles(d.Trader.map((t) => t.id));
-  return d.Trader.map((t) => ({ addr: t.id, name: names[t.id]?.name ?? null, bot: names[t.id]?.bot ? 1 : 0, xp: t.xp, wins: t.wins, losses: t.losses, matches: t.matches, volume: n18(t.volume) ?? 0, earned: nStake(t.earned) }));
+  const d = await gql<{ Trader: any[] }>(`query($arena:String!){ Trader(where: {arena:{_eq:$arena}, matches: { _gt: 0 } }, order_by: [{ xp: desc }, { wins: desc }], limit: 100) { id address xp wins losses matches volume earned } }`,{arena:currentArena});
+  const names = await profiles(d.Trader.map((t) => t.address));
+  return d.Trader.map((t) => ({ addr: t.address, name: names[t.address]?.name ?? null, bot: names[t.address]?.bot ? 1 : 0, xp: t.xp, wins: t.wins, losses: t.losses, matches: t.matches, volume: n18(t.volume) ?? 0, earned: nStake(t.earned) }));
 }
 
 /** A trader's lifetime record + match history (keeper profile shape). */
@@ -115,7 +125,7 @@ export async function envioProfile(addr: string) {
             team leverage result payout finalEquity xpDelta
             match { matchId mode entry state startAt settleTx arena } } }
       }`,
-    { a },
+    { a: `${currentArena}-${a}` },
   );
   const t = d.Trader_by_pk;
   if (!t) return null;
@@ -124,7 +134,7 @@ export async function envioProfile(addr: string) {
     profile: { addr: a, xp: t.xp, wins: t.wins, losses: t.losses, matches: t.matches, volume: n18(t.volume) ?? 0, earned: nStake(t.earned) },
     matches: t.entries
       .filter((e: any) => e.match.arena === ADDR.arena.toLowerCase())
-      .map((e: any) => ({ id: Number(e.match.matchId), mode: e.match.mode, entry: nStake(e.match.entry), state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3 }[e.match.state as string], start_at: e.match.startAt, settle_tx: e.match.settleTx, team: e.team, leverage: e.leverage, result: e.result, payout: nStake(e.payout), final_equity: n18(e.finalEquity), xp_delta: e.xpDelta })),
+      .map((e: any) => ({ id: Number(e.match.matchId), mode: e.match.mode, entry: nStake(e.match.entry), state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3, CLOSING:4 }[e.match.state as string], start_at: e.match.startAt, settle_tx: e.match.settleTx, team: e.team, leverage: e.leverage, result: e.result, payout: nStake(e.payout), final_equity: n18(e.finalEquity), xp_delta: e.xpDelta })),
   };
 }
 

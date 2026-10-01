@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { MODES, Mode } from '@longshort/shared';
+import { REAL_TRADING, ENTRY_TIERS, MODES, Mode } from '@longshort/shared';
 import { arena, pub } from './chain';
 import { db } from './db';
 
@@ -63,6 +63,7 @@ function hold(matchId: number, seats: Seat[], leader: string) {
 }
 
 export async function matchmake(t: Ticket): Promise<Assignment> {
+  if (REAL_TRADING && (t.mode !== Mode.DUEL || !ENTRY_TIERS.some((n)=>n===t.entry))) throw new Error('Live Perpl supports BTC Duel with 5, 20 or 50 AUSD entry');
   prune();
   const cfg = MODES[t.mode as Mode];
   if (!cfg || !(t.entry > 0) || !t.party.length || t.party.length > 3) throw new Error('Invalid matchmaking request');

@@ -10,18 +10,19 @@ const XP_START = 1000;
 const XP_WIN = 50;
 const XP_LOSS = -20;
 const XP_FLOOR = 1000;
-const MARGIN = 1000n * 10n ** 18n; // every player's virtual starting margin (ArenaCore.MARGIN)
+const MARGIN = 100n * 10n ** 18n; // actual AUSD starting capital
 
 type Ctx = EvmOnEventContext;
 
 const lc = (a: string) => a.toLowerCase();
 const matchKey = (arena: string, id: bigint) => `${lc(arena)}-${id}`;
+const traderKey = (arena: string, addr: string) => `${lc(arena)}-${lc(addr)}`;
 const playerKey = (match: string, player: string) => `${match}-${lc(player)}`;
 const day = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 
-async function stats(context: Ctx): Promise<ArenaStats> {
+async function stats(context: Ctx, arena: string): Promise<ArenaStats> {
   return context.ArenaStats.getOrCreate({
-    id: 'global',
+    id: lc(arena), arena:lc(arena), asset:'AUSD',
     matchesCreated: 0,
     matchesSettled: 0,
     matchesCancelled: 0,
@@ -36,15 +37,15 @@ async function stats(context: Ctx): Promise<ArenaStats> {
   });
 }
 
-async function daily(context: Ctx, ts: number): Promise<DailyStat> {
-  return context.DailyStat.getOrCreate({ id: day(ts), trades: 0, volume: 0n, matchesSettled: 0 });
+async function daily(context: Ctx, ts: number, arena: string): Promise<DailyStat> {
+  return context.DailyStat.getOrCreate({ id: `${lc(arena)}-${day(ts)}`, arena:lc(arena), date:day(ts), asset:'AUSD', trades: 0, volume: 0n, matchesSettled: 0 });
 }
 
-async function trader(context: Ctx, addr: string, ts: number): Promise<{ t: Trader; isNew: boolean }> {
-  const existing = await context.Trader.get(lc(addr));
+async function trader(context: Ctx, addr: string, ts: number, arena: string): Promise<{ t: Trader; isNew: boolean }> {
+  const existing = await context.Trader.get(traderKey(arena,addr));
   if (existing) return { t: { ...existing, lastSeen: ts }, isNew: false };
   return {
-    t: { id: lc(addr), matches: 0, wins: 0, losses: 0, draws: 0, trades: 0, liquidations: 0, volume: 0n, fees: 0n, staked: 0n, earned: 0n, xp: XP_START, firstSeen: ts, lastSeen: ts },
+    t: { id: traderKey(arena,addr), address:lc(addr), arena:lc(arena), asset:'AUSD', matches: 0, wins: 0, losses: 0, draws: 0, trades: 0, liquidations: 0, volume: 0n, fees: 0n, staked: 0n, earned: 0n, xp: XP_START, firstSeen: ts, lastSeen: ts },
     isNew: true,
   };
 }
@@ -55,7 +56,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'MatchCreated' }, async ({ event
   const ts = event.block.timestamp;
   context.Match.set({
     id: matchKey(event.srcAddress, p.id),
-    arena: lc(event.srcAddress),
+    arena: lc(event.srcAddress), asset:'AUSD', tradingBudget:100_000_000n,
     matchId: p.id,
     mode: Number(p.mode),
     entry: p.entry,
@@ -76,7 +77,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'MatchCreated' }, async ({ event
     createTx: event.transaction.hash,
     settleTx: undefined,
   });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, matchesCreated: s.matchesCreated + 1 });
 });
 
@@ -90,10 +91,10 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'PlayerJoined' }, async ({ event
   context.MatchPlayer.set({
     id: playerKey(mId, addr),
     match_id: mId,
-    trader_id: addr,
+    trader_id: traderKey(event.srcAddress,addr),
     team: Number(p.team),
     leverage: Number(p.leverage),
-    session: lc(p.session),
+    session: lc(p.session), accountId:undefined,
     trades: 0,
     closes: 0,
     volume: 0n,
@@ -106,9 +107,9 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'PlayerJoined' }, async ({ event
     payout: 0n,
     xpDelta: 0,
   });
-  const { t, isNew } = await trader(context, addr, ts);
+  const { t, isNew } = await trader(context,addr,ts,event.srcAddress);
   context.Trader.set({ ...t, staked: t.staked + m.entry });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, staked: s.staked + m.entry, players: s.players + (isNew ? 1 : 0) });
 });
 
@@ -118,9 +119,9 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'PlayerLeft' }, async ({ event, 
   const m = await context.Match.getOrThrow(mId);
   context.Match.set({ ...m, playerAddrs: m.playerAddrs.filter((a) => a !== addr), playerCount: m.playerCount - 1 });
   context.MatchPlayer.deleteUnsafe(playerKey(mId, addr));
-  const t = await context.Trader.get(addr);
+  const t = await context.Trader.get(traderKey(event.srcAddress,addr));
   if (t) context.Trader.set({ ...t, staked: t.staked - m.entry });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, staked: s.staked - m.entry });
 });
 
@@ -138,7 +139,8 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'MatchStarted' }, async ({ event
 indexer.onEvent({ contract: 'ArenaCore', event: 'Cancelled' }, async ({ event, context }) => {
   const m = await context.Match.getOrThrow(matchKey(event.srcAddress, event.params.id));
   context.Match.set({ ...m, state: 'CANCELLED' });
-  const s = await stats(context);
+  for(const addr of m.playerAddrs){const mp=await context.MatchPlayer.get(playerKey(m.id,addr)); const a=mp?.accountId?await context.TradingAccount.get(mp.accountId):undefined; if(a&&a.returned>0n) context.TradingAccount.set({...a,finalBalance:a.returned});}
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, matchesCancelled: s.matchesCancelled + 1, staked: s.staked - m.entry * BigInt(m.playerCount) });
 });
 
@@ -151,7 +153,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Opened' }, async ({ event, cont
   context.Trade.set({
     id: `${event.transaction.hash}-${event.logIndex}`,
     match_id: mId,
-    trader_id: addr,
+    trader_id: traderKey(event.srcAddress,addr),
     kind: 'open',
     market: Number(p.market),
     isLong: p.isLong,
@@ -164,15 +166,15 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Opened' }, async ({ event, cont
     timestamp: ts,
   });
   const m = await context.Match.getOrThrow(mId);
-  context.Match.set({ ...m, tradeCount: m.tradeCount + 1, volume: m.volume + p.notional });
+  context.Match.set({ ...m, tradeCount: m.tradeCount + 1 });
   const mp = await context.MatchPlayer.get(playerKey(mId, addr));
-  if (mp) context.MatchPlayer.set({ ...mp, trades: mp.trades + 1, volume: mp.volume + p.notional, fees: mp.fees + p.fee, realizedPnl: mp.realizedPnl - p.fee });
-  const { t } = await trader(context, addr, ts);
-  context.Trader.set({ ...t, trades: t.trades + 1, volume: t.volume + p.notional, fees: t.fees + p.fee });
-  const s = await stats(context);
-  context.ArenaStats.set({ ...s, trades: s.trades + 1, volume: s.volume + p.notional });
-  const d = await daily(context, ts);
-  context.DailyStat.set({ ...d, trades: d.trades + 1, volume: d.volume + p.notional });
+  if (mp) context.MatchPlayer.set({ ...mp, trades: mp.trades + 1, realizedPnl: mp.realizedPnl - p.fee });
+  const { t } = await trader(context,addr,ts,event.srcAddress);
+  context.Trader.set({ ...t, trades: t.trades + 1 });
+  const s = await stats(context,event.srcAddress);
+  context.ArenaStats.set({ ...s, trades: s.trades + 1 });
+  const d = await daily(context,ts,event.srcAddress);
+  context.DailyStat.set({ ...d, trades: d.trades + 1 });
 });
 
 indexer.onEvent({ contract: 'ArenaCore', event: 'Closed' }, async ({ event, context }) => {
@@ -182,7 +184,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Closed' }, async ({ event, cont
   context.Trade.set({
     id: `${event.transaction.hash}-${event.logIndex}`,
     match_id: mId,
-    trader_id: addr,
+    trader_id: traderKey(event.srcAddress,addr),
     kind: 'close',
     market: Number(p.market),
     isLong: undefined,
@@ -195,9 +197,9 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Closed' }, async ({ event, cont
     timestamp: event.block.timestamp,
   });
   const mp = await context.MatchPlayer.get(playerKey(mId, addr));
-  if (mp) context.MatchPlayer.set({ ...mp, closes: mp.closes + 1, fees: mp.fees + p.fee, realizedPnl: mp.realizedPnl + p.pnl - p.fee });
-  const t = await context.Trader.get(addr);
-  if (t) context.Trader.set({ ...t, fees: t.fees + p.fee });
+  if (mp) context.MatchPlayer.set({ ...mp, closes: mp.closes + 1, realizedPnl: mp.realizedPnl + p.pnl - p.fee });
+  const t = await context.Trader.get(traderKey(event.srcAddress,addr));
+
 });
 
 indexer.onEvent({ contract: 'ArenaCore', event: 'Liquidated' }, async ({ event, context }) => {
@@ -207,7 +209,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Liquidated' }, async ({ event, 
   context.Trade.set({
     id: `${event.transaction.hash}-${event.logIndex}`,
     match_id: mId,
-    trader_id: addr,
+    trader_id: traderKey(event.srcAddress,addr),
     kind: 'liquidated',
     market: undefined,
     isLong: undefined,
@@ -220,10 +222,10 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Liquidated' }, async ({ event, 
     timestamp: event.block.timestamp,
   });
   const mp = await context.MatchPlayer.get(playerKey(mId, addr));
-  if (mp) context.MatchPlayer.set({ ...mp, out: 'liquidated', frozenEquity: 0n });
-  const t = await context.Trader.get(addr);
+  if (mp) context.MatchPlayer.set({ ...mp, out: 'liquidated' });
+  const t = await context.Trader.get(traderKey(event.srcAddress,addr));
   if (t) context.Trader.set({ ...t, liquidations: t.liquidations + 1 });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, liquidations: s.liquidations + 1 });
 });
 
@@ -234,7 +236,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Eliminated' }, async ({ event, 
   context.Trade.set({
     id: `${event.transaction.hash}-${event.logIndex}`,
     match_id: mId,
-    trader_id: addr,
+    trader_id: traderKey(event.srcAddress,addr),
     kind: 'eliminated',
     market: undefined,
     isLong: undefined,
@@ -248,7 +250,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Eliminated' }, async ({ event, 
   });
   const mp = await context.MatchPlayer.get(playerKey(mId, addr));
   if (mp) context.MatchPlayer.set({ ...mp, out: 'eliminated', frozenEquity: p.equity < 0n ? 0n : p.equity });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({ ...s, eliminations: s.eliminations + 1 });
 });
 
@@ -267,7 +269,7 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Settled' }, async ({ event, con
     const payout = paid.get(addr) ?? 0n;
     total += payout;
     const result = draw ? 'draw' : paid.has(addr) ? 'win' : 'loss';
-    const { t } = await trader(context, addr, ts);
+    const { t } = await trader(context,addr,ts,event.srcAddress);
     const xpDelta = result === 'win' ? XP_WIN : result === 'loss' ? Math.max(XP_FLOOR, t.xp + XP_LOSS) - t.xp : 0;
     context.Trader.set({
       ...t,
@@ -283,12 +285,12 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Settled' }, async ({ event, con
       // settle() closes open positions first (their Closed events are already applied), so
       // survivors' equity is margin + realized; knocked-out players keep their frozen equity
       const live = MARGIN + mp.realizedPnl;
-      const finalEquity = mp.out ? (mp.frozenEquity ?? 0n) : live < 0n ? 0n : live;
+      const finalEquity = mp.finalEquity ?? (live < 0n ? 0n : live);
       context.MatchPlayer.set({ ...mp, result, payout, xpDelta, finalEquity });
     }
   }
   context.Match.set({ ...m, state: 'SETTLED', settledAt: ts, rake: p.rake, paidOut: total, settleTx: event.transaction.hash });
-  const s = await stats(context);
+  const s = await stats(context,event.srcAddress);
   context.ArenaStats.set({
     ...s,
     matchesSettled: s.matchesSettled + 1,
@@ -296,6 +298,56 @@ indexer.onEvent({ contract: 'ArenaCore', event: 'Settled' }, async ({ event, con
     rake: s.rake + p.rake,
     staked: s.staked - m.entry * BigInt(m.playerAddrs.length),
   });
-  const d = await daily(context, ts);
+  const d = await daily(context,ts,event.srcAddress);
   context.DailyStat.set({ ...d, matchesSettled: d.matchesSettled + 1 });
+});
+
+indexer.onEvent({contract:'ArenaCore',event:'TradingAccountCreated'},async({event,context})=>{
+  const p=event.params;
+  context.VaultAddress.set({id:lc(p.account),account_id:String(p.accountId)});
+  const mp=await context.MatchPlayer.get(playerKey(matchKey(event.srcAddress,p.id),p.player));
+  if(mp) context.MatchPlayer.set({...mp,accountId:String(p.accountId)});
+  context.TradingAccount.set({id:String(p.accountId),match_id:matchKey(event.srcAddress,p.id),trader_id:traderKey(event.srcAddress,p.player),address:lc(p.account),budget:p.budget,returned:0n,finalBalance:undefined});
+});
+indexer.onEvent({contract:'ArenaCore',event:'Closing'},async({event,context})=>{
+  const m=await context.Match.getOrThrow(matchKey(event.srcAddress,event.params.id));
+  context.Match.set({...m,state:'CLOSING'});
+});
+indexer.onEvent({contract:'ArenaCore',event:'FinalBalance'},async({event,context})=>{
+  const p=event.params; const key=playerKey(matchKey(event.srcAddress,p.id),p.player);
+  const mp=await context.MatchPlayer.get(key);
+  if(mp) context.MatchPlayer.set({...mp,finalEquity:p.balance*10n**12n,frozenEquity:p.balance*10n**12n});
+  const a=mp?.accountId?await context.TradingAccount.get(mp.accountId):undefined;
+  if(a) context.TradingAccount.set({...a,finalBalance:p.balance});
+});
+indexer.onEvent({contract:'Perpl',event:'OrderRequestV2'},async({event,context})=>{
+  const account=await context.TradingAccount.get(String(event.params.accountId));
+  context.PerplOrder.set({id:event.transaction.hash,account_id:account?.id,orderType:Number(event.params.orderType)});
+});
+indexer.onEvent({contract:'Perpl',event:'TakerOrderFilledV2'},async({event,context})=>{
+  const order=await context.PerplOrder.get(event.transaction.hash);
+  if(!order?.account_id) return;
+  const a=await context.TradingAccount.getOrThrow(order.account_id);
+  const m=await context.Match.getOrThrow(a.match_id);
+  const p=event.params; const notional=p.entryPricePNS*p.lotLNS; const fee=p.feeCNS+p.builderFeeCNS;
+  context.PerplFill.set({id:`${event.transaction.hash}-${event.logIndex}`,match_id:m.id,trader_id:a.trader_id,account_id:a.id,orderType:order.orderType,price:p.entryPricePNS,lots:p.lotLNS,notional,fee,txHash:event.transaction.hash,blockNumber:event.block.number,timestamp:event.block.timestamp});
+  context.Match.set({...m,volume:m.volume+notional*10n**12n});
+  const mp=await context.MatchPlayer.get(playerKey(m.id,a.trader_id.slice(m.arena.length+1)));
+  if(mp) context.MatchPlayer.set({...mp,volume:mp.volume+notional*10n**12n,fees:mp.fees+fee*10n**12n});
+  const t=await context.Trader.get(a.trader_id);
+  if(t) context.Trader.set({...t,volume:t.volume+notional*10n**12n,fees:t.fees+fee*10n**12n});
+  const s=await stats(context,m.arena);context.ArenaStats.set({...s,volume:s.volume+notional*10n**12n});
+  const d=await daily(context,event.block.timestamp,m.arena);context.DailyStat.set({...d,volume:d.volume+notional*10n**12n});
+});
+
+// Actual token transfers also catch recovery called directly on a vault outside the arena.
+indexer.onEvent({contract:'AUSD',event:'Transfer'},async({event,context})=>{
+  const vault=await context.VaultAddress.get(lc(event.params.from));
+  if(!vault) return;
+  const a=await context.TradingAccount.getOrThrow(vault.account_id);
+  const t=await context.Trader.getOrThrow(a.trader_id);
+  if(lc(event.params.to)!==t.address) return;
+  const m=await context.Match.getOrThrow(a.match_id);
+  const returned=a.returned+event.params.value;
+  context.TradingAccount.set({...a,returned,finalBalance:m.state==='CANCELLED'?returned:a.finalBalance});
 });

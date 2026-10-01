@@ -1,6 +1,6 @@
 'use client';
 import { motion } from 'motion/react';
-import { MODES, Mode, STAKE, fmtUsd, payouts, royaleRounds } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MODES, Mode, STAKE, fmtUsd, payouts, royaleRounds } from '@longshort/shared';
 import type { MatchView } from '@/lib/match';
 import { TEAM_COLOR } from '@/lib/scene';
 import { Hint } from '../ui/Hint';
@@ -50,7 +50,7 @@ export function ScoreBar({ m, now, left, live, practice }: { m: MatchView; now: 
                 {t('hud.prize')} <b className="num">{`${pay.first.toFixed(2)} ${STAKE}`}</b>
               </>
             )}
-            <Hint text={`Everyone starts with $1,000 of virtual margin. Best final equity wins${practice ? '. Practice: nothing at stake.' : `: entry ${m.entry} ${STAKE}, pot ${pay.pot} ${STAKE}, paid by the contract at the bell.`} Equity = 1,000 + realized PnL + open PnL.`} />
+            <Hint text={REAL_TRADING && !practice ? `Each player deposits 100 AUSD into an isolated Perpl account. Its actual balance and position PnL are your score. Entry ${m.entry} AUSD is separate. Remaining collateral and prize return after both accounts are flat.` : `Everyone starts with $${MARGIN} of virtual margin. Best final equity wins. Practice has nothing at stake.`} />
           </span>
         </div>
         {m.mode === Mode.ROYALE ? <RoyaleTrack m={m} /> : <Tug m={m} />}

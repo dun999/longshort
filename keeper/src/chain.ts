@@ -7,7 +7,7 @@ import {
   type Hash,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { ADDR, activeChain, arenaAbi, monadTestnet } from '@longshort/shared';
+import { ADDR, REAL_TRADING, activeChain, arenaAbi, monadTestnet } from '@longshort/shared';
 import { env } from './env';
 
 export const pub = createPublicClient({ chain: activeChain, transport: http(env.rpcUrl, { timeout: 10_000, retryCount: 2 }) });
@@ -32,14 +32,14 @@ export function relayer() {
 
 /** Fallback limits if estimation fails. Monad bills the gas *limit*; see estimateGas() for the normal path. */
 export const GAS = {
-  createMatch: 300_000n,
-  joinMatch: 160_000n,
+  createMatch: REAL_TRADING ? 750_000n : 300_000n,
+  joinMatch: REAL_TRADING ? 700_000n : 160_000n,
   setClass: 60_000n,
-  open: 190_000n,
-  close: 90_000n,
+  open: REAL_TRADING ? 900_000n : 190_000n,
+  close: REAL_TRADING ? 500_000n : 90_000n,
   liquidate: 120_000n,
   eliminate: 250_000n,
-  settle: 350_000n,
+  settle: REAL_TRADING ? 1_500_000n : 350_000n,
   cancel: 300_000n,
   approve: 70_000n,
   transfer: 70_000n,

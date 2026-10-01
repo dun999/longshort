@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useWallet } from '@/lib/wallet';
-import { startSocket, useSocket } from '@/lib/socket';
+import { onChainEvent, startSocket, useSocket } from '@/lib/socket';
 import { startAuth } from '@/lib/auth';
 import { useScene } from '@/lib/scene';
 import { TopBar } from './TopBar';
@@ -76,6 +76,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     [],
   );
   useEffect(() => useSocket.getState().hello(address?.toLowerCase()), [address]);
+  useEffect(()=>onChainEvent((e)=>{
+    if (['TradingAccountCreated','PlayerLeft','CollateralReturned','Settled','Cancelled'].includes(e.name)) void useWallet.getState().refresh();
+  }),[]);
   // the keeper sent us to a lobby (party leader seated there) → follow; the match screen takes the seat
   useEffect(() => {
     if (joinMatch && path !== `/match/${joinMatch.matchId}`) router.push(`/match/${joinMatch.matchId}`);

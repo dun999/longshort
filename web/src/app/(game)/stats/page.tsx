@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ADDR, MODES, Mode, explorerAddr, fmtUsd, STAKE } from '@longshort/shared';
+import { ADDR, MODES, Mode, REAL_TRADING, explorerAddr, fmtUsd, STAKE } from '@longshort/shared';
 import { useApi } from '@/lib/api';
 import { EnvioBadge, EnvioMark, envioStats, envioSync, useIndexed } from '@/lib/envio';
 import { useScene } from '@/lib/scene';
@@ -56,7 +56,7 @@ export default function Stats() {
   const live = e?.source === 'envio';
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
   const byMode = e?.byMode ?? s?.byMode ?? [];
-  const staked = e?.staked ?? 0;
+  const staked = e?.staked ?? s?.escrow ?? 0;
 
   return (
     <div className="mx-auto grid grid-cols-[minmax(0,1fr)] max-w-6xl gap-4 px-4 py-8">
@@ -97,8 +97,8 @@ export default function Stats() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:ml-[var(--n-bl-w)] sm:grid-cols-3 max-sm:mb-[var(--n-bl-h)]">
               <Stat tone="light" k="Onchain trades" v={(e?.trades ?? s.trades).toLocaleString()} sub={`${s.trades24h} in the last 24h`} />
-              <Stat tone="light" k="Paid out" v={`${amt(e?.paidOut ?? 0)} ${STAKE}`} sub={e ? `rake ${e.rake.toFixed(2)} ${STAKE}` : undefined} />
-              <Stat tone="light" k="Virtual notional" v={fmtUsd(e?.volume ?? s.volume)} sub={`human: ${fmtUsd(s.humanVolume)}`} />
+              <Stat tone="light" k="Paid out" v={`${amt(e?.paidOut ?? s.paidOut ?? 0)} ${STAKE}`} sub={`rake ${(e?.rake??s.rake??0).toFixed(2)} ${STAKE}`} />
+              <Stat tone="light" k={REAL_TRADING?'Perpl notional':'Virtual notional'} v={fmtUsd(e?.volume ?? s.volume)} sub={`human: ${fmtUsd(s.humanVolume)}`} />
             </div>
           </NotchBlock>
 

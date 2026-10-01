@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react';
-import { CLASSES, MARGIN, MODES, Mode, XP, classOf, explorerTx, fmtUsd, level, levelProgress, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, CLASSES, MARGIN, MODES, Mode, XP, classOf, explorerTx, fmtUsd, level, levelProgress, type ClassId, STAKE } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { CLASS_COLOR, TEAM_COLOR, useScene } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -13,6 +13,7 @@ import { awards, compute, type Award, type Row, type Stats } from '@/lib/matchSt
 import { practiceCode, rankedCode, shareText, type CardData } from '@/lib/shareLink';
 import { ShareIcon, ShareSheet } from './ShareSheet';
 import { useLang, useT } from '@/lib/i18n';
+import { TradingCapital } from './TradingCapital';
 
 const fadeUp = { initial: { opacity: 0, y: 24 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -24 } };
 const EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -193,7 +194,7 @@ export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: 
         <div className="font-display text-3xl font-bold tracking-[0.16em] uppercase">{t('mm.loadout')}</div>
       </div>
       <div className="pointer-events-auto grid w-full max-w-4xl grid-cols-3 gap-2 md:gap-3">
-        {(Object.keys(CLASSES) as ClassId[]).map((id) => {
+        {(Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank').map((id) => {
           const c = CLASSES[id];
           const on = cur === c.leverage;
           const col = CLASS_COLOR[c.leverage];
@@ -215,16 +216,16 @@ export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: 
                 <span className="num text-xl font-bold md:text-2xl">{c.leverage}x</span>
               </div>
               <div className="mt-1 hidden text-[11px] tracking-[0.2em] text-muted uppercase md:block">{t(`role.${id}`)}</div>
-              <p className="mt-2 hidden text-sm text-muted md:block">{t(`blurb.${id}`)}</p>
-              <div className="num mt-1 text-[11px] text-gold md:hidden">liq −{(90 / c.leverage).toFixed(1)}%</div>
+              <p className="mt-2 hidden text-sm text-muted md:block">{REAL_TRADING ? t('live.class') : t(`blurb.${id}`)}</p>
+              <div className="num mt-1 text-[11px] text-gold md:hidden">{REAL_TRADING ? t('live.isolated') : `liq −${(90 / c.leverage).toFixed(1)}%`}</div>
               <div className="mt-3 hidden grid-cols-2 gap-2 text-[11px] md:grid">
                 <div>
                   <div className="text-dim">{t('mm.maxSize')}</div>
-                  <div className="num">{fmtUsd(1000 * c.leverage)}</div>
+                  <div className="num">{fmtUsd(MARGIN * c.leverage * (REAL_TRADING ? 0.95 : 1))}</div>
                 </div>
                 <div>
-                  <div className="text-dim">{t('mm.liqFull')}</div>
-                  <div className="num text-gold">−{(90 / c.leverage).toFixed(1)}% {t('mm.move')}</div>
+                  <div className="text-dim">{REAL_TRADING ? 'Perpl' : t('mm.liqFull')}</div>
+                  <div className="num text-gold">{REAL_TRADING ? 'BTC · 5x' : `−${(90 / c.leverage).toFixed(1)}% ${t('mm.move')}`}</div>
                 </div>
               </div>
               {on && <div className="mt-2 font-display text-[10px] font-bold tracking-[0.24em] uppercase md:mt-3 md:text-xs md:tracking-[0.3em]" style={{ color: col }}>{t(pending ? 'mm.locking' : 'mm.locked')}</div>}
@@ -579,8 +580,9 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
           return { ...p, result: r?.result ?? null, payout: r?.payout ?? 0, final_equity: r?.final_equity ?? p.equity, xp_delta: r?.xp_delta ?? 0 };
         }),
         m.trades as Row[],
+        m.fills,
       ),
-    [m.players, m.results, m.trades, m.startAt, m.endAt],
+    [m.players, m.results, m.trades, m.fills, m.startAt, m.endAt],
   );
   const awardList = useMemo(() => awards(stats), [stats]);
   const statOf = (p: PlayerView) => stats.find((s) => s.addr === p.addr)!;
@@ -676,6 +678,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
         </div>
 
         {mine && !practice && <Reward m={m} mine={mine} />}
+        {REAL_TRADING && !practice && <TradingCapital id={m.id} accounts={m.accounts} onRecovered={m.refresh} />}
 
         {!royale && m.players.length > 1 && (
           <motion.div className="rs-tug" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>

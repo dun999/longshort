@@ -1,4 +1,4 @@
-import { MARGIN, fmtUsd, shortAddr } from '@longshort/shared';
+import { MARGIN, REAL_TRADING, fmtUsd, shortAddr } from '@longshort/shared';
 
 /** Per-player numbers derived from a match's trade rows. Shared by the result screen and the full report. */
 export interface Row {
@@ -40,7 +40,7 @@ export interface Stats {
   curve: { time: number; value: number }[];
 }
 
-export function compute(match: any, players: any[], trades: Row[]): Stats[] {
+export function compute(match: any, players: any[], trades: Row[], fills: {addr:string;notional:number;fee:number}[] = []): Stats[] {
   const start = match.start_at ?? trades[0]?.ts ?? 0;
   return players.map((p: any) => {
     const mine = trades.filter((t) => t.addr === p.addr).sort((a, b) => a.ts - b.ts);
@@ -96,11 +96,16 @@ export function compute(match: any, players: any[], trades: Row[]): Stats[] {
         openAt = null;
       } else if (t.kind === 'liquidated') {
         s.out = 'liquidated';
-        equity = 0;
+        equity = REAL_TRADING ? MARGIN + (t.pnl ?? -MARGIN) : 0;
       } else if (t.kind === 'eliminated') {
         s.out = 'eliminated';
       }
       curve.push({ time: t.ts, value: Math.max(0, equity) });
+    }
+    if (REAL_TRADING && fills.length) {
+      const actual = fills.filter((f)=>f.addr===p.addr);
+      s.volume = actual.reduce((sum,f)=>sum+f.notional,0);
+      s.fees = actual.reduce((sum,f)=>sum+f.fee,0);
     }
     if (match.end_at) curve.push({ time: Math.max(match.end_at, curve.at(-1)!.time), value: s.finalEquity });
     if (holds.length) {

@@ -71,8 +71,10 @@ export function PriceChart({
   realized,
   trades = [],
   players = [],
+  real = false,
 }: {
   market: MarketSymbol;
+  real?: boolean;
   pos?: Pos | null;
   realized?: number;
   trades?: TradeRow[];
@@ -233,9 +235,9 @@ export function PriceChart({
     lines.current = [];
     if (pos) {
       lines.current.push(s.createPriceLine({ price: pos.entryPx, color: pos.isLong ? UP : DOWN, lineWidth: 1, lineStyle: LineStyle.Solid, title: `ENTRY ${pos.isLong ? 'L' : 'S'}` }));
-      lines.current.push(s.createPriceLine({ price: liqPrice(realized ?? 0, pos), color: '#c9a24a', lineWidth: 1, lineStyle: LineStyle.Dashed, title: 'LIQ' }));
+      if (!real) lines.current.push(s.createPriceLine({ price: liqPrice(realized ?? 0, pos), color: '#c9a24a', lineWidth: 1, lineStyle: LineStyle.Dashed, title: 'LIQ' }));
     }
-  }, [pos, realized, market]);
+  }, [pos, realized, market, real]);
 
   const last = data.at(-1);
   const shown = hover ?? last;

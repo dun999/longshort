@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { CLASSES, ENTRY_TIERS, MODES, Mode, classOf, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, TRADING_BUDGET, CLASSES, ENTRY_TIERS, MODES, Mode, classOf, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
 import { Hint, PanelHeader } from '../ui/Hint';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -18,7 +18,7 @@ import { Guide, guideSeen } from './Guide';
 import { PlayerSearch } from '../PlayerSearch';
 
 type LobbyMode = Mode | 'practice';
-const MODE_LIST: LobbyMode[] = [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
+const MODE_LIST: LobbyMode[] = REAL_TRADING ? [Mode.DUEL, 'practice'] : [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
 
 const MODE_INFO: Record<string, { desc: Key }> = {
   duel: { desc: 'mode.duel' },
@@ -248,12 +248,12 @@ function ModeSelect({
 export function Lobby() {
   const router = useRouter();
   const search = useSearchParams();
-  const { address, kind, usd } = useWallet();
+  const { address, kind, usd, claimOpen } = useWallet();
   const { party, online, send } = useSocket();
   const me = address?.toLowerCase();
   const [mode, setMode] = useState<LobbyMode>(Mode.DUEL);
   const [entry, setEntry] = useState<number>(5);
-  const [lev, setLev] = useState<number>(25);
+  const [lev, setLev] = useState<number>(REAL_TRADING ? 5 : 25);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
   const [connect, setConnect] = useState(false);
@@ -272,7 +272,7 @@ export function Lobby() {
   // landing page deep-links: /play?mode=duel|squad|royale
   useEffect(() => {
     const m = Object.entries(MODES).find(([, v]) => v.key === search.get('mode'));
-    if (m) setMode(Number(m[0]) as Mode);
+    if (m && (!REAL_TRADING || Number(m[0]) === Mode.DUEL)) setMode(Number(m[0]) as Mode);
   }, [search]);
 
   const inParty = !!party && party.members.length > 1;
@@ -363,7 +363,7 @@ export function Lobby() {
   };
 
   const pay = effMode === 'practice' ? null : payouts(effMode, effEntry, MODES[effMode].maxPlayers);
-  const lowFunds = address && effMode !== 'practice' && Number(usd) / 1e6 < effEntry;
+  const lowFunds = address && effMode !== 'practice' && Number(usd) / 1e6 < effEntry + TRADING_BUDGET;
 
   const cfg = modeCfg(effMode);
   return (
@@ -403,7 +403,7 @@ export function Lobby() {
         <div className="num pointer-events-auto flex items-center gap-1.5 text-[11px] text-muted">
           {pay ? (
             <>
-              {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t('lb.maxLoss')} {effEntry} {STAKE}
+              {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
               <Hint text="PLAY escrows your stake in the arena contract and finds a lobby (or opens one). When enabled in Settings, sparring bots fill empty seats after ~12s. During the match every trade is an onchain transaction." />
             </>
           ) : (
@@ -413,12 +413,13 @@ export function Lobby() {
             <>
               {' '}
               · <span className="text-gold">{t('lb.notEnough', { stake: STAKE })}</span>{' '}
-              <button className="link" onClick={() => void useWallet.getState().faucet().catch((e) => setErr(friendly(e)))}>
+              <button className="link" onClick={() => REAL_TRADING ? useWallet.setState({claimOpen:true}) : void useWallet.getState().faucet().catch((e) => setErr(friendly(e)))}>
                 {t('lb.getFunds')}
               </button>
             </>
           )}
         </div>
+        {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">{t('live.budget',{amount:TRADING_BUDGET,total:effEntry+TRADING_BUDGET})}</p>}
         {err && <span className="pointer-events-auto max-w-md text-center text-xs text-red">{err}</span>}
         {busy && queuedAt ? (
           <button className="guide-link pointer-events-auto" disabled={cancelQueued} onClick={() => (sfx.click(), (cancelQ.current = true), setCancelQueued(true))}>
@@ -442,7 +443,7 @@ export function Lobby() {
         }}
       />
       <ConnectDialog open={connect} onClose={() => setConnect(false)} />
-      <Guide open={guide} onClose={() => setGuide(false)} />
+      <Guide open={guide && !claimOpen} onClose={() => setGuide(false)} />
     </div>
   );
 }
@@ -458,7 +459,7 @@ function Loadout({ lev, onClass }: { lev: number; onClass: (l: number) => void }
           <PanelHeader title={t('lb.class')} sub={t('lb.leverage')} hint="Your class is your leverage, a real parameter in the contract. Higher leverage means bigger positions and bigger PnL swings, but you get liquidated on a smaller price move. You can switch until the match starts." />
         </div>
         <div className="seg block sm:mt-1.5">
-          {(Object.keys(CLASSES) as ClassId[]).map((id) => {
+          {(Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank').map((id) => {
             const k = CLASSES[id];
             const on = lev === k.leverage;
             return (
@@ -472,7 +473,7 @@ function Loadout({ lev, onClass }: { lev: number; onClass: (l: number) => void }
         </div>
         <div className="mt-1.5 text-[10px] text-muted sm:text-[11px]">
           <span className="sm:hidden">{t('lb.classPrefix')}</span>
-          {t('lb.liq', { role: t(`role.${id}`), pct: `~${(90 / CLASSES[id].leverage).toFixed(1)}%` })}
+          {REAL_TRADING ? t('live.class') : t('lb.liq', { role: t(`role.${id}`), pct: `~${(90 / CLASSES[id].leverage).toFixed(1)}%` })}
         </div>
       </div>
     </motion.div>
@@ -635,4 +636,3 @@ function LivePanel() {
     </div>
   );
 }
-

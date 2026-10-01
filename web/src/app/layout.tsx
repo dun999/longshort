@@ -10,7 +10,7 @@ const jet = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jet' });
 
 // Neutral on purpose: the gate and shared-result pages sit on this layout alone and are reachable
 // without the access code. The game's own layout, (game)/layout.tsx, says what longshort is.
-export const metadata: Metadata = { title: 'longshort.fun' };
+export const metadata: Metadata = { title: 'longshort.fun', manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'longshort',statusBarStyle:'black-translucent'},icons:{icon:'/icon-192.png',apple:'/icon-192.png'} };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

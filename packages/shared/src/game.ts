@@ -1,4 +1,5 @@
-// Game constants + math. Mirrors ArenaCore.sol exactly so the HUD shows what the contract will settle.
+import { REAL_TRADING } from './chains';
+// Practice math stays virtual. Live Perpl scores come directly from the exchange.
 
 export const MARKETS = ['BTC', 'ETH', 'MON'] as const;
 export type MarketSymbol = (typeof MARKETS)[number];
@@ -14,17 +15,19 @@ export enum MatchState {
   LIVE = 1,
   SETTLED = 2,
   CANCELLED = 3,
+  CLOSING = 4,
 }
 
-export const MARGIN = 1000; // virtual USD per player
+export const MARGIN = REAL_TRADING ? 100 : 1000;
+export const PRACTICE_MARGIN = 1000;
 export const MAINT = 0.1; // liquidated at 10% of starting margin
-export const FEE_BPS = 1;
+export const FEE_BPS = REAL_TRADING ? 3.45 : 1; // displayed estimate; Perpl's actual fee tier determines execution fees
 export const RAKE_BPS = 250;
-export const COUNTDOWN = 5;
+export const COUNTDOWN = 15;
 
 export type ClassId = 'tank' | 'scout' | 'sniper';
-export const CLASSES: Record<ClassId, { name: string; leverage: 10 | 25 | 50; role: string; blurb: string }> = {
-  tank: { name: 'Tank', leverage: 10, role: 'Low risk', blurb: 'Survives a ~9% move against you. Slow and steady.' },
+export const CLASSES: Record<ClassId, { name: string; leverage: 5 | 10 | 25 | 50; role: string; blurb: string }> = {
+  tank: { name: 'Tank', leverage: REAL_TRADING ? 5 : 10, role: 'Low risk', blurb: REAL_TRADING ? '5x BTC on Perpl. Your trading balance is at risk.' : 'Survives a ~9% move against you. Slow and steady.' },
   scout: { name: 'Scout', leverage: 25, role: 'Balanced', blurb: 'Liquidated on a ~3.6% adverse move.' },
   sniper: { name: 'Sniper', leverage: 50, role: 'High risk', blurb: 'One-shot potential. Liquidated on a ~1.8% adverse move.' },
 };

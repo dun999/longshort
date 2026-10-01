@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS rematches (
 CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, addr TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS matches_state ON matches(state, mode, entry);
 CREATE INDEX IF NOT EXISTS players_addr ON players(addr);
+CREATE TABLE IF NOT EXISTS trading_accounts (
+  match_id INTEGER, addr TEXT, account TEXT, account_id TEXT, budget REAL, final_balance REAL, returned REAL DEFAULT 0,
+  PRIMARY KEY(match_id,addr)
+);
+CREATE TABLE IF NOT EXISTS perpl_fills (
+  tx TEXT, log_index INTEGER, match_id INTEGER, addr TEXT, account_id TEXT, perp_id INTEGER, order_type INTEGER,
+  price REAL, lots TEXT, notional REAL, fee REAL, block INTEGER, ts INTEGER,
+  PRIMARY KEY(tx,log_index)
+);
+CREATE TABLE IF NOT EXISTS collateral_returns (tx TEXT,log_index INTEGER,match_id INTEGER,addr TEXT,amount REAL,PRIMARY KEY(tx,log_index));
 `);
 
 // additive migrations: cosmetic character per profile; lobby details so matchmaking sees a lobby before the indexer does

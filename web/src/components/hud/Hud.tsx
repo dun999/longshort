@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { MARKETS, MODES, MARGIN, explorerTx, fmtPx, fmtUsd, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, MARKETS, MODES, MARGIN, explorerTx, fmtPx, fmtUsd, type MarketSymbol } from '@longshort/shared';
 import Link from 'next/link';
 import type { FeedItem, MatchView } from '@/lib/match';
 import { useScene } from '@/lib/scene';
@@ -131,6 +131,7 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
               realized={m.me?.realized}
               trades={m.trades}
               players={m.players}
+              real={REAL_TRADING && !actions.simulated}
             />
           </div>
           <Positions m={m} />

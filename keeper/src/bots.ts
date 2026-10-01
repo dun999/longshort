@@ -1,6 +1,6 @@
 import { maxUint256, nonceManager, parseEther, parseUnits, type PrivateKeyAccount } from 'viem';
 import { mnemonicToAccount } from 'viem/accounts';
-import { ADDR, MARKETS, MODES, Mode, erc20Abi } from '@longshort/shared';
+import { ADDR, REAL_TRADING, TRADING_BUDGET, MARKETS, MODES, Mode, erc20Abi } from '@longshort/shared';
 import { GAS, arena, chainNow, estimateGas, keeper, log, pub, send, walletFor } from './chain';
 import { db, ensureProfile } from './db';
 import { env } from './env';
@@ -37,11 +37,14 @@ async function fund(b: Bot) {
     await send('fund', () => keeper.sendTransaction({ to: addr, value: parseEther(env.botFundMon), gas: 21_000n }));
   }
   const want = parseUnits(env.botFundStake, 6);
-  if (usd < want / 5n) {
+  if (usd < (REAL_TRADING ? parseUnits(String(TRADING_BUDGET+50),6) : want / 5n)) {
     // real tokens (AUSD) can't be minted: bots are paid from the keeper's own balance
     const have = await pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'balanceOf', args: [keeper.account.address] });
-    if (have >= want)
-      await send('fund', () => keeper.writeContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'transfer', args: [addr, want], gas: GAS.transfer }));
+    if (have >= want) {
+      const estimate=await pub.estimateContractGas({address:ADDR.stake,abi:erc20Abi,functionName:'transfer',args:[addr,want],account:keeper.account.address});
+      const hash=await send('fund', () => keeper.writeContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'transfer', args: [addr, want], gas: estimate*120n/100n }));
+      if(hash) await pub.waitForTransactionReceipt({hash});
+    }
     else log('fund', `keeper holds too little ${ADDR.stakeSymbol ?? 'stake'} to fund ${b.name}; send some to ${keeper.account.address}`);
   }
   if (allowance < parseUnits('1000000', 6)) {
@@ -54,7 +57,7 @@ async function fund(b: Bot) {
 
 /** Bots currently seated in an OPEN or LIVE match. */
 function busyBots() {
-  const rows = db.prepare('SELECT p.addr FROM players p JOIN matches m ON m.id = p.match_id WHERE m.state IN (0, 1)').all() as { addr: string }[];
+  const rows = db.prepare('SELECT p.addr FROM players p JOIN matches m ON m.id = p.match_id WHERE m.state IN (0, 1, 4)').all() as { addr: string }[];
   return new Set(rows.map((r) => r.addr));
 }
 // Seats claimed by txs the indexer hasn't seen yet (expire after a few seconds).
@@ -72,7 +75,7 @@ const claim = (b: Bot, matchId?: number) => {
   const n = cur && cur.until > Date.now() ? cur.n + 1 : 1;
   pendingSeats.set(matchId, { n, until: Date.now() + 6000 });
 };
-const LEVS = [10, 25, 50] as const;
+const LEVS = REAL_TRADING ? [5] as const : [10, 25, 50] as const;
 const RESERVE = 6; // bots kept free so a human never waits on a full fleet
 
 export async function fillLobbies(now: number) {
@@ -98,6 +101,7 @@ export async function fillLobbies(now: number) {
         const b = freeBots().find((b) => b.account.address.toLowerCase() === p.addr);
         if (!b) continue;
         const args = [BigInt(m.id), p.team, p.leverage, '0x0000000000000000000000000000000000000000'] as const;
+        if(REAL_TRADING) await fund(b);
         const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
         if (!ok) continue;
         const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -121,6 +125,7 @@ export async function fillLobbies(now: number) {
       teamCount[team]++;
       claim(b, m.id);
       const args = [BigInt(m.id), team, pick(LEVS), '0x0000000000000000000000000000000000000000'] as const;
+      if(REAL_TRADING) await fund(b);
       const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
       if (!ok) continue;
       const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -132,6 +137,7 @@ export async function fillLobbies(now: number) {
 
 let lastAmbient = 0;
 async function ambient(now: number) {
+  if (REAL_TRADING) return;
   if (!env.ambientEvery || now - lastAmbient < env.ambientEvery) return; // 0 = bots only fill human lobbies
   const openCount = (db.prepare('SELECT COUNT(*) c FROM matches WHERE state = 0').get() as { c: number }).c;
   const liveCount = (db.prepare('SELECT COUNT(*) c FROM matches WHERE state = 1').get() as { c: number }).c;
@@ -181,22 +187,22 @@ async function trade(now: number) {
       const key = `${m.id}:${p.addr}`;
       let brain = brains.get(key);
       if (!brain) {
-        brain = { nextAt: m.start_at + rand(1, 6), market: Math.floor(Math.random() * 3), holdUntil: 0 };
+        brain = { nextAt: m.start_at + rand(1, 6), market: REAL_TRADING ? 0 : Math.floor(Math.random() * 3), holdUntil: 0 };
         brains.set(key, brain);
       }
       if (now < brain.nextAt) continue;
       brain.nextAt = now + rand(3, 9);
       if (p.hasPos && now < brain.holdUntil) continue;
       if (p.hasPos && Math.random() < 0.45) {
-        const gas = await estimateGas('close', { ...arena, functionName: 'close', args: [BigInt(m.id)], account: b.account }, true);
+        const gas = await estimateGas('close', { ...arena, functionName: 'close', args: [BigInt(m.id)], account: b.account }, !REAL_TRADING);
         await send(b.name, () => b.wallet.writeContract({ ...arena, functionName: 'close', args: [BigInt(m.id)], gas }));
         continue;
       }
-      if (Math.random() < 0.25) brain.market = Math.floor(Math.random() * 3);
+      if (!REAL_TRADING && Math.random() < 0.25) brain.market = Math.floor(Math.random() * 3);
       const size = b.strat === 'degen' ? 10_000 : pick([2_500, 5_000, 7_500]);
       brain.holdUntil = now + rand(5, 18);
       const args = [BigInt(m.id), brain!.market, direction(b.strat, brain!.market), size] as const;
-      const gas = (await estimateGas('open', { ...arena, functionName: 'open', args, account: b.account }, true)) + 40_000n; // + flip headroom
+      const gas = (await estimateGas('open', { ...arena, functionName: 'open', args, account: b.account }, !REAL_TRADING)) + 40_000n;
       await send(b.name, () => b.wallet.writeContract({ ...arena, functionName: 'open', args, gas }));
     }
   }

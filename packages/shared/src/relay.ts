@@ -17,7 +17,7 @@ export const relayTypes = {
   ],
 } as const;
 
-const ARENA_FNS = new Set(['createMatch', 'joinMatch', 'leave', 'open', 'close', 'setClass']);
+const ARENA_FNS = new Set(['createMatch', 'joinMatch', 'leave', 'open', 'close', 'setClass', 'recover']);
 
 export const relayLive = (addr?: string | null): addr is Address =>
   !!addr && addr !== '0x0000000000000000000000000000000000000000';

@@ -6,6 +6,7 @@ import { tr, type Key } from './i18n';
  * error still goes to the console for debugging; the UI never shows a revert string or an RPC dump.
  */
 const RULES: [RegExp, Key | null][] = [
+  [/^AUSD |^Claim |^This is the funding|^You need |^The app is updating|^Live Perpl/, null],
   [/^Rematch|^Enable bot matching|^Lobby options|^Invalid lobby|^Invalid rematch/, null],
   [/user rejected|user denied|rejected the request|request rejected/i, 'err.cancelled'],
   [/passkey/i, null], // our own passkey messages are already written for players
@@ -18,7 +19,9 @@ const RULES: [RegExp, Key | null][] = [
   [/NotLive/, 'err.notLive'],
   [/PlayerOut/, 'err.out'],
   [/NoPosition/, 'err.noPos'],
-  [/BadPrice/, 'err.price'],
+  [/BadPrice|MarkPriceAgeExceedsMax|0x7d19aaec/, 'err.price'],
+  [/BadExecution/, 'live.notFilled'],
+  [/NotFlat/, 'live.notClosed'],
   [/TooEarly/, 'err.early'],
   [/No trading key registered/i, 'err.device'],
   [/relay dry|relay not configured|relay off/i, 'err.relay'],

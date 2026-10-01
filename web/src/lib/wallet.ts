@@ -14,7 +14,7 @@ import {
   type WalletClient,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { ADDR, OWNER_GAS_LOW, activeChain, erc20Abi, relayLive } from '@longshort/shared';
+import { ADDR, REAL_TRADING, OWNER_GAS_LOW, activeChain, erc20Abi, relayLive } from '@longshort/shared';
 import { publicClient, GAS } from './clients';
 import { RPC_URL } from './config';
 import { api } from './api';
@@ -73,6 +73,11 @@ interface WalletState {
   sessionAddress?: `0x${string}`;
   /** Passkey accounts: keys are derived on unlock and wiped on lock. */
   locked: boolean;
+  claimOpen: boolean;
+  claimBusy: boolean;
+  claim?: { status: string; amount: string; before?: string; after?: string; balance: string; tx?: Hash; eligible?: boolean };
+  claimError?: string;
+  checkClaim: () => Promise<void>;
   connectInjected: () => Promise<void>;
   connectPasskey: (opts?: { create?: boolean; username?: string }) => Promise<void>;
   /** Prompts the passkey (from a user click) if the keyring is locked. */
@@ -136,6 +141,8 @@ export const useWallet = create<WalletState>((set, get) => ({
   allowance: 0n,
   sessionMon: 0n,
   locked: false,
+  claimOpen: false,
+  claimBusy: false,
 
   async connectPasskey(opts = {}) {
     set({ connecting: true, error: undefined });
@@ -145,8 +152,11 @@ export const useWallet = create<WalletState>((set, get) => ({
       store.set(LS.kind, 'passkey');
       store.set(LS.passkeyAddr, owner.address);
       await get().refresh();
-      if (needsFunds()) await get().faucet();
-      await get().ensureAllowance();
+      if (REAL_TRADING) await get().checkClaim();
+      else {
+        if (needsFunds()) await get().faucet();
+        await get().ensureAllowance();
+      }
     } catch (e) {
       set({ error: friendly(e) });
     } finally {
@@ -184,6 +194,7 @@ export const useWallet = create<WalletState>((set, get) => ({
       set({ address, kind: 'injected', main, trader: localClient(session), sessionAddress: session.address });
       store.set(LS.kind, 'injected');
       await get().refresh();
+      if (REAL_TRADING) await get().checkClaim();
     } catch (e) {
       set({ error: friendly(e) });
     } finally {
@@ -199,8 +210,11 @@ export const useWallet = create<WalletState>((set, get) => ({
     store.set(LS.kind, 'guest');
     try {
       await get().refresh();
-      if (needsFunds()) await get().faucet();
-      await get().ensureAllowance();
+      if (REAL_TRADING) await get().checkClaim();
+      else {
+        if (needsFunds()) await get().faucet();
+        await get().ensureAllowance();
+      }
     } catch (e) {
       set({ error: friendly(e) });
     } finally {
@@ -211,7 +225,7 @@ export const useWallet = create<WalletState>((set, get) => ({
   disconnect() {
     if (get().kind === 'passkey') mera.lock();
     store.set(LS.kind, null);
-    set({ address: undefined, kind: undefined, main: undefined, trader: undefined, sessionAddress: undefined, locked: false });
+    set({ address: undefined, kind: undefined, main: undefined, trader: undefined, sessionAddress: undefined, locked: false, usd: 0n, mon: 0n, allowance: 0n, claim: undefined, claimOpen: false, claimError: undefined });
   },
 
   async restore() {
@@ -223,6 +237,7 @@ export const useWallet = create<WalletState>((set, get) => ({
       if (addr) {
         set({ address: addr, kind: 'passkey', locked: !mera.isUnlocked() });
         await get().refresh();
+        if (REAL_TRADING) await get().checkClaim();
       }
       return;
     }
@@ -241,12 +256,46 @@ export const useWallet = create<WalletState>((set, get) => ({
       publicClient.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'allowance', args: [address, ADDR.arena] }),
       sessionAddress ? publicClient.getBalance({ address: sessionAddress }) : Promise.resolve(0n),
     ]);
-    set({ mon, usd, allowance, sessionMon });
+    if (get().address === address) set({ mon, usd, allowance, sessionMon });
+  },
+
+  async checkClaim() {
+    const { address } = get();
+    if (!REAL_TRADING || !address) return;
+    try {
+      const claim = await api<NonNullable<WalletState['claim']>>(`/faucet/${address}`);
+      if (get().address !== address) return;
+      set({ claim, claimOpen: claim.eligible === true || claim.status === 'pending', claimError: undefined });
+    } catch (e) {
+      if (get().address === address) set({ claimError: friendly(e), claimOpen: get().usd === 0n });
+    }
   },
 
   async faucet() {
     const { address } = get();
     if (!address) return;
+    if (REAL_TRADING) {
+      if (get().claimBusy) return;
+      set({ claimBusy: true, claimError: undefined, claimOpen: true });
+      try {
+        const health = await api<any>('/health');
+        if (!health.realTrading || health.chainId!==ADDR.chainId || health.arena?.toLowerCase()!==ADDR.arena.toLowerCase()) throw new Error('The app is updating. Reload before claiming.');
+        const { authed } = await import('./auth');
+        const result = await authed<NonNullable<WalletState['claim']>>('/faucet', {});
+        if (get().address !== address) return;
+        set({ claim: result, usd: BigInt(result.balance) });
+        await get().refresh();
+      } catch (e) {
+        if (get().address === address) {
+          const claim = await api<NonNullable<WalletState['claim']>>(`/faucet/${address}`).catch(() => undefined);
+          if (get().address === address) set({ ...(claim ? {claim} : {}), claimError: friendly(e) });
+        }
+        throw e;
+      } finally {
+        set({ claimBusy: false });
+      }
+      return;
+    }
     const r = await api<{ note?: string }>('/faucet', { addr: address });
     if (r.note) useSocket.setState({ toast: r.note });
     await get().refresh();

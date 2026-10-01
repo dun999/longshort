@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
+import { MARGIN } from '@longshort/shared';
 
 const DONE = 'ls.guide.v1';
 export const guideSeen = () => {
@@ -47,7 +48,7 @@ function ArtBox({ art }: { art: Art }) {
   if (art === 'intro')
     return (
       <div className="gd-art">
-        <div className="gd-big num">$1,000</div>
+        <div className="gd-big num">${MARGIN.toLocaleString('en-US')}</div>
         <div className="gd-tickers num">
           <span>BTC</span>
           <span>ETH</span>

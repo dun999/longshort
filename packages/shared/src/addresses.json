@@ -1,11 +1,17 @@
 {
-  "arena": "0x0eD849346BDE6C70071F20780150A75678651871",
+  "arena": "0xbD4F69440C3c5cb84769d74c595E33ca6044a414",
   "chainId": 10143,
-  "deployBlock": 66188338,
-  "mockOracle": "0x9e2EFCC0B47B264dE6553F6Aaa5dA6D204E52131",
+  "deployBlock": 67316319,
+  "mockOracle": "0x0f0e769C29E54f1A3D81a55CD0bfdeb2f7D0D665",
   "mockOracleActive": false,
   "perplExchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
   "perplOracle": "0xc6C58E0B3360F293Caf646A78EB189B03C8d851d",
-  "stake": "0xA97283F88Fe38E861F48D6D128d8D01A18994d76",
-  "relayDelegate": "0xd908f5dE46F2A20cA7bCa397be704145072CB5B8"
+  "stake": "0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC",
+  "stakeSymbol": "AUSD",
+  "relayDelegate": "0x1AA7e27cc492547F9578dD83039F3Da0Ff2019b7",
+  "realTrading": true,
+  "tradingBudget": 100,
+  "previousRelayDelegates": [
+    "0xd908f5dE46F2A20cA7bCa397be704145072CB5B8"
+  ]
 }

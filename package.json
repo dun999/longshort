@@ -15,8 +15,11 @@
     "keeper": "npm -w keeper run start",
     "web": "npm -w web run dev",
     "use:local": "cp packages/shared/src/addresses.local.json packages/shared/src/addresses.json",
-    "use:testnet": "cp packages/shared/src/addresses.testnet.json packages/shared/src/addresses.json",
-    "keeper:testnet": "ENV_FILE=.env.testnet npm -w keeper run start",
+    "use:testnet": "cp packages/shared/src/addresses.testnet-perpl.json packages/shared/src/addresses.json",
+    "use:testnet-virtual": "cp packages/shared/src/addresses.testnet.json packages/shared/src/addresses.json",
+    "keeper:testnet": "ENV_FILE=.env.ausd npm -w keeper run start",
+    "keeper:ausd": "ENV_FILE=.env.ausd npm -w keeper run start",
+    "use:testnet-perpl": "cp packages/shared/src/addresses.testnet-perpl.json packages/shared/src/addresses.json",
     "use:testnet-ausd": "cp packages/shared/src/addresses.testnet-ausd.json packages/shared/src/addresses.json"
   }
 }

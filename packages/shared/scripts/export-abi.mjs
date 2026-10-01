@@ -8,7 +8,13 @@ const pick = (file, name) =>
   JSON.parse(readFileSync(join(root, 'contracts/out', file, `${name}.json`), 'utf8')).abi;
 
 const abis = {
-  arenaAbi: pick('ArenaCore.sol', 'ArenaCore'),
+  // Keep the existing tuple types while adding the real arena's account, recovery and lifecycle events.
+  arenaAbi: [...new Map([...pick('ArenaCore.sol', 'ArenaCore'), ...pick('PerplArena.sol', 'PerplArena')]
+    .map((a) => [`${a.type}:${a.name ?? ''}:${(a.inputs ?? []).map((i) => i.type).join(',')}`, a])).values()],
+  perplArenaAbi: pick('PerplArena.sol', 'PerplArena'),
+  tradingAccountAbi: pick('MatchTradingAccount.sol', 'MatchTradingAccount'),
+  perplTradingAbi: pick('IPerplTrading.sol', 'IPerplTrading'),
+  perplExecutionAbi: JSON.parse(readFileSync(join(root,'contracts/abi/perpl-execution.json'),'utf8')),
   relayDelegateAbi: pick('RelayDelegate.sol', 'RelayDelegate'),
   erc20Abi: pick('TestUSD.sol', 'TestUSD'),
   mockOracleAbi: pick('MockOracle.sol', 'MockOracle'),

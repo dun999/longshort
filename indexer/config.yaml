@@ -21,9 +21,22 @@ contracts:
       - event: Eliminated
       - event: Settled
       - event: Cancelled
+      - event: TradingAccountCreated
+      - event: FinalBalance
+      - event: CollateralReturned
+      - event: Closing
+  - name: Perpl
+    abi_file_path: ./abis/Perpl.json
+    events:
+      - event: OrderRequestV2
+      - event: TakerOrderFilledV2
+  - name: AUSD
+    abi_file_path: ./abis/AUSD.json
+    events:
+      - event: Transfer
 chains:
   - id: 10143 # Monad testnet
-    start_block: 66188338
+    start_block: 67316319
     # HyperSync is used automatically when ENVIO_API_TOKEN is set; the RPC below is the fallback.
     rpc:
       - url: ${ENVIO_RPC_URL:-https://testnet-rpc.monad.xyz}
@@ -31,5 +44,8 @@ chains:
     contracts:
       - name: ArenaCore
         address:
-          - 0x0eD849346BDE6C70071F20780150A75678651871 # tUSD arena (demo)
-          - 0x4f64530B8805543b133A5A2FA706A0239A82c7a1 # AUSD arena
+          - 0xbD4F69440C3c5cb84769d74c595E33ca6044a414 # actual AUSD Perpl arena
+      - name: Perpl
+        address: 0x1964C32f0bE608E7D29302AFF5E61268E72080cc
+      - name: AUSD
+        address: 0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC

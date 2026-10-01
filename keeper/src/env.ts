@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { OWNER_GAS_LOW } from '@longshort/shared';
+import { OWNER_GAS_LOW, REAL_TRADING, activeChain } from '@longshort/shared';
 
 // Tiny .env loader (keeps deps at zero).
 // ENV_FILE=.env.testnet npm start → run the same keeper against another network profile
@@ -9,6 +9,13 @@ if (existsSync(file)) {
     const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
   }
+}
+
+// Dedicated testnet token distributor; never put this key in a NEXT_PUBLIC variable or use it for match settlement.
+const fundingFile = new URL(`../${process.env.FAUCET_ENV_FILE ?? '.env.funder.testnet'}`, import.meta.url);
+if (REAL_TRADING && activeChain.id === 10143 && !process.env.FAUCET_KEY && existsSync(fundingFile)) {
+  const match = readFileSync(fundingFile,'utf8').match(/^FAUCET_KEY=(0x[0-9a-fA-F]{64})\s*$/m);
+  if (match) process.env.FAUCET_KEY = match[1];
 }
 
 const need = (k: string) => {
@@ -43,4 +50,5 @@ export const env = {
   faucetGasLow: process.env.FAUCET_GAS_LOW ?? OWNER_GAS_LOW,
   // Pays player gas. Must be a different key from KEEPER_KEY (nonce clashes).
   relayerKey: (process.env.RELAYER_KEY ?? '') as `0x${string}`,
+  faucetKey: (process.env.FAUCET_KEY ?? '') as `0x${string}`,
 };

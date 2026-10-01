@@ -1,6 +1,6 @@
 'use client';
 import { motion } from 'motion/react';
-import { STAKE } from '@longshort/shared';
+import { REAL_TRADING, STAKE } from '@longshort/shared';
 
 /*
  * "From queue to payout": the four beats of a match, each with a small looping vignette.
@@ -55,10 +55,10 @@ function Payout() {
 }
 
 const STEPS = [
-  { n: '01', t: 'Queue', d: 'Pick a mode and stake. Matchmaking fills the lobby in seconds; a labelled bot takes any seat still empty after 12s.', v: <Radar /> },
-  { n: '02', t: 'Face-off', d: 'Match found. Lock your class (Tank 10x, Scout 25x, Sniper 50x), see who you drew, then the countdown.', v: <FaceOff /> },
+  { n: '01', t: 'Queue', d: REAL_TRADING ? 'Sign in with Mera, claim AUSD, then fund a duel: entry plus a separate 100 AUSD Perpl account.' : 'Pick a mode and stake. Matchmaking fills the lobby in seconds; a labelled bot takes any seat still empty after 12s.', v: <Radar /> },
+  { n: '02', t: 'Face-off', d: REAL_TRADING ? 'Meet your rival. Equal AUSD balances, BTC at 5x, and a countdown before the 60 second round.' : 'Match found. Lock your class (Tank 10x, Scout 25x, Sniper 50x), see who you drew, then the countdown.', v: <FaceOff /> },
   { n: '03', t: 'Fight', d: 'Long, short, close, repeat. Every click is a Monad transaction that confirms before the candle does.', v: <Candles /> },
-  { n: '04', t: 'Payout', d: 'At the bell ArenaCore closes every position at the oracle mark and pays the winners from the pot.', v: <Payout /> },
+  { n: '04', t: 'Payout', d: REAL_TRADING ? 'Close on Perpl. The higher final balance wins the AUSD pot. Your remaining trading capital returns for the next duel.' : 'At the bell ArenaCore closes every position at the oracle mark and pays the winners from the pot.', v: <Payout /> },
 ];
 
 export function MatchFlow() {

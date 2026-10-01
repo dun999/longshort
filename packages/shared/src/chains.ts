@@ -1,6 +1,11 @@
 import { defineChain } from 'viem';
 import { monadTestnet } from 'viem/chains';
-import addresses from './addresses.json' with { type: 'json' };
+import deployment from './addresses.json' with { type: 'json' };
+import localDeployment from './addresses.local.json' with { type: 'json' };
+
+// The existing virtual-arena regression suite uses mocked local contracts, regardless of the active deployment.
+const addresses = typeof process !== 'undefined' && process.env.NODE_ENV === 'test' && process.env.TEST_CHAIN_PROFILE === 'local'
+  ? localDeployment : deployment;
 
 export const anvil = defineChain({
   id: 31337,
@@ -28,9 +33,15 @@ export const ADDR = addresses as {
   stakeSymbol?: string;
   /** EIP-7702 delegate. Absent until that deployment has a sponsor contract. */
   relayDelegate?: `0x${string}`;
+  realTrading?: boolean;
+  tradingBudget?: number;
+  previousRelayDelegates?: `0x${string}`[];
 };
 /** Stake token symbol: AUSD on testnet, tUSD on the local faucet token. */
 export const STAKE = ADDR.stakeSymbol ?? 'tUSD';
+export const REAL_TRADING = ADDR.realTrading === true;
+export const TRADING_BUDGET = REAL_TRADING ? (ADDR.tradingBudget ?? 100) : 0;
+export const knownRelay = (who: string) => ADDR.previousRelayDelegates?.some((a) => a.toLowerCase() === who.toLowerCase()) === true;
 
 // Owners need enough for an approval plus a buffered createMatch transaction.
 // 0.03 MON can fall below the local signer's fee cap for a new lobby on Monad.

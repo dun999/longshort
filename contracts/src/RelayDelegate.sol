@@ -34,6 +34,7 @@ contract RelayDelegate {
     bytes4 private constant OPEN = bytes4(keccak256("open(uint256,uint8,bool,uint16)"));
     bytes4 private constant CLOSE = bytes4(keccak256("close(uint256)"));
     bytes4 private constant SET_CLASS = bytes4(keccak256("setClass(uint256,uint8)"));
+    bytes4 private constant RECOVER = bytes4(keccak256("recover(uint256)"));
 
     uint256 private constant MAX_DATA = 1024;
 
@@ -74,7 +75,7 @@ contract RelayDelegate {
         if (data.length < 4 || data.length > MAX_DATA) return false;
         bytes4 sel = bytes4(data);
         if (target == arena) {
-            return sel == CREATE_MATCH || sel == JOIN_MATCH || sel == LEAVE || sel == OPEN || sel == CLOSE || sel == SET_CLASS;
+            return sel == CREATE_MATCH || sel == JOIN_MATCH || sel == LEAVE || sel == OPEN || sel == CLOSE || sel == SET_CLASS || sel == RECOVER;
         }
         if (target == stake && sel == IERC20.approve.selector && data.length >= 68) {
             (address spender,) = abi.decode(data[4:], (address, uint256));

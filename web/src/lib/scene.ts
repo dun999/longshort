@@ -35,7 +35,7 @@ export const useScene = create<SceneState>((set) => ({
   shake: (color = 'rgba(210,90,85,0.5)') => set({ shakeAt: performance.now(), flash: color }),
 }));
 
-export const CLASS_COLOR: Record<number, string> = { 10: '#6f9fc0', 25: '#b3a27a', 50: '#c46a5e' };
+export const CLASS_COLOR: Record<number, string> = { 5: '#6f9fc0', 10: '#6f9fc0', 25: '#b3a27a', 50: '#c46a5e' };
 export const TEAM_COLOR = ['#6f8fd0', '#cf8a52'];
 export const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;

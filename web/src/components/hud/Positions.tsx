@@ -1,5 +1,5 @@
 'use client';
-import { CLASSES, MARKETS, classOf, fmtPx, fmtUsd, liqPrice, upnl, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, CLASSES, MARKETS, classOf, fmtPx, fmtUsd, liqPrice, upnl, type MarketSymbol } from '@longshort/shared';
 import type { MatchView } from '@/lib/match';
 import { TEAM_COLOR } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -29,7 +29,8 @@ export function Positions({ m }: { m: MatchView }) {
         <tbody>
           {rows.map((p) => {
             const px = p.pos ? m.prices[MARKETS[p.pos.market] as MarketSymbol] : undefined;
-            const u = p.pos && px ? upnl(p.pos, px) : 0;
+            const real = REAL_TRADING && m.id !== 0;
+            const u = real ? p.pnl - p.realized : p.pos && px ? upnl(p.pos, px) : 0;
             return (
               <tr key={p.addr} className={`border-t border-line ${p.isMe ? 'bg-white/[0.03]' : ''} ${p.out ? 'text-dim line-through decoration-dim/40' : ''}`}>
                 <td className="max-w-[140px] truncate px-2 py-1 font-sans font-semibold">
@@ -50,7 +51,7 @@ export function Positions({ m }: { m: MatchView }) {
                     <td className="px-2 py-1 text-right text-muted">{fmtPx(p.pos.entryPx)}</td>
                     <td className="px-2 py-1 text-right">{px ? fmtPx(px) : '…'}</td>
                     <td className={`px-2 py-1 text-right ${u >= 0 ? 'up' : 'down'}`}>{fmtUsd(u, true)}</td>
-                    <td className="px-2 py-1 text-right text-gold/80">{fmtPx(liqPrice(p.realized, p.pos))}</td>
+                    <td className="px-2 py-1 text-right text-gold/80">{real ? 'Perpl' : fmtPx(liqPrice(p.realized, p.pos))}</td>
                   </>
                 ) : (
                   <td colSpan={7} className="px-2 py-1 text-dim">

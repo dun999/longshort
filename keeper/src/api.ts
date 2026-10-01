@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isAddress, parseEther, parseUnits, verifyMessage } from 'viem';
-import { ADDR, erc20Abi, relayLive } from '@longshort/shared';
+import { ADDR, REAL_TRADING, erc20Abi, relayLive } from '@longshort/shared';
 import { MARKETS } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
@@ -15,6 +15,8 @@ import { configureLobby, lobbyOptions, releaseRematch, rematchInvites, reserveRe
 import { signedIn, signIn, tokenOwner } from './auth';
 import { followersOf, matchmake, opened, pendingFor, release } from './queue';
 import { relay } from './relay';
+import { ausdClaims } from './faucet';
+import { recoverCapital } from './recovery';
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 type Handler = (req: IncomingMessage, params: string[], body: any) => unknown | Promise<unknown>;
@@ -30,7 +32,8 @@ function playersOf(matchId: number) {
   });
 }
 
-route('GET', '/health', () => ({ ok: true }));
+route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING }));
+route('GET', '/faucet/:addr', (_r, [addr]) => ausdClaims().status(addr));
 // Caddy's forward_auth asks this before serving the Envio GraphQL; handle() has already checked the gate
 route('GET', '/gate', () => ({ ok: true }));
 
@@ -48,6 +51,7 @@ route('POST', '/lobby-options', async (_r, _p, body) => {
 route('POST', '/rematch', (_r, _p, body) => reserveRematch(body));
 route('POST', '/rematch-release', (_r, _p, body) => releaseRematch(body));
 route('POST', '/auth', (_r, _p, body) => signIn(body));
+route('POST', '/recover', (_r, _p, body) => recoverCapital(Number(body?.id), signedIn(body)));
 route('POST', '/relay', (req, _p, body) => {
   const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
   return relay(body, ip);
@@ -96,11 +100,14 @@ route('GET', '/stats', () => {
   return {
     matches: one('SELECT COUNT(*) FROM matches'),
     settled: one('SELECT COUNT(*) FROM matches WHERE state = 2'),
-    live: one('SELECT COUNT(*) FROM matches WHERE state = 1'),
+    live: one('SELECT COUNT(*) FROM matches WHERE state IN (1,4)'),
     trades: one("SELECT COUNT(*) FROM trades WHERE kind = 'open'"),
     txs: one('SELECT COUNT(*) FROM trades') + one('SELECT COUNT(*) FROM players') + one('SELECT COUNT(*) FROM matches WHERE settle_tx IS NOT NULL'),
-    volume: one("SELECT COALESCE(SUM(notional), 0) FROM trades WHERE kind = 'open'"),
-    humanVolume: one("SELECT COALESCE(SUM(t.notional), 0) FROM trades t JOIN profiles p ON p.addr = t.addr WHERE t.kind = 'open' AND p.bot = 0"),
+    volume: one(REAL_TRADING?"SELECT COALESCE(SUM(notional),0) FROM perpl_fills":"SELECT COALESCE(SUM(notional), 0) FROM trades WHERE kind = 'open'"),
+    humanVolume: one(REAL_TRADING?"SELECT COALESCE(SUM(t.notional),0) FROM perpl_fills t JOIN profiles p ON p.addr=t.addr WHERE p.bot=0":"SELECT COALESCE(SUM(t.notional), 0) FROM trades t JOIN profiles p ON p.addr = t.addr WHERE t.kind = 'open' AND p.bot = 0"),
+    paidOut: one('SELECT COALESCE(SUM(payout),0) FROM players'),
+    rake: one('SELECT COALESCE(SUM(rake),0) FROM matches'),
+    escrow: one('SELECT COALESCE(SUM(m.entry),0) FROM players p JOIN matches m ON m.id=p.match_id WHERE m.state IN (0,1,4)'),
     staked: one('SELECT COALESCE(SUM(m.entry), 0) FROM players pl JOIN matches m ON m.id = pl.match_id'),
     wallets: one('SELECT COUNT(*) FROM profiles WHERE bot = 0'),
     bots: one('SELECT COUNT(*) FROM profiles WHERE bot = 1'),
@@ -143,7 +150,7 @@ route('GET', '/match/:id', (_r, [id]) => {
   const m = db.prepare('SELECT * FROM matches WHERE id = ?').get(Number(id));
   if (!m) return { error: 'not found' };
   const options = lobbyOptions(Number(id));
-  return { match: { ...m, allow_bots: !!options?.allow_bots, rematch_of: options?.rematch_of }, players: playersOf(Number(id)), trades: db.prepare('SELECT * FROM trades WHERE match_id = ? ORDER BY id').all(Number(id)), roster: options?.rematch_of ? roster(options.rematch_of) : undefined };
+  return { match: { ...m, asset:ADDR.stakeSymbol??'tUSD', trading_budget:ADDR.tradingBudget??0, allow_bots: !!options?.allow_bots, rematch_of: options?.rematch_of }, players: playersOf(Number(id)), trades: db.prepare('SELECT * FROM trades WHERE match_id = ? ORDER BY id').all(Number(id)), accounts:db.prepare('SELECT * FROM trading_accounts WHERE match_id=?').all(Number(id)), fills:db.prepare('SELECT * FROM perpl_fills WHERE match_id=? ORDER BY block,log_index').all(Number(id)), roster: options?.rematch_of ? roster(options.rematch_of) : undefined };
 });
 
 route('GET', '/feed', () =>
@@ -173,6 +180,7 @@ route('POST', '/faucet', async (req, _p, body) => {
   const addr = String(body?.addr ?? '').toLowerCase() as `0x${string}`;
   if (!isAddress(addr)) return { error: 'bad address' };
   const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
+  if (REAL_TRADING) return ausdClaims().claim(signedIn(body), ip);
   const now = Date.now();
   // friends often share one network: allow a dozen sign-ups per IP per hour, not one
   const hits = (ipHits.get(ip) ?? []).filter((t) => t > now - 3_600_000);

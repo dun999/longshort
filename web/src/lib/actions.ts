@@ -1,6 +1,6 @@
 'use client';
 import { createWalletClient, encodeFunctionData, http, parseEventLogs, parseUnits, zeroAddress, type Address, type WalletClient } from 'viem';
-import { ADDR, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive } from '@longshort/shared';
+import { ADDR, REAL_TRADING, TRADING_BUDGET, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive } from '@longshort/shared';
 import { arena, GAS, publicClient } from './clients';
 import { RPC_URL } from './config';
 import * as mera from './mera';
@@ -11,7 +11,8 @@ import { useSettings } from './settings';
 import { relayTx, sponsorAccount } from './relay';
 
 const LAST_CLASS = 'ls.class';
-export const lastLeverage = (): 10 | 25 | 50 => {
+export const lastLeverage = (): 5 | 10 | 25 | 50 => {
+  if (REAL_TRADING) return 5;
   try {
     const v = Number(localStorage.getItem(LAST_CLASS));
     if (v === 10 || v === 25 || v === 50) return v;
@@ -41,11 +42,15 @@ const est = (functionName: string, args: readonly unknown[], account: any, value
   publicClient.estimateContractGas({ ...arena, functionName, args, account, value } as any);
 
 async function mainCtx() {
+  if (REAL_TRADING) {
+    const health = await api<any>('/health');
+    if (!health.realTrading || health.chainId!==ADDR.chainId || health.arena?.toLowerCase()!==ADDR.arena.toLowerCase()) throw new Error('The app is updating. Reload before playing.');
+  }
   await useWallet.getState().ensureUnlocked(); // passkey: one biometric prompt if locked
   await signIn(); // a seated player's connection must speak for them (lobby heartbeats, party follow)
   if (relayLive(ADDR.relayDelegate) && useWallet.getState().kind !== 'injected') {
     await useWallet.getState().refresh();
-    if (useWallet.getState().usd === 0n) await useWallet.getState().faucet().catch(() => {});
+    if (!REAL_TRADING && useWallet.getState().usd === 0n) await useWallet.getState().faucet().catch(() => {});
   } else {
     await useWallet.getState().ensureGas(); // passkey/guest: silent refill when nearly dry
   }
@@ -58,7 +63,9 @@ async function mainCtx() {
 async function maybeRelay(client: WalletClient, sponsor: boolean, target: Address, functionName: string, args: readonly unknown[], value = 0n): Promise<TxResult | undefined> {
   if (!sponsor || value !== 0n) return;
   const data = encodeFunctionData({ abi: arenaAbi, functionName, args } as never);
-  return relayTx(sponsorAccount(client.account), target, data);
+  const tx = await relayTx(sponsorAccount(client.account), target, data);
+  if (tx.status !== 'success') throw new Error('Transaction reverted. Refresh the trading balance before retrying.');
+  return tx;
 }
 
 /**
@@ -82,6 +89,9 @@ function sessionArgs(): { session: `0x${string}`; value: bigint; label?: string 
 export async function createMatch(mode: Mode, entry: number, leverage: number, team = 0, rematch?: { source: number; token: string; duration: number; maxPlayers: number }, lease?: string): Promise<{ id: number; tx: TxResult }> {
   const allowBots = useSettings.getState().allowBots;
   const { w, client, account } = await mainCtx();
+  if (REAL_TRADING && mode !== Mode.DUEL) throw new Error('Live Perpl currently supports BTC Duel');
+  if (w.usd < parseUnits(String(entry + TRADING_BUDGET),6)) throw new Error(`You need ${entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
+  if (REAL_TRADING) leverage = 5;
   await w.ensureAllowance();
   const cfg = rematch ?? MODES[mode];
   const { session, value, label } = sessionArgs();
@@ -132,6 +142,8 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   }
   if (!useSettings.getState().allowBots && (info.match.allow_bots || info.players.some((p: any) => p.bot))) throw new Error('Enable bot matching in Settings to join this lobby');
   if (info.match.rematch_of && !info.roster?.some((p: any) => p.addr === w.address?.toLowerCase() && p.team === team)) throw new Error('Rematch is reserved for the previous players and teams');
+  if (w.usd < parseUnits(String(info.match.entry + TRADING_BUDGET),6)) throw new Error(`You need ${info.match.entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
+  if (REAL_TRADING) leverage = 5;
   await w.ensureAllowance();
   const { session, value, label } = sessionArgs();
   const args = [BigInt(id), team, leverage, session] as const;
@@ -247,19 +259,30 @@ export async function tradeOpen(id: number, market: number, isLong: boolean, siz
   const t = await trader(id);
   const args = [BigInt(id), market, isLong, sizeBps] as const;
   const relayed = await maybeRelay(t, relayLive(ADDR.relayDelegate), arena.address, 'open', args);
-  if (relayed) return relayed;
   // a flip also closes the old position, so it is costed separately from a fresh open
-  const gas = await gasFor('open', est('open', args, t.account!), GAS.open);
-  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'open', args, gas: gas + 40_000n }));
+  const gas = relayed ? 0n : await gasFor('open', est('open', args, t.account!), GAS.open, REAL_TRADING);
+  const tx = relayed ?? await timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'open', args, gas: gas + 40_000n }));
+  if (tx.status !== 'success') throw new Error('Perpl order reverted');
+  if (REAL_TRADING) {
+    const receipt = await publicClient.getTransactionReceipt({hash:tx.hash});
+    if (!parseEventLogs({abi:arenaAbi,eventName:'Opened',logs:receipt.logs}).some((e)=>e.args.id===BigInt(id))) throw new Error('Perpl did not fill this order. Refresh your position.');
+  }
+  return tx;
 }
 
 export async function tradeClose(id: number) {
   const t = await trader(id);
   const args = [BigInt(id)] as const;
   const relayed = await maybeRelay(t, relayLive(ADDR.relayDelegate), arena.address, 'close', args);
-  if (relayed) return relayed;
-  const gas = await gasFor('close', est('close', args, t.account!), GAS.close);
-  return timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'close', args, gas }));
+  const gas = relayed ? 0n : await gasFor('close', est('close', args, t.account!), GAS.close, REAL_TRADING);
+  const tx = relayed ?? await timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'close', args, gas }));
+  if (tx.status !== 'success') throw new Error('Perpl close reverted');
+  if (REAL_TRADING) {
+    const players = await publicClient.readContract({...arena,functionName:'getPlayers',args});
+    const me = players.find((p)=>p.addr.toLowerCase()===useWallet.getState().address?.toLowerCase());
+    return {...tx,partial:me?.hasPos===true};
+  }
+  return tx;
 }
 
 export async function setClass(id: number, leverage: number) {

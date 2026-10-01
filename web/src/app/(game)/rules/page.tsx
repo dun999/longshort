@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { ADDR, CLASSES, FEE_BPS, MODES, Mode, RAKE_BPS, explorerAddr, type ClassId, STAKE } from '@longshort/shared';
+import { ADDR, REAL_TRADING, CLASSES, FEE_BPS, MODES, Mode, RAKE_BPS, explorerAddr, type ClassId, STAKE } from '@longshort/shared';
 import { useScene } from '@/lib/scene';
 import { BackButton } from '@/components/ui/BackButton';
 
@@ -13,6 +13,7 @@ const Section = ({ t, children }: { t: string; children: React.ReactNode }) => (
 
 export default function Rules() {
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
+  if (REAL_TRADING) return <LiveRules />;
   return (
     <div className="mx-auto grid grid-cols-[minmax(0,1fr)] max-w-4xl gap-4 px-4 py-8">
       <div className="flex items-end justify-between">
@@ -105,4 +106,33 @@ export default function Rules() {
       </Section>
     </div>
   );
+}
+
+function LiveRules() {
+  return <div className="mx-auto grid max-w-4xl gap-4 px-4 py-8">
+    <div className="flex items-end justify-between"><h1 className="font-display text-4xl font-bold uppercase">Rules &amp; Risks</h1><BackButton /></div>
+    <Section t="Your AUSD balance">
+      <p>Sign in with Mera and claim <b>200 testnet AUSD</b> once per wallet. The claim is an actual AUSD transfer and appears after its transaction confirms.</p>
+      <p>A 5 AUSD duel transfers <b>5 AUSD to the prize pot and 100 AUSD to your isolated Perpl trading account</b>. Your wallet therefore decreases by 105 AUSD when you join. The trading balance belongs to you and is separate from the prize.</p>
+      <p><b>You can lose your entry and some or all of the trading balance.</b> No other wallet funds collateralize the account. The testnet tokens have no monetary value.</p>
+    </Section>
+    <Section t="BTC Duel">
+      <p>Two players start with equal 100 AUSD trading balances. After a 15 second countdown, trade BTC for 60 seconds at 5x leverage. Long and Short submit real Perpl orders; Close reduces the actual position.</p>
+      <p>Opening orders use fill-or-kill and immediate-or-cancel with a 1% price limit relative to the current mark. A rejected order does not change the position. Closing orders are reduce-only and can fill partially; the game keeps retrying the remainder.</p>
+      <p>Perpl&apos;s actual fees, funding, order-book fills and liquidations affect the balance. Displayed order sizes are estimates. Practice uses virtual positions and has no stake.</p>
+    </Section>
+    <Section t="Settlement and recovery">
+      <p>The round enters <b>Closing</b> at the bell. No new exposure is allowed. The pot is paid only once both accounts have no positions or locked orders.</p>
+      <p>The higher final Perpl balance wins. A 10 AUSD pot pays 9.75 AUSD to the winner and 0.25 AUSD to the treasury. Equal final balances refund both entries with no rake.</p>
+      <p>Your remaining trading collateral returns to your wallet separately from the prize. If a withdrawal is temporarily unavailable, use Recover funds from the result or report. Withdrawals always go to the original wallet owner.</p>
+      <p>Leaving an unfilled lobby returns entry and trading collateral. Unfilled lobbies expire after 5 minutes. If closing stays unavailable for 5 minutes after the bell, anyone can cancel the contest and refund the entries. Actual trading losses are not reversed; remaining collateral can be recovered when Perpl permits closing and withdrawal.</p>
+    </Section>
+    <Section t="Passkeys and contracts">
+      <p>Mera derives an owner wallet from your passkey and a separate trading key for each match. The trading key can trade during the round; it cannot redirect collateral or spend the prize pot. The sponsor pays network fees for passkey and guest accounts.</p>
+      <p>Arena: <a className="link break-all" href={explorerAddr(ADDR.arena)}>{ADDR.arena}</a></p>
+      <p>AUSD: <a className="link break-all" href={explorerAddr(ADDR.stake)}>{ADDR.stake}</a></p>
+      <p>Perpl: <a className="link break-all" href={explorerAddr(ADDR.perplExchange)}>{ADDR.perplExchange}</a></p>
+      <p>Testnet software. Contracts are unaudited. Guest wallets are stored in this browser and are lost if you clear its data.</p>
+    </Section>
+  </div>;
 }
