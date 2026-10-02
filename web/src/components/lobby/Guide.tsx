@@ -5,12 +5,12 @@
  * centred card with a small illustration. Opens once on the first visit to /play, then from the
  * "How to play" link (or /play?guide=1).
  */
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
-import { MARGIN } from '@longshort/shared';
+import { MARGIN, STAKE } from '@longshort/shared';
 
 const DONE = 'ls.guide.v1';
 export const guideSeen = () => {
@@ -68,7 +68,7 @@ function ArtBox({ art }: { art: Art }) {
   return (
     <div className="gd-art">
       <div className="gd-victory">{t('rs.victory')}</div>
-      <div className="num text-[13px] text-gold">{t('gd.paid')}</div>
+      <div className="num text-[13px] text-gold">{t('gd.paid', { stake: STAKE })}</div>
     </div>
   );
 }
@@ -82,6 +82,8 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
   const [box, setBox] = useState<Box | null>(null);
   const [vw, setVw] = useState(0);
   const [vh, setVh] = useState(0);
+  const card = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(360);
   const step = STEPS[i];
   const last = i === STEPS.length - 1;
 
@@ -125,12 +127,13 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
 
   // card beside the spotlight: below it when there's room, otherwise above; centred when nothing is highlighted.
   // (positioned by a wrapper: the card's own transform belongs to its entrance animation)
-  const W = Math.min(380, vw - 24);
-  const H = step?.art ? 360 : 260;
+  const W = Math.min(380, Math.max(0, vw - 24));
+  const H = Math.min(cardHeight, vh - 24);
   let pos: React.CSSProperties | undefined;
   if (box) {
     const left = Math.min(Math.max(12, box.x + box.w / 2 - W / 2), vw - W - 12);
-    pos = box.y + box.h + 12 + H < vh ? { left, top: box.y + box.h + 12 } : { left, bottom: Math.max(12, vh - box.y + 12) };
+    if (box.y + box.h + 12 + H <= vh - 12) pos = { left, top: box.y + box.h + 12 };
+    else if (box.y - 12 - H >= 12) pos = { left, bottom: vh - box.y + 12 };
   }
 
   return (
@@ -142,9 +145,9 @@ export function Guide({ open, onClose }: { open: boolean; onClose: () => void })
           ) : (
             <div className="gd-dim" />
           )}
-          <div className={box ? 'gd-pos' : 'gd-center'} style={pos}>
+          <div className={pos ? 'gd-pos' : 'gd-center'} style={pos}>
           <AnimatePresence mode="wait">
-            <motion.div key={i} className="gd-card" style={{ width: W }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+            <motion.div key={i} ref={card} className="gd-card" style={{ width: W }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }} onAnimationComplete={() => setCardHeight(card.current?.offsetHeight ?? 360)}>
               <div className="gd-head">
                 <span className="gd-count">
                   {String(i + 1).padStart(2, '0')}

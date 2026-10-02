@@ -59,7 +59,7 @@ export default function Stats() {
   const staked = e?.staked ?? s?.escrow ?? 0;
 
   return (
-    <div className="mx-auto grid grid-cols-[minmax(0,1fr)] max-w-6xl gap-4 px-4 py-8">
+    <div className="stats-page mx-auto grid grid-cols-[minmax(0,1fr)] max-w-6xl gap-4 px-4 py-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -92,7 +92,7 @@ export default function Stats() {
           >
             <div className="pr-[var(--n-tr-w)] text-[10px] font-semibold tracking-[0.16em] text-black/55 uppercase">Matches settled onchain</div>
             <div className="grid place-items-center py-6 text-center">
-              <div className="num text-7xl leading-none font-bold sm:text-8xl">{(e?.settled ?? s.settled).toLocaleString()}</div>
+              <div className="stats-count num text-7xl leading-none font-bold sm:text-8xl">{(e?.settled ?? s.settled).toLocaleString()}</div>
               <div className="mt-2 text-xs text-black/60">every one paid out by the contract, no operator in the loop</div>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:ml-[var(--n-bl-w)] sm:grid-cols-3 max-sm:mb-[var(--n-bl-h)]">
@@ -134,15 +134,15 @@ export default function Stats() {
               <Stat tone="dark" k="Matches created" v={e?.matches ?? s.matches} sub={`${s.txs.toLocaleString()} onchain txs in total`} />
             </div>
             <div className="grid place-items-center py-6 text-center">
-              <div className="num text-6xl leading-none font-bold text-gold sm:text-7xl">
+              <div className="stats-total num text-6xl leading-none font-bold text-gold sm:text-7xl">
                 {amt(staked + (e?.paidOut ?? 0) + (e?.rake ?? 0))}
-                <span className="ml-2 text-3xl">{STAKE}</span>
+                <span className="stats-unit ml-2 text-3xl">{STAKE}</span>
               </div>
               <div className="mt-2 text-xs text-dim">
                 staked into the arena · {amt(staked)} {STAKE} in escrow right now
               </div>
             </div>
-            <div className="pr-[var(--n-br-w)] text-[11px] text-dim max-sm:mb-[var(--n-br-h)]">
+            <div className="notch-footer pr-[var(--n-br-w)] text-[11px] text-dim max-sm:mb-[var(--n-br-h)]">
               Contract{' '}
               <a className="link num" href={explorerAddr(ADDR.arena)} target="_blank" rel="noreferrer">
                 {ADDR.arena.slice(0, 10)}…

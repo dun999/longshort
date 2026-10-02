@@ -35,7 +35,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
 
   const xp = p?.xp ?? 1000;
   return (
-    <div className="mx-auto grid grid-cols-[minmax(0,1fr)] max-w-5xl gap-4 px-4 py-6">
+    <div className="profile-page mx-auto grid grid-cols-[minmax(0,1fr)] max-w-5xl gap-4 px-4 py-6">
       <div className="flex items-end justify-between">
         <div>
           <div className="panel-title">{mine ? 'Your profile' : 'Player profile'}</div>
@@ -43,20 +43,21 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
         </div>
         <BackButton />
       </div>
-      <div className="panel flex flex-wrap items-center gap-6 p-5">
-        <div className="relative">
+      <div className="profile-card panel flex flex-wrap items-center gap-6 p-5">
+        <div className="profile-avatar relative">
           <PlayerMark addr={addr} size={72} />
           <span className="hex absolute -right-2 -bottom-2 scale-125" title={`Level ${level(xp)}`}>
             {level(xp)}
           </span>
         </div>
-        <div className="min-w-[220px] flex-1">
-          <div className="font-display text-3xl font-bold tracking-wide">
+        <div className="profile-identity min-w-0 flex-1 sm:min-w-[220px]">
+          <div className="profile-name font-display text-3xl font-bold tracking-wide">
             {p?.name ?? shortAddr(addr)} {p?.bot ? <span className="text-sm text-dim">BOT</span> : null}
           </div>
-          <a href={explorerAddr(addr)} target="_blank" rel="noreferrer" className="num link text-xs">
-            {addr}
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={explorerAddr(addr)} target="_blank" rel="noreferrer" className="num link text-xs" title={addr}>{shortAddr(addr)} ↗</a>
+            <button className="profile-copy chip justify-center" aria-label="Copy address" title="Copy address" onClick={() => void navigator.clipboard?.writeText(addr)}>⧉</button>
+          </div>
           <div className="bar mt-2 max-w-xs">
             <i style={{ width: `${levelProgress(xp) * 100}%` }} />
           </div>
@@ -64,6 +65,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
             {xp} XP · rank #{data?.rank ?? '–'}
           </div>
         </div>
+        <div className="profile-metrics">
         {[
           ['Matches', p?.matches ?? 0],
           ['Wins', p?.wins ?? 0],
@@ -75,6 +77,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
             <div className="num text-xl font-bold">{v}</div>
           </div>
         ))}
+        </div>
       </div>
       {mine && (
         <div className="panel flex flex-wrap items-center gap-3 p-4">
@@ -89,16 +92,18 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
           </button>
         </div>
       )}
-      <div className="panel overflow-x-auto p-2">
+      <div className="panel min-w-0 p-2">
         <div className="flex items-center gap-2 px-3 py-2">
           <span className="panel-title">Match history · verified onchain</span>
           <EnvioBadge source={ix?.source} />
         </div>
+        <p className="table-scroll-cue px-3 pb-2">Swipe to see all match details →</p>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <tbody>
             {(ix?.matches ?? data?.matches ?? []).map((m: any) => (
               <tr key={m.id} className="border-t border-line">
-                <td className="px-3 py-2">
+                <td className="history-id px-3 py-2">
                   <Link href={m.state === 2 ? `/match/${m.id}/report` : `/match/${m.id}`} className="hover:text-violet">
                     #{m.id}
                   </Link>
@@ -120,6 +125,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
             ))}
           </tbody>
         </table>
+        </div>
         {!(ix?.matches ?? data?.matches)?.length && <div className="p-6 text-center text-sm text-muted">No matches yet.</div>}
       </div>
     </div>

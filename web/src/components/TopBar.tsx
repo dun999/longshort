@@ -15,6 +15,7 @@ import { PlayerMark } from './PlayerMark';
 import { SettingsDialog } from './Settings';
 import { describeKeys } from '@/lib/mera';
 import { friendly } from '@/lib/errors';
+import { useSocket } from '@/lib/socket';
 
 const NAV: { href: string; label: Key }[] = [
   { href: '/play', label: 'nav.play' },
@@ -37,12 +38,13 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
-export function TopBar() {
+export function TopBar({ onInvites }: { onInvites: () => void }) {
   const t = useT();
   const path = usePathname();
   const { address, kind, usd, mon, refresh } = useWallet();
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState(false);
+  const inviteCount = useSocket((s) => s.invites.length + s.rematchInvites.length);
   const { data: prof } = useApi<any>(address ? `/profile/${address}` : null, 10_000);
   useEffect(() => {
     if (!address) return;
@@ -53,9 +55,9 @@ export function TopBar() {
   if (path === '/') return null; // the title screen is full-bleed
 
   return (
-    <header className="relative z-20 flex h-12 items-center gap-5 border-b border-line bg-[rgba(12,13,16,0.9)] px-4 backdrop-blur-md">
+    <header className="topbar relative z-40 flex items-center gap-5 border-b border-line bg-[rgba(12,13,16,0.9)] px-4 backdrop-blur-md">
       <Logo />
-      <nav className="hidden items-center gap-1 md:flex">
+      <nav className="hidden items-center gap-1 lg:flex">
         {NAV.map((n) => {
           const on = path.startsWith(n.href);
           return (
@@ -70,14 +72,15 @@ export function TopBar() {
             </Link>
           );
         })}
+        {inviteCount > 0 && <button className="gbtn ghost sm" onClick={onInvites}>{t('invite.count', { n: inviteCount })}</button>}
       </nav>
-      <div className="ml-auto flex items-center gap-3">
+      <div className="topbar-actions ml-auto flex min-w-0 shrink-0 items-center gap-3">
         {address ? (
           <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} onSettings={() => setSettings(true)} />
         ) : (
           <>
             {/* signed out there's no account menu: a gear opens settings (phones use the menu) */}
-            <button className="chip hidden h-8 w-8 justify-center !p-0 md:inline-flex" onClick={() => (sfx.click(), setSettings(true))} aria-label={t('set.title')} title={t('set.title')}>
+            <button className="desktop-settings chip h-8 w-8 justify-center !p-0" onClick={() => (sfx.click(), setSettings(true))} aria-label={t('set.title')} title={t('set.title')}>
               <SettingsIcon />
             </button>
             <button className="gbtn sm whitespace-nowrap" onClick={() => (sfx.click(), setOpen(true))}>
@@ -85,7 +88,7 @@ export function TopBar() {
             </button>
           </>
         )}
-        <MobileNav path={path} onSettings={() => setSettings(true)} />
+        <MobileNav path={path} onSettings={() => setSettings(true)} onInvites={onInvites} inviteCount={inviteCount} />
       </div>
       <ConnectDialog open={open} onClose={() => setOpen(false)} />
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />
@@ -128,16 +131,17 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
         onClick={() => (sfx.click(), setOpen((o) => !o))}
         onMouseEnter={sfx.hover}
         aria-expanded={open}
+        aria-label={`${name} · ${stake.toFixed(2)} ${STAKE}`}
         title={name}
-        className={`flex h-9 items-center gap-2.5 border px-2 transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line bg-white/[0.02] hover:border-[var(--line-hi)]'}`}
+        className={`player-chip flex h-9 items-center gap-2.5 border px-2 transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line bg-white/[0.02] hover:border-[var(--line-hi)]'}`}
       >
         <span className="relative">
           <PlayerMark addr={address} size={26} />
           <span className="hex absolute -right-2 -bottom-1.5 scale-[0.8]">{lvl}</span>
         </span>
-        <span className="ml-1 hidden max-w-[120px] truncate text-[12px] font-semibold sm:block">{name}</span>
+        <span className="ml-1 hidden max-w-[120px] truncate text-[12px] font-semibold lg:block">{name}</span>
         <span className="num text-[11px] text-muted" aria-live="polite">
-          {stake.toFixed(2)} {STAKE}
+          {stake.toFixed(2)} <span className="balance-unit">{STAKE}</span>
         </span>
         <span className="text-[10px] text-dim">{open ? '▴' : '▾'}</span>
       </button>
@@ -148,7 +152,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
-            className="panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-72 gap-3 overflow-y-auto p-3"
+            className="account-popover panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-72 gap-3 overflow-y-auto p-3"
             style={{ background: 'var(--panel-solid)' }}
           >
             <div className="flex items-center gap-2.5">
@@ -254,22 +258,23 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
 }
 
 /** Phones: the nav links live behind a menu button (the inline nav needs tablet width). */
-function MobileNav({ path, onSettings }: { path: string; onSettings: () => void }) {
+function MobileNav({ path, onSettings, onInvites, inviteCount }: { path: string; onSettings: () => void; onInvites: () => void; inviteCount: number }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   useEffect(() => setOpen(false), [path]);
   return (
-    <div ref={ref} className="relative md:hidden">
+    <div ref={ref} className="relative lg:hidden">
       <button
         aria-label="Menu"
         aria-expanded={open}
         onClick={() => (sfx.click(), setOpen((o) => !o))}
-        className={`grid h-[40px] w-[44px] place-items-center border transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line'}`}
+        className={`relative grid h-[44px] w-[44px] place-items-center border transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line'}`}
       >
         <svg viewBox="0 0 18 14" width="18" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
           {open ? <path d="M3 1l12 12M15 1L3 13" /> : <path d="M1 1h16M1 7h16M1 13h10" />}
         </svg>
+        {inviteCount > 0 && <span className="invite-badge num" aria-label={t('invite.count', { n: inviteCount })}>{inviteCount > 9 ? '9+' : inviteCount}</span>}
       </button>
       <AnimatePresence>
         {open && (
@@ -278,7 +283,7 @@ function MobileNav({ path, onSettings }: { path: string; onSettings: () => void 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
-            className="panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-64 overflow-y-auto p-1.5"
+            className="mobile-nav panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-64 overflow-y-auto p-1.5"
             style={{ background: 'var(--panel-solid)' }}
           >
             {NAV.map((n) => {
@@ -293,6 +298,7 @@ function MobileNav({ path, onSettings }: { path: string; onSettings: () => void 
             <Link href="/play?guide=1" className="mnav-link">
               {t('nav.howto')}
             </Link>
+            {inviteCount > 0 && <button className="mnav-link w-full" onClick={() => (setOpen(false), onInvites())}>{t('invite.count', { n: inviteCount })} →</button>}
             <button className="mnav-link w-full" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
               {t('set.title')}
               <SettingsIcon />

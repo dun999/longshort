@@ -29,7 +29,7 @@ export default function Leaderboard() {
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
 
   return (
-    <div className="mx-auto grid grid-cols-[minmax(0,1fr)] max-w-5xl gap-4 px-4 py-8">
+    <div className="ranks-page mx-auto grid grid-cols-[minmax(0,1fr)] max-w-5xl gap-4 px-4 py-8">
       <div className="flex items-end justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export default function Leaderboard() {
               <div className="flex flex-wrap items-center justify-center gap-5 py-6">
                 <PlayerMark addr={leader.addr} size={88} />
                 <div className="min-w-0 text-center sm:text-left">
-                  <Link href={`/profile/${leader.addr}`} className={`font-display block truncate text-4xl font-bold tracking-wide hover:underline sm:text-5xl ${leader.name ? 'uppercase' : ''}`}>
+                  <Link href={`/profile/${leader.addr}`} className={`rank-leader-name font-display block truncate text-4xl font-bold tracking-wide hover:underline sm:text-5xl ${leader.name ? 'uppercase' : ''}`}>
                     {leader.name ?? shortAddr(leader.addr)}
                   </Link>
                   <div className="num mt-1 text-sm text-black/60">
@@ -134,7 +134,7 @@ export default function Leaderboard() {
                     {r ? (
                       <>
                         <PlayerMark addr={r.addr} size={56} />
-                        <Link href={`/profile/${r.addr}`} className="max-w-full truncate font-semibold hover:text-gold">
+                        <Link href={`/profile/${r.addr}`} className="rank-runner-name max-w-full truncate font-semibold hover:text-gold">
                           {r.name ?? shortAddr(r.addr)}
                         </Link>
                         <span className="num text-xs text-muted">
@@ -148,7 +148,7 @@ export default function Leaderboard() {
                 );
               })}
             </div>
-            <div className="pr-[var(--n-br-w)] text-[11px] text-dim max-sm:mb-[var(--n-br-h)]">XP: +50 a win, −20 a loss (floor 1000), computed from Settled events.</div>
+            <div className="notch-footer pr-[var(--n-br-w)] text-[11px] text-dim max-sm:mb-[var(--n-br-h)]">XP: +50 a win, −20 a loss (floor 1000), computed from Settled events.</div>
           </NotchBlock>
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
@@ -170,7 +170,34 @@ export default function Leaderboard() {
           </div>
         </div>
       )}
-      <div className="panel overflow-x-auto p-2">
+      <div className="rank-mobile grid gap-2" aria-label="Player rankings">
+        {rows.map((r, i) => (
+          <details key={r.addr} className={`rank-row panel ${r.addr === me ? 'border-violet' : ''}`}>
+            <summary className="rank-summary">
+              <span className="font-display text-lg font-bold text-dim">#{i + 1}</span>
+              <div className="min-w-0">
+                <Link href={`/profile/${r.addr}`} className="rank-player flex items-start gap-2 font-semibold hover:text-violet">
+                  <PlayerMark addr={r.addr} size={24} className="shrink-0" />
+                  <span>{r.name ?? shortAddr(r.addr)}{r.bot ? <small className="ml-2 text-dim">BOT</small> : null}</span>
+                </Link>
+                <div className="num mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <span className="text-violet">{r.xp} XP</span>
+                  <span className="text-muted">{r.matches ? Math.round((r.wins / r.matches) * 100) : 0}% wins</span>
+                </div>
+              </div>
+              <span className="rank-expand text-muted" aria-hidden>▾</span>
+            </summary>
+            <dl className="grid grid-cols-2 gap-3 border-t border-line p-3 text-xs">
+              {[
+                ['Level', level(r.xp)], ['Wins / losses', `${r.wins} / ${r.losses}`],
+                ['Volume', fmtUsd(r.volume)], [`Net ${STAKE}`, `${r.earned >= 0 ? '+' : ''}${r.earned.toFixed(2)}`],
+              ].map(([label, value]) => <div key={label}><dt className="text-muted">{label}</dt><dd className="num mt-1 break-words font-semibold">{value}</dd></div>)}
+            </dl>
+          </details>
+        ))}
+        {!rows.length && <div className="panel p-6 text-center text-sm text-muted">No ranked matches yet. Be the first.</div>}
+      </div>
+      <div className="rank-table-wrap panel overflow-x-auto p-2">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="panel-title text-left">

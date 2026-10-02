@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Chakra_Petch, Inter, JetBrains_Mono, Saira } from 'next/font/google';
 import './globals.css';
 
@@ -11,6 +11,7 @@ const jet = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jet' });
 // Neutral on purpose: the gate and shared-result pages sit on this layout alone and are reachable
 // without the access code. The game's own layout, (game)/layout.tsx, says what longshort is.
 export const metadata: Metadata = { title: 'longshort.fun', manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'longshort',statusBarStyle:'black-translucent'},icons:{icon:'/icon-192.png',apple:'/icon-192.png'} };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

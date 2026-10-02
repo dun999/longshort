@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
@@ -16,6 +17,7 @@ import { useT, type Key } from '@/lib/i18n';
 import { ConnectDialog } from '../ConnectDialog';
 import { Guide, guideSeen } from './Guide';
 import { PlayerSearch } from '../PlayerSearch';
+import { useDialog } from '@/lib/useDialog';
 
 type LobbyMode = Mode | 'practice';
 const MODE_LIST: LobbyMode[] = REAL_TRADING ? [Mode.DUEL, 'practice'] : [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
@@ -141,6 +143,7 @@ function ModeSelect({
   const t = useT();
   const [m, setM] = useState<LobbyMode>(mode);
   const [e, setE] = useState(entry);
+  const panel = useDialog(open, onClose);
   useEffect(() => {
     if (open) (setM(mode), setE(entry));
   }, [open, mode, entry]);
@@ -157,18 +160,22 @@ function ModeSelect({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="pointer-events-auto fixed inset-x-0 top-12 bottom-0 z-40 overflow-y-auto bg-[rgba(12,13,16,0.94)] backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mode-title"
+          className="mode-select pointer-events-auto fixed inset-x-0 bottom-0 z-40 bg-[rgba(12,13,16,0.94)] backdrop-blur-md"
         >
-          <div className="mx-auto grid max-w-6xl gap-5 px-6 py-8 md:pt-[10vh]">
-            <div className="flex items-end justify-between">
+          <div ref={panel} tabIndex={-1} className="mode-select-content mx-auto grid max-w-6xl gap-5 px-6 py-6 outline-none">
+            <div className="flex items-end justify-between gap-3">
               <div>
                 <div className="panel-title">{t('ms.kicker')}</div>
-                <h2 className="font-display text-3xl font-bold tracking-[0.1em] uppercase">{t('ms.title')}</h2>
+                <h2 id="mode-title" className="font-display text-3xl font-bold tracking-[0.1em] uppercase">{t('ms.title')}</h2>
               </div>
-              <button className="gbtn ghost sm" onClick={onClose}>
+              <button className="gbtn ghost sm shrink-0" onClick={onClose}>
                 {t('ms.back')}
               </button>
             </div>
+            <div className="mode-select-body scroll-thin grid content-start gap-4 overflow-y-auto">
             <div className="grid gap-3 md:grid-cols-4">
               {MODE_LIST.map((x, i) => {
                 const cfg = modeCfg(x);
@@ -182,13 +189,14 @@ function ModeSelect({
                     whileHover={{ y: -4 }}
                     onMouseEnter={sfx.hover}
                     onClick={() => (sfx.select(), setM(x))}
-                    className={`panel grid min-w-0 content-start gap-3 p-4 text-left ${on ? 'bg-[var(--panel-hi)]!' : ''}`}
+                    aria-pressed={on}
+                    className={`mode-option panel grid min-w-0 content-start gap-3 p-4 text-left ${on ? 'bg-[var(--panel-hi)]!' : ''}`}
                     style={on ? { borderColor: 'var(--accent)', boxShadow: 'inset 0 -3px 0 var(--accent)' } : undefined}
                   >
-                    <div className="grid h-24 place-items-center overflow-hidden border border-line bg-black/20">
+                    <div className="mode-art grid h-24 place-items-center overflow-hidden border border-line bg-black/20">
                       <ModeArt mode={x} />
                     </div>
-                    <div>
+                    <div className="mode-copy">
                       <div className="font-display text-xl font-bold tracking-[0.1em] uppercase">{cfg.name}</div>
                       <div className="num text-[11px] text-dim">
                         {t('ms.meta', { n: cfg.maxPlayers, s: cfg.duration })}
@@ -233,7 +241,8 @@ function ModeSelect({
               </div>
               <LivePanel />
             </div>
-            <div className="flex justify-end">
+            </div>
+            <div className="mode-confirm flex justify-end border-t border-line pt-3">
               <button className="btn-play" onClick={() => (sfx.lockIn(), onPick(m, e), onClose())}>
                 {t('ms.confirm')}
               </button>
@@ -367,12 +376,13 @@ export function Lobby() {
 
   const cfg = modeCfg(effMode);
   return (
-    <div className="pointer-events-none! relative h-[calc(100dvh-48px)]">
+    <div className="lobby pointer-events-none! relative">
       {/* desktop: corner panels; phone: stacked at the top (see .lobby-top) */}
       <div className="lobby-top">
         <QueueCard mode={effMode} entry={effEntry} locked={inParty && !leader} onOpen={() => setPicker(true)} />
         <SocialDrawer me={me} online={online} />
       </div>
+      <div className="lobby-footer">
       <Loadout lev={lev} onClass={pickClass} />
 
       {/* the one primary action */}
@@ -400,7 +410,7 @@ export function Lobby() {
             <span className="sub">{!address ? t('lb.signInSub') : inParty && !leader ? t('lb.waitLeader') : `${cfg.name}${pay ? ` · ${effEntry} ${STAKE}` : ''}`}</span>
           </span>
         </motion.button>
-        <div className="num pointer-events-auto flex items-center gap-1.5 text-[11px] text-muted">
+        <div className="lobby-payout num pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 text-[12px] text-muted">
           {pay ? (
             <>
               {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
@@ -409,16 +419,15 @@ export function Lobby() {
           ) : (
             <>{t('lb.freePractice')}</>
           )}
+        </div>
           {lowFunds && (
-            <>
-              {' '}
-              · <span className="text-gold">{t('lb.notEnough', { stake: STAKE })}</span>{' '}
+            <div className="lobby-funding pointer-events-auto flex w-full max-w-sm flex-wrap items-center justify-center gap-2 border border-gold/40 bg-[var(--panel-solid)] px-3 py-2 text-[12px]">
+              <span className="text-gold">{t('lb.notEnough', { stake: STAKE })}</span>
               <button className="link" onClick={() => REAL_TRADING ? useWallet.setState({claimOpen:true}) : void useWallet.getState().faucet().catch((e) => setErr(friendly(e)))}>
                 {t('lb.getFunds')}
               </button>
-            </>
+            </div>
           )}
-        </div>
         {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">{t('live.budget',{amount:TRADING_BUDGET,total:effEntry+TRADING_BUDGET})}</p>}
         {err && <span className="pointer-events-auto max-w-md text-center text-xs text-red">{err}</span>}
         {busy && queuedAt ? (
@@ -430,6 +439,7 @@ export function Lobby() {
             {t('nav.howto')}
           </button>
         )}
+      </div>
       </div>
 
       <ModeSelect
@@ -463,7 +473,7 @@ function Loadout({ lev, onClass }: { lev: number; onClass: (l: number) => void }
             const k = CLASSES[id];
             const on = lev === k.leverage;
             return (
-              <button key={id} onMouseEnter={sfx.hover} onClick={() => onClass(k.leverage)} className={`px-1! text-[10px]! ${on ? 'on' : ''}`}>
+              <button key={id} onMouseEnter={sfx.hover} onClick={() => onClass(k.leverage)} className={`px-1! text-[12px]! ${on ? 'on' : ''}`}>
                 <span>
                   {k.name} {k.leverage}x
                 </span>
@@ -485,9 +495,11 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
   const t = useT();
   const party = useSocket((s) => s.party);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'party' | 'online'>('party');
+  const panel = useDialog(open, () => setOpen(false));
   return (
     <div data-tour="party" className="lobby-social pointer-events-auto absolute top-3 right-3 flex w-[280px] flex-col items-end gap-1.5">
-      <button className="panel flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left" onClick={() => (sfx.click(), setOpen((o) => !o))}>
+      <button aria-expanded={open} aria-haspopup="dialog" className="panel flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left" onClick={() => (sfx.click(), setOpen((o) => !o))}>
         <span className="phead">
           <h3>{t('lb.party')}</h3>
         </span>
@@ -496,14 +508,25 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
         </span>
         <span className="text-dim">{open ? '▴' : '▾'}</span>
       </button>
-      <AnimatePresence>
+      {typeof document !== 'undefined' && createPortal(<AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="grid w-full gap-1.5">
-            <PartyPanel me={me} />
-            <OnlinePanel me={me} online={online} />
+          <motion.div className="dialog-overlay pointer-events-auto fixed inset-0 z-[60] flex bg-black/70 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpen(false)}>
+            <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="social-title" className="social-panel dialog-panel panel m-auto w-full max-w-[420px] outline-none" style={{ background: 'var(--panel-solid)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="dialog-heading flex items-center justify-between gap-3 px-4 pt-3">
+                <h2 id="social-title" className="panel-title">{t('lb.party')}</h2>
+                <button className="dialog-close" onClick={() => setOpen(false)} aria-label={t('ui.close')}>×</button>
+              </div>
+              <div className="flex gap-2 border-b border-line px-4 pb-3" role="group" aria-label={t('lb.party')}>
+                <button className={`chip flex-1 justify-center ${tab === 'party' ? 'on' : ''}`} aria-pressed={tab === 'party'} onClick={() => setTab('party')}>{t('pt.title')}</button>
+                <button className={`chip flex-1 justify-center ${tab === 'online' ? 'on' : ''}`} aria-pressed={tab === 'online'} onClick={() => setTab('online')}>{t('pt.onlineTitle', { n: online.length })}</button>
+              </div>
+              <div className="dialog-content scroll-thin min-h-0 overflow-y-auto p-3">
+                {tab === 'party' ? <PartyPanel me={me} /> : <OnlinePanel me={me} online={online} />}
+              </div>
+            </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>, document.body)}
     </div>
   );
 }
@@ -535,16 +558,16 @@ function PartyPanel({ me }: { me?: string }) {
         </button>
       </div>
       {party.members.map((m) => (
-        <div key={m.addr} className="flex min-h-7 items-center gap-2 text-sm">
-          <span className="h-2 w-2 shrink-0" style={{ background: CLASS_COLOR[m.leverage] }} />
-          <span className={`truncate ${m.addr === me ? 'text-violet' : ''}`}>{m.name ?? shortAddr(m.addr)}</span>
-          {party.leader === m.addr && <span className="shrink-0 text-[10px] text-gold">{t('pt.leader')}</span>}
-          <span className="ml-auto shrink-0 text-[11px] text-dim">
+        <div key={m.addr} className="party-member text-sm">
+          <span className="party-color h-2 w-2 shrink-0" style={{ background: CLASS_COLOR[m.leverage] }} />
+          <span className={`party-name ${m.addr === me ? 'text-violet' : ''}`}>{m.name ?? shortAddr(m.addr)}</span>
+          {party.leader === m.addr && <span className="party-leader text-[12px] text-gold">{t('pt.leader')}</span>}
+          <span className="party-class text-[12px] text-dim">
             {CLASSES[classOf(m.leverage)].name} {m.leverage}x
           </span>
           {party.leader === me && m.addr !== me && (
             <button
-              className={`shrink-0 border px-1.5 py-0.5 text-[10px] tracking-wider uppercase ${kick === m.addr ? 'border-red text-red' : 'border-line text-dim hover:text-red'}`}
+              className={`party-kick min-h-[44px] border px-2 py-1 text-[12px] tracking-wider uppercase ${kick === m.addr ? 'border-red text-red' : 'border-line text-dim hover:text-red'}`}
               onClick={() => {
                 if (kick !== m.addr) return (setKick(m.addr), setTimeout(() => setKick(undefined), 3000));
                 sfx.click();

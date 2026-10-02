@@ -35,7 +35,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-title"
-            className="panel m-auto w-full max-w-[420px] p-5 sm:p-6"
+            className="dialog-panel panel m-auto w-full max-w-[420px] p-5 sm:p-6"
             style={{ background: 'var(--panel-solid)' }}
             initial={{ scale: 0.96, y: 12 }}
             animate={{ scale: 1, y: 0 }}
@@ -46,7 +46,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
               <h2 id="settings-title" className="font-display text-2xl font-bold tracking-wide uppercase">
                 {t('set.title')}
               </h2>
-              <button className="grid h-10 w-10 shrink-0 place-items-center border border-line text-dim transition-colors hover:border-[var(--line-hi)] hover:text-[var(--text)]" onClick={onClose} aria-label="Close">
+              <button className="grid h-[44px] w-[44px] shrink-0 place-items-center border border-line text-dim transition-colors hover:border-[var(--line-hi)] hover:text-[var(--text)]" onClick={onClose} aria-label={t('ui.close')}>
                 <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                   <path d="M1 1l10 10M11 1L1 11" />
                 </svg>

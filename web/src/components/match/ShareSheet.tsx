@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
+import { useDialog } from '@/lib/useDialog';
 
 /**
  * One tap to post a result, like a music app's share sheet. Link targets (X, WhatsApp, Telegram,
@@ -21,6 +22,7 @@ export const ShareIcon = () => (
 
 export function ShareSheet({ code, text, onClose }: { code: string; text: string; onClose: () => void }) {
   const t = useT();
+  const panel = useDialog(true, onClose);
   const url = `${location.origin}/s/${code}`;
   const card = `/s/${code}/card`;
   const [story, setStory] = useState<File | null>(null);
@@ -74,7 +76,7 @@ export function ShareSheet({ code, text, onClose }: { code: string; text: string
   return createPortal(
     <div className="sh" role="dialog" aria-modal="true" aria-label={t('sh.title')}>
       <motion.div className="sh-dim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
-      <motion.div className="sh-panel" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 420, damping: 36 }}>
+      <motion.div ref={panel} tabIndex={-1} className="sh-panel outline-none" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 420, damping: 36 }}>
         <div className="sh-head">
           <span>{t('sh.title')}</span>
           <button onClick={onClose} aria-label={t('sh.close')}>

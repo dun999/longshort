@@ -8,6 +8,7 @@ import { signIn } from '@/lib/auth';
 import { hasSavedPasskey, passkeySupported } from '@/lib/mera';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
+import { useDialog } from '@/lib/useDialog';
 
 export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
@@ -16,6 +17,7 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [creating, setCreating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [supported, setSupported] = useState(true);
+  const panel = useDialog(open, onClose);
   useEffect(() => {
     setSaved(hasSavedPasskey());
     setSupported(passkeySupported());
@@ -31,18 +33,26 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
   return createPortal(
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+        <motion.div className="dialog-overlay fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
           <motion.div
+            ref={panel}
+            tabIndex={-1}
             role="dialog"
-            className="panel w-[min(460px,92vw)] p-6"
+            aria-modal="true"
+            aria-labelledby="connect-title"
+            className="connect-panel dialog-panel panel m-auto w-full max-w-[460px] p-5 outline-none sm:p-6"
             style={{ background: 'var(--panel-solid)' }}
             initial={{ scale: 0.96, y: 12 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 12 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="panel-title">{t('cd.kicker')}</div>
-            <h2 className="font-display mt-1 text-2xl font-bold tracking-wide uppercase">{t('cd.title')}</h2>
+            <div className="dialog-heading flex items-center justify-between gap-3">
+              <div><div className="panel-title">{t('cd.kicker')}</div>
+                <h2 id="connect-title" className="font-display mt-1 text-2xl font-bold tracking-wide uppercase">{t('cd.title')}</h2>
+              </div>
+              <button className="dialog-close" aria-label={t('ui.close')} onClick={onClose}>×</button>
+            </div>
 
             {/* primary: Mera passkey */}
             <div className="mt-5 grid gap-2 border border-[var(--line-hi)] bg-white/[0.02] p-3">
@@ -61,7 +71,8 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
                     value={username}
                     onChange={(e) => setUsername(e.target.value.replace(/[^\w.-]/g, '').slice(0, 20))}
                     placeholder={t('cd.callsign')}
-                    className="border border-line bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    aria-label={t('cd.callsign')}
+                    className="min-h-[44px] min-w-0 border border-line bg-black/30 px-3 py-2 text-[16px] outline-none focus:border-[var(--accent)]"
                   />
                   <button className="btn-play sm w-full" disabled={connecting || username.length < 3} onClick={() => (sfx.lockIn(), void connectPasskey({ create: true, username }))}>
                     {t(connecting ? 'cd.waiting' : 'cd.create')}

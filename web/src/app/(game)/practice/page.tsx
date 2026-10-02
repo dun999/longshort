@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import Link from 'next/link';
 import { MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
 import { useSocket, lastPx } from '@/lib/socket';
 import { useWallet } from '@/lib/wallet';
@@ -29,13 +30,15 @@ interface Seat {
 export default function Practice() {
   const t = useT();
   const ticks = useSocket((s) => s.prices);
+  const connected = useSocket((s) => s.connected);
   const address = useWallet((s) => s.address?.toLowerCase()) ?? '0xyou';
   const prices = useMemo(() => Object.fromEntries(MARKETS.map((m) => [m, lastPx(ticks[m])])) as Record<MarketSymbol, number | undefined>, [ticks]);
   const pxRef = useRef(prices);
   pxRef.current = prices;
 
   const [run, setRun] = useState(0);
-  const [startAt, setStartAt] = useState(() => Date.now() / 1000 + COUNTDOWN);
+  const [startAt, setStartAt] = useState<number | null>(null);
+  const pausedAt = useRef<number | null>(null);
   const [now, setNow] = useState(() => Date.now() / 1000);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -50,7 +53,8 @@ export default function Practice() {
     setFeed([]);
     setTrades([]);
     botStep.current = 0;
-    setStartAt(Date.now() / 1000 + COUNTDOWN);
+    pausedAt.current = null;
+    setStartAt(null);
   }, [run, address]);
 
   useEffect(() => {
@@ -58,9 +62,26 @@ export default function Practice() {
     return () => clearInterval(t);
   }, []);
 
-  const endAt = startAt + DURATION;
-  const live = now >= startAt && now < endAt;
-  const done = now >= endAt;
+  const pricesReady = connected && MARKETS.every((m) => Number.isFinite(prices[m]) && prices[m]! > 0);
+  const roundNow = pausedAt.current ?? now;
+  const roundStart = startAt ?? now + COUNTDOWN;
+  const endAt = roundStart + DURATION;
+  const live = pricesReady && startAt !== null && roundNow >= roundStart && roundNow < endAt;
+  const done = startAt !== null && roundNow >= endAt;
+  // Do not run the countdown or bot against missing prices. A disconnect preserves round time.
+  useEffect(() => {
+    if (done) return;
+    const at = Date.now() / 1000;
+    if (!pricesReady) {
+      if (startAt !== null && pausedAt.current === null) pausedAt.current = at;
+    } else if (startAt === null) {
+      setStartAt(at + COUNTDOWN);
+    } else if (pausedAt.current !== null) {
+      const downtime = at - pausedAt.current;
+      pausedAt.current = null;
+      setStartAt((s) => s === null ? at + COUNTDOWN : s + downtime);
+    }
+  }, [pricesReady, startAt, done]);
   useWakeLock(!done);
 
   const push = useCallback((who: string, text: string, tone: FeedItem['tone'], kind: FeedItem['kind']) => {
@@ -75,7 +96,8 @@ export default function Practice() {
     (i: number) =>
       mutate(i, (s) => {
         if (!s.pos) return s;
-        const px = pxRef.current[MARKETS[s.pos.market]]!;
+        const px = pxRef.current[MARKETS[s.pos.market]];
+        if (!Number.isFinite(px) || !px || px <= 0) return s;
         const gross = upnl(s.pos, px);
         const pnl = gross - feeFor(s.pos.notional);
         record({ kind: 'close', addr: s.addr, market: s.pos.market, is_long: Number(s.pos.isLong), notional: s.pos.notional, price: px, pnl: gross, fee: feeFor(s.pos.notional) });
@@ -88,7 +110,7 @@ export default function Practice() {
   const doOpen = useCallback(
     (i: number, market: number, isLong: boolean, sizeBps: number) => {
       const px = pxRef.current[MARKETS[market]];
-      if (!px) throw new Error('Waiting for price feed');
+      if (!Number.isFinite(px) || !px || px <= 0) throw new Error('Waiting for price feed');
       doClose(i);
       mutate(i, (s) => {
         const notional = notionalFor(Math.max(0, MARGIN + s.realized), s.leverage, sizeBps);
@@ -103,7 +125,7 @@ export default function Practice() {
   // bot script (ported from the legacy practice mode) + liquidations
   useEffect(() => {
     if (!live) return;
-    const t = now - startAt;
+    const t = roundNow - roundStart;
     const steps: [number, () => void][] = [
       [4, () => doOpen(1, 1, true, 10_000)],
       [22, () => doClose(1)],
@@ -121,7 +143,7 @@ export default function Practice() {
         push(s.name, 'LIQUIDATED', 'warn', 'liquidated');
       }
     });
-  }, [now, live, startAt, seats, prices, doOpen, doClose, mutate, push, record]);
+  }, [roundNow, live, roundStart, seats, prices, doOpen, doClose, mutate, push, record]);
 
   // close everything at the bell
   const settled = useRef(-1);
@@ -151,8 +173,8 @@ export default function Practice() {
     maxPlayers: 2,
     nPlayers: 2,
     duration: DURATION,
-    createdAt: startAt,
-    startAt,
+    createdAt: roundStart,
+    startAt: roundStart,
     endAt,
     round: 0,
     players,
@@ -176,20 +198,30 @@ export default function Practice() {
   );
 
   useEffect(() => {
-    const phase = done ? 'result' : live ? 'arena' : 'vs';
+    const phase = done ? 'result' : live ? 'arena' : !pricesReady ? 'backdrop' : 'vs';
     const slots = players.map((p) => ({ name: p.name, leverage: p.leverage, color: phase === 'result' ? (p.equity >= Math.max(...players.map((x) => x.equity)) ? '#c9a24a' : '#44474f') : TEAM_COLOR[p.team], team: p.team, me: p.isMe, out: p.out }));
     useScene.getState().set({ shot: phase, slots });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done, live, seats.length]);
+  }, [done, live, pricesReady, seats.length]);
 
   if (!a || !b) return null;
+  if (!done && (!pricesReady || startAt === null)) return (
+    <div className="practice-wait grid place-items-center px-4 py-8">
+      <div role="status" aria-live="polite" className="panel grid w-full max-w-sm gap-4 p-5" style={{ background: 'var(--panel-solid)' }}>
+        <div className="panel-title">{t('mm.practiceBanner')}</div>
+        <h1 className="font-display text-2xl font-bold">{t(startAt === null ? 'practice.waiting' : 'practice.paused')}</h1>
+        <p className="text-sm leading-relaxed text-muted">{t(startAt === null ? 'practice.waitingBody' : 'practice.pausedBody')}</p>
+        <Link href="/play" className="gbtn ghost">{t('nav.play')}</Link>
+      </div>
+    </div>
+  );
   return (
     <div className="relative">
       {!live && !done && (
         <div className="pointer-events-none fixed top-[72px] left-1/2 z-40 -translate-x-1/2 border border-gold/40 bg-[var(--panel-solid)] px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gold uppercase">{t('mm.practiceBanner')}</div>
       )}
       <AnimatePresence mode="wait">
-        {!live && !done && <VsScreen key="vs" m={m} left={startAt - now} />}
+        {!live && !done && <VsScreen key="vs" m={m} left={roundStart - roundNow} />}
         {(live || (done && !m.results)) && (
           <motion.div key="hud" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <Hud m={m} now={now} actions={actions} live={live} />

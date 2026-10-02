@@ -40,11 +40,11 @@ export function ClaimAUSDDialog() {
   },[open]);
   if(!mounted) return null;
   return createPortal(<AnimatePresence>{open && (
-    <motion.div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/75 px-4 py-6 backdrop-blur-sm" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-      <motion.div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="claim-ausd-title" aria-describedby="claim-ausd-body" className="panel relative max-h-[calc(100dvh-3rem)] w-full max-w-[420px] overflow-y-auto p-5 outline-none sm:p-6" style={{background:'var(--panel-solid)',borderTop:'2px solid var(--accent)'}} initial={{y:12,scale:0.98}} animate={{y:0,scale:1}}>
-        <div className="flex items-center justify-between">
+    <motion.div className="dialog-overlay fixed inset-0 z-[80] flex bg-black/75 backdrop-blur-sm" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+      <motion.div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="claim-ausd-title" aria-describedby="claim-ausd-body" className="dialog-panel panel relative m-auto w-full max-w-[420px] p-5 outline-none sm:p-6" style={{background:'var(--panel-solid)',borderTop:'2px solid var(--accent)'}} initial={{y:12,scale:0.98}} animate={{y:0,scale:1}}>
+        <div className="dialog-heading flex items-center justify-between">
           <span className="panel-title">{t('claim.kicker')}</span>
-          <button className="-mr-2 grid h-10 w-10 place-items-center text-xl text-muted hover:text-white disabled:opacity-40" onClick={dismiss} disabled={claimBusy} aria-label={t('claim.dismiss')}>×</button>
+          <button className="-mr-2 grid h-[44px] w-[44px] shrink-0 place-items-center text-xl text-muted hover:text-white disabled:opacity-40" onClick={dismiss} disabled={claimBusy} aria-label={t('claim.dismiss')}>×</button>
         </div>
         <h2 id="claim-ausd-title" className="font-display mt-1 text-2xl font-bold tracking-[0.06em] uppercase">{t(confirmed?'claim.confirmed':'claim.title')}</h2>
         <p id="claim-ausd-body" className="mt-2 text-xs leading-relaxed text-muted">{t(confirmed?'claim.doneBody':'claim.body')}</p>

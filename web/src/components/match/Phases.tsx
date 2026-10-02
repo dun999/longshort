@@ -187,14 +187,15 @@ export function MatchFound({ m }: { m: MatchView }) {
 export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: number; onPick: (lev: number) => void; pending: boolean }) {
   const t = useT();
   const cur = m.me?.leverage ?? 25;
+  const classes = (Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank');
   return (
     <motion.div {...fadeUp} className="pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-4 px-4">
       <div className="text-center">
         <div className="panel-title">{t('mm.chooseClass', { n: Math.max(0, Math.ceil(left)) })}</div>
         <div className="font-display text-3xl font-bold tracking-[0.16em] uppercase">{t('mm.loadout')}</div>
       </div>
-      <div className="pointer-events-auto grid w-full max-w-4xl grid-cols-3 gap-2 md:gap-3">
-        {(Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank').map((id) => {
+      <div className={`class-options pointer-events-auto grid w-full max-w-4xl gap-2 md:gap-3 ${classes.length === 1 ? 'single grid-cols-1' : 'grid-cols-3'}`}>
+        {classes.map((id) => {
           const c = CLASSES[id];
           const on = cur === c.leverage;
           const col = CLASS_COLOR[c.leverage];
@@ -449,7 +450,7 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
       <div className="rs-card-head">
         <span className="rs-rank">{rank}</span>
         <PlayerMark addr={p.addr} size={compact ? 30 : 42} />
-        <div className="min-w-0">
+        <div className="rs-identity min-w-0">
           <div className="rs-name">
             <span className="truncate">{p.name}</span>
             {p.isMe && <span className="rs-tag me">{t('hud.you')}</span>}
@@ -459,6 +460,7 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
             {CLASSES[classOf(p.leverage)].name} · {p.leverage}x
           </div>
         </div>
+        {(won || compact) && <div className="rs-summary">
         {won && (
           <span className="rs-badge">
             {t('rs.winner')}{result && result.payout > 0 && <b className="num">+{result.payout.toFixed(2)}</b>}
@@ -470,6 +472,7 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
             <span className="num">{fmtUsd(equity)}</span>
           </div>
         )}
+        </div>}
       </div>
 
       {!compact && (
@@ -556,7 +559,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
   const router = useRouter();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (sharing) return; // the share sheet owns the keyboard while it's open
+      if (sharing || document.querySelector('[role="dialog"][aria-modal="true"]')) return; // an open dialog owns the keyboard
       if (e.key === 'Escape') return void (sfx.click(), router.push('/play'));
       if (e.key === 'Enter' && m.me && !busy && !['BUTTON', 'INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) (sfx.click(), onAgain());
     };

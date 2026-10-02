@@ -51,6 +51,9 @@ export function TradePanel({
   const real = REAL_TRADING && !actions.simulated;
   const notional = me ? notionalFor(Math.max(0, real ? me.equity : MARGIN + me.realized), me.leverage, size) * (real ? 0.95 : 1) : 0;
   const canTrade = live && !!me && !me.out && !pending;
+  const marketPx = prices[MARKETS[market]];
+  const canOpen = canTrade && Number.isFinite(marketPx) && !!marketPx && marketPx > 0;
+  const canClose = canTrade && !!pos && (real || (Number.isFinite(posPx) && !!posPx && posPx > 0));
 
   const run = useCallback(
     async (label: string, fn: () => Promise<{ ms: number; hash?: string;partial?:boolean }>) => {
@@ -71,18 +74,18 @@ export function TradePanel({
 
   const go = useCallback(
     (isLong: boolean) => {
-      if (!canTrade) return;
+      if (!canOpen) return;
       isLong ? sfx.long() : sfx.short();
       useScene.getState().shake(isLong ? 'rgba(74,163,124,0.12)' : 'rgba(210,90,85,0.12)');
       void run(`${isLong ? 'LONG' : 'SHORT'} ${MARKETS[market]} ${size / 100}%`, () => actions.open(market, isLong, size));
     },
-    [canTrade, run, actions, market, size],
+    [canOpen, run, actions, market, size],
   );
   const shut = useCallback(() => {
-    if (!canTrade || !pos) return;
+    if (!canClose || !pos) return;
     sfx.close();
     void run(`CLOSE ${MARKETS[pos.market]}`, actions.close);
-  }, [canTrade, pos, run, actions]);
+  }, [canClose, pos, run, actions]);
 
   // on phones the dock is pinned to the bottom; the HUD sizes the chart to the height it leaves free
   const dock = useRef<HTMLDivElement>(null);
@@ -90,17 +93,26 @@ export function TradePanel({
     const el = dock.current;
     const hud = el?.closest<HTMLElement>('.hud');
     if (!el || !hud) return;
-    const ro = new ResizeObserver(() => hud.style.setProperty('--dock', `${el.offsetHeight}px`));
+    const measure = () => {
+      const fixed = getComputedStyle(el).position === 'fixed';
+      hud.style.setProperty('--dock', `${fixed ? el.offsetHeight : 0}px`);
+      document.documentElement.style.setProperty('--trade-dock-height', `${fixed ? el.offsetHeight : 0}px`);
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
+    measure();
+    window.addEventListener('resize', measure);
     return () => {
       ro.disconnect();
       hud.style.removeProperty('--dock');
+      document.documentElement.style.removeProperty('--trade-dock-height');
+      window.removeEventListener('resize', measure);
     };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if ((e.target as HTMLElement)?.matches('input,textarea,select') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const k = e.key.toLowerCase();
       if (k === 'q') go(true);
       else if (k === 'e') go(false);
@@ -138,21 +150,21 @@ export function TradePanel({
         </div>
       </div>
       <div className="dock-go">
-        <button className="trade-btn long" disabled={!canTrade} onClick={() => go(true)}>
+        <button className="trade-btn long" disabled={!canOpen} onClick={() => go(true)}>
           {pending?.startsWith('LONG') ? '…' : '▲ Long'}
           <small>
             <span className="kbd">Q</span> <span className="dock-why">{t('hud.betUp')}</span>
             {me ? `${kUsd(notional)} · ${me.leverage}x` : ''}
           </small>
         </button>
-        <button className="gbtn ghost dock-close" disabled={!canTrade || !pos} onClick={shut}>
+        <button className="gbtn ghost dock-close" disabled={!canClose} onClick={shut}>
           <span className="grid text-center leading-tight">
             {t('hud.close')}
-            <span className="text-[9px] font-medium tracking-wider opacity-60">{t('hud.lockPnl')}</span>
+            <span className="text-[12px] font-medium tracking-normal text-muted">{t('hud.lockPnl')}</span>
             <span className="kbd mx-auto mt-0.5">SPACE</span>
           </span>
         </button>
-        <button className="trade-btn short" disabled={!canTrade} onClick={() => go(false)}>
+        <button className="trade-btn short" disabled={!canOpen} onClick={() => go(false)}>
           {pending?.startsWith('SHORT') ? '…' : 'Short ▼'}
           <small>
             <span className="kbd">E</span> <span className="dock-why">{t('hud.betDown')}</span>

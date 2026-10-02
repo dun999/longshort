@@ -1,6 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useWallet } from '@/lib/wallet';
@@ -39,7 +39,9 @@ function Toast() {
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 30, opacity: 0 }}
-          className="panel fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-5 py-3 text-sm"
+          role="status"
+          aria-live="polite"
+          className="app-toast panel fixed left-1/2 z-50 -translate-x-1/2 px-4 py-3 text-sm"
         >
           {toast}
         </motion.div>
@@ -49,6 +51,7 @@ function Toast() {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [invitesOpen, setInvitesOpen] = useState(false);
   const address = useWallet((s) => s.address);
   const joinMatch = useSocket((s) => s.joinMatch);
   const router = useRouter();
@@ -94,10 +97,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <div className="scanlines" />
       <Flash />
       <div className="ui flex flex-col">
-        <TopBar />
+        <TopBar onInvites={() => setInvitesOpen(true)} />
         <main className="relative flex-1 pe-none [&>*]:pointer-events-auto">{children}</main>
       </div>
-      <Invites />
+      <Invites open={invitesOpen} onClose={() => setInvitesOpen(false)} />
       <Toast />
     </>
   );
