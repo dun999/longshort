@@ -158,12 +158,22 @@ export async function startIndexer() {
     // A new arena starts a new season. Its match tables are copied aside under the old arena's address first, so
     // nothing is lost; AUSD claims, callsigns, passkey recovery hints and private journals are left untouched.
     const old = getMeta('arena');
-    const tables = ['matches', 'players', 'trades', 'trading_accounts', 'perpl_fills', 'collateral_returns'];
+    const tables = ['matches', 'players', 'trades', 'trading_accounts', 'perpl_fills', 'collateral_returns', 'lobby_options', 'rematches'];
     if (old && /^0x[0-9a-f]{40}$/.test(old)) for (const t of tables) db.exec(`CREATE TABLE IF NOT EXISTS archive_${old.slice(2, 10)}_${t} AS SELECT * FROM ${t}`);
     for (const t of tables) db.exec(`DELETE FROM ${t}`);
     db.exec('UPDATE profiles SET xp = 1000, wins = 0, losses = 0, matches = 0, volume = 0, earned = 0');
     from = BigInt(ADDR.deployBlock);
     setMeta('arena', lc(ADDR.arena));
+  }
+  // Lobby options and rematch reservations are keyed by match id alone, and ids restart at 1 on a new arena. A
+  // switch made before they were archived with the rest leaves old rows that would lock new lobbies, so drop any
+  // that point at no match in this arena (two minutes of grace for a lobby whose creation is still being indexed).
+  if (getMeta('lobby_arena') !== lc(ADDR.arena)) {
+    const now = Date.now();
+    const lobbies = db.prepare('DELETE FROM lobby_options WHERE match_id NOT IN (SELECT id FROM matches) AND (created_at IS NULL OR created_at < ?)').run(Math.floor(now / 1000) - 120);
+    const rematch = db.prepare('DELETE FROM rematches WHERE source_id NOT IN (SELECT id FROM matches) AND created_at < ?').run(now - 120_000);
+    log('indexer', `cleared ${lobbies.changes} stale lobby options and ${rematch.changes} rematch reservations from the previous arena`);
+    setMeta('lobby_arena', lc(ADDR.arena));
   }
   log('indexer', 'from block', from);
   const tick = async () => {
