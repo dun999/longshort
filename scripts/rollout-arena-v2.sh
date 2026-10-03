@@ -17,8 +17,21 @@ echo '▸ keeper: 10 bots'
 echo '▸ indexer: new arena address and start block'
 "${SSH[@]}" "cp /opt/longshort/indexer/config.yaml /opt/longshort/indexer/config.yaml.bak-\$(date -u +%Y%m%dT%H%M%SZ)"
 scp -o BatchMode=yes -o IdentitiesOnly=yes -i "$KEY" "$ROOT/indexer/config.yaml" "$HOST:/opt/longshort/indexer/config.yaml"
-"${SSH[@]}" "cd /opt/longshort/indexer && sudo systemctl stop longshort-indexer && npx envio codegen >/dev/null && npx envio local db-migrate setup && sudo systemctl start longshort-indexer"
+# the unit pins ENVIO_PG_SCHEMA (drop-in ausd.conf); resetting any other schema leaves the service crash-looping
+# on "config changes are incompatible with the existing indexer data"
+"${SSH[@]}" "cd /opt/longshort/indexer && PG=\$(systemctl show longshort-indexer -p Environment --value | tr ' ' '\n' | grep '^ENVIO_PG_SCHEMA=' || true) && echo \"schema: \${PG:-public}\" && sudo systemctl stop longshort-indexer && env \$PG npx envio codegen >/dev/null && env \$PG npx envio local db-migrate setup && sudo systemctl start longshort-indexer"
 
 echo '▸ restart keeper with the new bot count'
-"${SSH[@]}" "sudo systemctl restart longshort-keeper && sleep 5 && systemctl is-active longshort-keeper longshort-indexer"
-curl -fsS https://longshort.fun/api/health; echo
+"${SSH[@]}" "sudo systemctl restart longshort-keeper"
+curl -fsS --retry 20 --retry-all-errors --retry-delay 3 https://longshort.fun/api/health; echo
+
+echo '▸ wait for Envio to index the new arena'
+for _ in $(seq 30); do
+  meta=$(curl -fsS -X POST https://longshort.fun/v1/graphql -H 'content-type: application/json' \
+    -d '{"query":"{ chain_metadata { start_block latest_processed_block block_height } }"}' || true)
+  if [[ $meta == *'"start_block":67943161'* && $meta != *'"latest_processed_block":-1'* ]]; then echo "$meta"; exit 0; fi
+  sleep 4
+done
+echo "indexer did not start: $meta" >&2
+"${SSH[@]}" "systemctl is-active longshort-indexer; journalctl -u longshort-indexer --no-pager -n 15 --output=cat | cut -c1-200" >&2
+exit 1
