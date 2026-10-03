@@ -205,7 +205,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
                   <span className={`text-[10px] tracking-wider uppercase ${locked ? 'text-gold' : 'text-green'}`}>{t(locked ? 'acct.locked' : 'acct.unlocked')} ▾</span>
                 </summary>
                 {locked ? (
-                  <button className="gbtn sm w-full" onClick={() => void ensureUnlocked().then(() => setKeys(describeKeys()))}>
+                  <button className="gbtn sm w-full" onClick={() => void ensureUnlocked().then(() => setKeys(describeKeys())).catch((e) => setMsg(friendly(e)))}>
                     {t('acct.unlock')}
                   </button>
                 ) : (
@@ -216,7 +216,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
                         <span className="num shrink-0 text-dim">{shortAddr(k.address)}</span>
                       </div>
                     ))}
-                    <p className="text-[10px] leading-relaxed text-dim">Derived on your device from one Face ID / PIN; never stored. Each match gets its own trading key, which can only trade in that match.</p>
+                    <p className="text-[10px] leading-relaxed text-dim">{t('session.policy')}</p>
                     <button className="text-[10px] tracking-wider text-dim uppercase hover:text-[var(--text)]" onClick={() => (lock(), setKeys([]))}>
                       {t('acct.lockNow')}
                     </button>
@@ -228,6 +228,8 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
               <Link href={`/profile/${address}`} className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>
                 {t('acct.profile')}
               </Link>
+              <Link href="/demo" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Demo evidence</Link>
+              {REAL_TRADING && !passkey && <Link href="/recover" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Account recovery</Link>}
               <button
                 className="gbtn ghost sm w-full"
                 onClick={() => {

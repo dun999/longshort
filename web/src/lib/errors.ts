@@ -6,6 +6,7 @@ import { tr, type Key } from './i18n';
  * error still goes to the console for debugging; the UI never shows a revert string or an RPC dump.
  */
 const RULES: [RegExp, Key | null][] = [
+  [/^Journal|^The saved journal|^The journal|^A newer journal|^Invalid encrypted journal|^Only a player|^Account changed|^Entry approval|^New Duels|^Welcome AUSD|^Saved transaction data/, null],
   [/^AUSD |^Claim |^This is the funding|^You need |^The app is updating|^Live Perpl/, null],
   [/^Rematch|^Enable bot matching|^Lobby options|^Invalid lobby|^Invalid rematch/, null],
   [/user rejected|user denied|rejected the request|request rejected/i, 'err.cancelled'],

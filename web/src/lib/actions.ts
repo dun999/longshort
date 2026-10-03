@@ -1,5 +1,5 @@
 'use client';
-import { createWalletClient, encodeFunctionData, http, parseEventLogs, parseUnits, zeroAddress, type Address, type WalletClient } from 'viem';
+import { createWalletClient, encodeFunctionData, http, parseEventLogs, parseUnits, zeroAddress, type Address, type LocalAccount, type WalletClient } from 'viem';
 import { ADDR, REAL_TRADING, TRADING_BUDGET, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive } from '@longshort/shared';
 import { arena, GAS, publicClient } from './clients';
 import { RPC_URL } from './config';
@@ -9,6 +9,7 @@ import { api } from './api';
 import { authed, signIn } from './auth';
 import { useSettings } from './settings';
 import { relayTx, sponsorAccount } from './relay';
+import { recordReceipt } from './journey';
 
 const LAST_CLASS = 'ls.class';
 export const lastLeverage = (): 5 | 10 | 25 | 50 => {
@@ -41,12 +42,13 @@ async function gasFor(key: string, estimate: () => Promise<bigint>, fallback: bi
 const est = (functionName: string, args: readonly unknown[], account: any, value?: bigint) => () =>
   publicClient.estimateContractGas({ ...arena, functionName, args, account, value } as any);
 
-async function mainCtx() {
+async function mainCtx(newEntry = false) {
   if (REAL_TRADING) {
     const health = await api<any>('/health');
     if (!health.realTrading || health.chainId!==ADDR.chainId || health.arena?.toLowerCase()!==ADDR.arena.toLowerCase()) throw new Error('The app is updating. Reload before playing.');
   }
-  await useWallet.getState().ensureUnlocked(); // passkey: one biometric prompt if locked
+  if (newEntry) await useWallet.getState().authorizeEntry();
+  else await useWallet.getState().ensureUnlocked();
   await signIn(); // a seated player's connection must speak for them (lobby heartbeats, party follow)
   if (relayLive(ADDR.relayDelegate) && useWallet.getState().kind !== 'injected') {
     await useWallet.getState().refresh();
@@ -76,11 +78,23 @@ async function maybeRelay(client: WalletClient, sponsor: boolean, target: Addres
  * - browser wallet: the per-browser session key
  * - guest: the guest key trades for itself
  */
-function sessionArgs(): { session: `0x${string}`; value: bigint; label?: string } {
+const publishedHints = new Set<string>();
+async function publishMatchKey(owner: Address, session: Address, label: string) {
+  const key = `${owner.toLowerCase()}:${session.toLowerCase()}`;
+  if (publishedHints.has(key)) return;
+  await authed('/passkey/match-key', { chainId: ADDR.chainId, arena: ADDR.arena, session, label });
+  if (useWallet.getState().address?.toLowerCase() !== owner.toLowerCase()) throw new Error('Account changed. Try again.');
+  publishedHints.add(key);
+}
+
+async function sessionArgs(): Promise<{ session: `0x${string}`; value: bigint; label?: string }> {
   const w = useWallet.getState();
   if (w.kind === 'passkey') {
     const label = mera.nextMatchLabel();
-    return { session: mera.matchKey(label).address, value: 0n, label };
+    const session = mera.matchKey(label).address;
+    // Save the public hint before funds move, including when the entry's response is lost.
+    await publishMatchKey(w.address!, session, label);
+    return { session, value: 0n, label };
   }
   if (w.kind !== 'injected' || !w.sessionAddress) return { session: zeroAddress, value: 0n };
   return { session: w.sessionAddress, value: 0n };
@@ -88,13 +102,13 @@ function sessionArgs(): { session: `0x${string}`; value: bigint; label?: string 
 
 export async function createMatch(mode: Mode, entry: number, leverage: number, team = 0, rematch?: { source: number; token: string; duration: number; maxPlayers: number }, lease?: string): Promise<{ id: number; tx: TxResult }> {
   const allowBots = useSettings.getState().allowBots;
-  const { w, client, account } = await mainCtx();
+  const { w, client, account } = await mainCtx(true);
   if (REAL_TRADING && mode !== Mode.DUEL) throw new Error('Live Perpl currently supports BTC Duel');
   if (w.usd < parseUnits(String(entry + TRADING_BUDGET),6)) throw new Error(`You need ${entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
   if (REAL_TRADING) leverage = 5;
-  await w.ensureAllowance();
+  await w.ensureAllowance(parseUnits(String(entry + TRADING_BUDGET), 6));
   const cfg = rematch ?? MODES[mode];
-  const { session, value, label } = sessionArgs();
+  const { session, value, label } = await sessionArgs();
   const createArgs = [mode, parseUnits(String(entry), 6), cfg.duration, cfg.maxPlayers, team, leverage, session] as const;
   const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'createMatch', createArgs, value);
   const gas = relayed ? 0n : await gasFor('createMatch', est('createMatch', createArgs, w.address!, value), GAS.createMatch, true);
@@ -114,6 +128,7 @@ export async function createMatch(mode: Mode, entry: number, leverage: number, t
   if (!ev) throw new Error('Match creation reverted');
   if (label) mera.bindMatch(Number(ev.args.id), label);
   const id = Number(ev.args.id);
+  recordReceipt('entry', tx.hash, id);
   try {
     const signer = await trader(id);
     const ts = Math.floor(Date.now() / 1000);
@@ -131,7 +146,7 @@ export async function createMatch(mode: Mode, entry: number, leverage: number, t
 }
 
 export async function joinMatch(id: number, team: number, leverage: number): Promise<TxResult> {
-  const { w, client, account } = await mainCtx();
+  const { w, client, account } = await mainCtx(true);
   let info: any;
   for (let attempt = 0; attempt < 12; attempt++) {
     try { info = await api<any>(`/match/${id}`); break; }
@@ -144,8 +159,8 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   if (info.match.rematch_of && !info.roster?.some((p: any) => p.addr === w.address?.toLowerCase() && p.team === team)) throw new Error('Rematch is reserved for the previous players and teams');
   if (w.usd < parseUnits(String(info.match.entry + TRADING_BUDGET),6)) throw new Error(`You need ${info.match.entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
   if (REAL_TRADING) leverage = 5;
-  await w.ensureAllowance();
-  const { session, value, label } = sessionArgs();
+  await w.ensureAllowance(parseUnits(String(info.match.entry + TRADING_BUDGET), 6));
+  const { session, value, label } = await sessionArgs();
   const args = [BigInt(id), team, leverage, session] as const;
   await publicClient.simulateContract({ ...arena, account: w.address!, functionName: 'joinMatch', args, value });
   const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'joinMatch', args, value);
@@ -153,6 +168,7 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   const tx = relayed ?? await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'joinMatch', args, value, gas }));
   if (tx.status !== 'success') throw new Error('Match join reverted');
   if (label && tx.status === 'success') mera.bindMatch(id, label);
+  recordReceipt('entry', tx.hash, id);
   void w.refresh();
   return tx;
 }
@@ -237,22 +253,44 @@ export async function leaveMatch(id: number) {
   const tx =
     (await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'leave', leaveArgs)) ??
     (await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'leave', args: leaveArgs, gas: GAS.leave })));
+  if (tx.status !== 'success') throw new Error('Leaving the round reverted. Check its current state before retrying.');
+  mera.endMatch(id);
   void w.refresh();
   return tx;
 }
 
 // ─── in-match (session key / guest key, no pop-ups) ─────────────────────────
 /** The key that signs trades for this match: its derived passkey key, or the browser/guest session key. */
+const matchSigners = new Map<number, { owner: LocalAccount; label: string; client: WalletClient }>();
 async function trader(id: number): Promise<WalletClient> {
   const w = useWallet.getState();
   if (w.kind === 'passkey') {
-    const label = mera.labelFor(id);
-    if (!label) throw new Error('No trading key registered for this match on this device');
     await w.ensureUnlocked();
-    return createWalletClient({ account: mera.matchKey(label), chain: activeChain, transport: http(RPC_URL) });
+    const owner = useWallet.getState().address!;
+    const ownerAccount = mera.ownerAccount()!;
+    const cached = matchSigners.get(id);
+    // Verify the chain once per unlocked keyring and seat; repeated trades add no recovery reads.
+    if (cached?.owner === ownerAccount && cached.label === mera.labelFor(id)) return cached.client;
+    const players = await publicClient.readContract({ ...arena, functionName: 'getPlayers', args: [BigInt(id)] });
+    const seat = players.find((p) => p.addr.toLowerCase() === owner.toLowerCase());
+    if (!seat || seat.session === zeroAddress) throw new Error('This passkey has no trading session in this match');
+    const key = await mera.recoverMatchKey(id, seat.session, () => api<{ label: string } | null>(`/passkey/match-key/${owner}/${seat.session}`));
+    const label = mera.labelFor(id)!;
+    // Also migrate a validated legacy browser label before it is needed on a second device.
+    await publishMatchKey(owner, seat.session, label);
+    if (mera.ownerAccount() !== ownerAccount) throw new Error('Passkey session changed. Try again.');
+    const client = createWalletClient({ account: key, chain: activeChain, transport: http(RPC_URL) });
+    matchSigners.set(id, { owner: ownerAccount, label, client });
+    return client;
   }
   if (!w.trader?.account) throw new Error('No session key');
   return w.trader;
+}
+
+/** Validate and publish an existing seat's label without placing a trade. */
+export async function prepareMatchRecovery(id: number) {
+  if (useWallet.getState().kind !== 'passkey' || !mera.isUnlocked()) return;
+  await trader(id);
 }
 
 export async function tradeOpen(id: number, market: number, isLong: boolean, sizeBps: number) {
@@ -267,6 +305,7 @@ export async function tradeOpen(id: number, market: number, isLong: boolean, siz
     const receipt = await publicClient.getTransactionReceipt({hash:tx.hash});
     if (!parseEventLogs({abi:arenaAbi,eventName:'Opened',logs:receipt.logs}).some((e)=>e.args.id===BigInt(id))) throw new Error('Perpl did not fill this order. Refresh your position.');
   }
+  recordReceipt('trade', tx.hash, id);
   return tx;
 }
 
@@ -277,6 +316,7 @@ export async function tradeClose(id: number) {
   const gas = relayed ? 0n : await gasFor('close', est('close', args, t.account!), GAS.close, REAL_TRADING);
   const tx = relayed ?? await timedTx(() => t.writeContract({ ...arena, account: t.account!, chain: activeChain, functionName: 'close', args, gas }));
   if (tx.status !== 'success') throw new Error('Perpl close reverted');
+  recordReceipt('trade', tx.hash, id);
   if (REAL_TRADING) {
     const players = await publicClient.readContract({...arena,functionName:'getPlayers',args});
     const me = players.find((p)=>p.addr.toLowerCase()===useWallet.getState().address?.toLowerCase());
@@ -347,7 +387,7 @@ export async function cancelMatchmaking(id: number): Promise<'left' | 'cancelled
   }
   for (let i = 0; i < 40; i++) {
     const s = await state();
-    if (s === MatchState.CANCELLED) return 'cancelled';
+    if (s === MatchState.CANCELLED) { mera.endMatch(id); return 'cancelled'; }
     if (s === MatchState.SETTLED) break;
     await new Promise((r) => setTimeout(r, 500));
   }

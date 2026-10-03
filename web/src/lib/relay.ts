@@ -1,6 +1,6 @@
 'use client';
 
-import { type Account, type Address, type Hash, type Hex, type LocalAccount } from 'viem';
+import { isAddress, verifyTypedData, type Account, type Address, type Hash, type Hex, type LocalAccount } from 'viem';
 import {
   ADDR,
   activeChain,
@@ -16,6 +16,16 @@ import { publicClient } from './clients';
 import { api } from './api';
 
 export const sponsorLive = () => relayLive(ADDR.relayDelegate);
+
+const pendingCalls = new Map<string, string>();
+function readPending(key: string) {
+  try { return localStorage.getItem(key) ?? pendingCalls.get(key); }
+  catch { return pendingCalls.get(key); }
+}
+function writePending(key: string, value?: string) {
+  if (value) pendingCalls.set(key, value); else pendingCalls.delete(key);
+  try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch { /* Optional retry cache. */ }
+}
 
 export function sponsorAccount(account: Account | null | undefined): LocalAccount {
   if (!account || account.type !== 'local') throw new Error('wallet cannot delegate');
@@ -50,16 +60,24 @@ async function post(account: LocalAccount, target: Address, data: Hex): Promise<
   const submit = async (body: any) => {
     try { return (await api<{hash:Hash}>('/relay',body)).hash; }
     catch(e) {
-      if (/Expired|BadSig|BadCall|NotLive|NotOpen|NoPosition|revert|gas limit|relay dry|already used/i.test((e as Error).message)) localStorage.removeItem(storageKey);
+      if (/Expired|BadSig|BadCall|NotLive|NotOpen|NoPosition|revert|gas limit|relay dry|already used/i.test((e as Error).message)) writePending(storageKey);
       throw e;
     }
   };
-  const saved = localStorage.getItem(storageKey);
+  const saved = readPending(storageKey);
   if (saved) {
-    const body = JSON.parse(saved);
+    let body: any;
+    try {
+      body = JSON.parse(saved);
+      if (saved.length > 20_000 || body.from?.toLowerCase() !== account.address.toLowerCase() || !isAddress(body.target) ||
+          !/^0x(?:[0-9a-fA-F]{2})*$/.test(body.data) || !/^\d{1,30}$/.test(String(body.nonce)) || !/^\d{1,20}$/.test(String(body.deadline)) ||
+          !await verifyTypedData({ address: account.address, domain: { name: RELAY_NAME, version: RELAY_VERSION, chainId: activeChain.id, verifyingContract: account.address },
+            types: relayTypes, primaryType: 'Execute', message: { target: body.target, data: body.data, nonce: BigInt(body.nonce), deadline: BigInt(body.deadline) }, signature: body.signature }))
+        throw new Error('Invalid saved transaction');
+    } catch { writePending(storageKey); throw new Error('Saved transaction data could not be verified. Review your position and try again.'); }
     const hash = await submit(body);
     await publicClient.waitForTransactionReceipt({hash});
-    localStorage.removeItem(storageKey);
+    writePending(storageKey);
     if (body.target.toLowerCase()===target.toLowerCase() && body.data===data) return hash;
     throw new Error('Previous transaction confirmed. Refresh your position before trading again.');
   }
@@ -108,9 +126,9 @@ async function post(account: LocalAccount, target: Address, data: Hex): Promise<
     signature,
     ...(authorization ? { authorization } : {}),
   };
-  localStorage.setItem(storageKey,JSON.stringify(body));
+  writePending(storageKey, JSON.stringify(body));
   const hash = await submit(body);
   // The keeper has confirmed the receipt; a lost response leaves the original signed request for retry.
-  localStorage.removeItem(storageKey);
+  writePending(storageKey);
   return hash;
 }

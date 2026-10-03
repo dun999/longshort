@@ -6,7 +6,7 @@ import { REAL_TRADING, MARGIN, MARKETS, MatchState, Mode, equityOf, feeFor, noti
 import { useMatch, type MatchView } from '@/lib/match';
 import { useChainNow } from '@/lib/clock';
 import { useScene, CLASS_COLOR, TEAM_COLOR, type Shot, type Slot } from '@/lib/scene';
-import { cancelMatchmaking, joinAny, joinMatch, lastLeverage, rematch, setClass, sweepMatchKey, tradeClose, tradeOpen } from '@/lib/actions';
+import { cancelMatchmaking, joinAny, joinMatch, lastLeverage, prepareMatchRecovery, rematch, setClass, sweepMatchKey, tradeClose, tradeOpen } from '@/lib/actions';
 import { formatEther } from 'viem';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -49,6 +49,7 @@ export function MatchScreen({ id }: { id: number }) {
   const phase = phaseOf(m, now);
   const router = useRouter();
   const address = useWallet((s) => s.address);
+  const locked = useWallet((s) => s.kind === 'passkey' && s.locked);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
 
@@ -76,7 +77,14 @@ export function MatchScreen({ id }: { id: number }) {
 
   // ─── passkey: no idle lock from queue to the bell ────────────────────────
   const active = ['waiting', 'found', 'select', 'vs', 'live', 'settling'].includes(phase) && !!m.me;
-  useEffect(() => (active ? mera.pin() : undefined), [active]);
+  const pinSession = ['found', 'select', 'vs', 'live'].includes(phase) && !!m.me;
+  useEffect(() => (pinSession ? mera.pin() : undefined), [pinSession]);
+  useEffect(() => {
+    if (!active || locked || useWallet.getState().kind !== 'passkey') return;
+    let current = true;
+    void prepareMatchRecovery(id).catch((e) => { if (current) setErr(friendly(e)); });
+    return () => { current = false; };
+  }, [active, locked, id, address]);
 
   // ─── lobby guard heartbeat: bots only fill a lobby whose players are actually here ─
   const send = useSocket((s) => s.send);
@@ -89,13 +97,14 @@ export function MatchScreen({ id }: { id: number }) {
   }, [active, id, send]);
 
   // ─── key lifecycle: a settled match's passkey trading key returns its leftover gas ─
-  const swept = useRef(false);
+  const swept = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (phase !== 'result' || !m.me || swept.current) return;
-    swept.current = true;
+    if (phase !== 'result' || !m.me || swept.current === id) return;
+    swept.current = id;
     sweepMatchKey(id)
       .then((amt) => amt > 0n && console.info(`[longshort] match key swept ${formatEther(amt)} MON back to the owner`))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => mera.endMatch(id));
   }, [phase, m.me, id]);
 
   // ─── party follow: auto-join where the keeper sent us (leader seated here, or a rematch we accepted) ─
@@ -186,6 +195,23 @@ export function MatchScreen({ id }: { id: number }) {
 
   return (
     <div className="relative min-h-[calc(100dvh-64px)]">
+      {active && locked && (
+        <div role="status" className="panel relative z-40 mx-auto flex max-w-xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold">{t('session.locked')}</div>
+            <p className="mt-1 text-xs text-muted">{t(phase === 'waiting' || phase === 'found' || phase === 'select' ? 'session.resumeWaiting' : 'session.resumeBody')}</p>
+          </div>
+          <button className="gbtn sm" disabled={busy} onClick={async () => {
+            setBusy(true);
+            setErr(undefined);
+            try { await useWallet.getState().ensureUnlocked(); }
+            catch (e) { setErr(friendly(e)); }
+            finally { setBusy(false); }
+          }}>
+            {t('session.resume')}
+          </button>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {cancelling && phase !== 'result' && (
           <motion.div key="x" className="grid h-[60vh] place-items-center text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { useScene } from '@/lib/scene';
-import { fmtPx } from '@longshort/shared';
+import { REAL_TRADING, fmtPx } from '@longshort/shared';
 import { useWallet } from '@/lib/wallet';
 import { useApi } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
@@ -18,17 +18,18 @@ import { MatchFlow } from '@/components/landing/MatchFlow';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
-const MODES: { key: 'duel' | 'squad' | 'royale'; n: string; name: string; meta: string; line: string }[] = [
+const ALL_MODES: { key: 'duel' | 'squad' | 'royale'; n: string; name: string; meta: string; line: string }[] = [
   { key: 'duel', n: '01', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. Higher equity at the bell takes the pot.' },
   { key: 'squad', n: '02', name: 'Squad', meta: '3v3 · 120s', line: 'Party up with friends. Summed team PnL wins and the pot is split.' },
   { key: 'royale', n: '03', name: 'Royale', meta: '8 FFA · 180s', line: 'Lowest equity is cut every round. The top three are paid 60/30/10.' },
 ];
+const MODES = REAL_TRADING ? ALL_MODES.slice(0, 1) : ALL_MODES;
 
 const FAQ = [
-  ['Is this real money?', 'Not yet. longshort runs on Monad testnet with test tokens. Mainnet stakes come after an audit.'],
-  ['Do I need a wallet?', 'No. Guest mode makes a burner wallet in your browser and funds it from our faucet in one click.'],
-  ['Who holds the pot?', 'The ArenaCore contract. Stakes are escrowed onchain and the contract pays out at the bell. Nobody at longshort can move them.'],
-  ['What happens if I get liquidated?', 'Your liquidation price is shown before every trade. If the mark crosses it, anyone can liquidate you onchain and your position closes.'],
+  ['Is this real money?', 'longshort runs on Monad testnet with test AUSD. Duels execute real testnet Perpl trades, while Practice is a simulation. The tokens have no monetary value.'],
+  ['Do I need a wallet?', 'Create a Mera passkey account with your device, then claim 200 test AUSD. No seed phrase, extension, email or OTP. Use the same passkey to recover the account in a fresh browser.'],
+  ['Who holds the pot?', REAL_TRADING ? 'The PerplArena contract escrows entries and pays prizes onchain after settlement. A separate trading account holds each player’s 100 AUSD budget. Trading and fees can reduce it; remaining capital returns to that player. Settlement is coordinated by the keeper.' : 'The arena contract escrows stakes and pays prizes after settlement.'],
+  ['What happens if I get liquidated?', REAL_TRADING ? 'Perpl closes the position and the round uses the actual remaining trading balance. Entry and trading capital are both at risk. The report shows returned capital separately from the prize.' : 'The position closes when it reaches its liquidation threshold.'],
   ['How long does matchmaking take?', 'By default, matchmaking waits for human players. Enable Match with bots in Settings to let labelled sparring bots fill empty seats after about 12 seconds.'],
 ];
 
@@ -88,7 +89,7 @@ export default function Landing() {
       <header className={`lp-nav ${scrolled ? 'solid' : ''}`}>
         <Logo />
         <button className="lp-cta sm" onClick={() => play()} onMouseEnter={sfx.hover}>
-          <span>Play free</span>
+          <span>Play testnet</span>
         </button>
       </header>
 
@@ -110,11 +111,11 @@ export default function Landing() {
               ))}
             </h1>
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="lp-lead">
-              Sixty-second PvP perp duels. Go long, go short, knock your rival out. Every click settles onchain and the contract pays the winner.
+              Sixty-second BTC duels. Sign in with a passkey, go long or short, and outtrade your rival. Trades execute on Monad testnet and the contract pays the winner.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, ease: EASE }} className="mt-9 flex flex-wrap items-center gap-x-8 gap-y-4">
               <button className="lp-cta" onClick={() => play()} onMouseEnter={sfx.hover}>
-                <span>Play free</span>
+                <span>Play testnet</span>
                 <svg viewBox="0 0 24 24" aria-hidden>
                   <path d="M5 12h13M13 6l6 6-6 6" />
                 </svg>
@@ -126,7 +127,8 @@ export default function Landing() {
             <div className="lp-credits">
               <span>Built on Monad</span>
               <span>Priced by Perpl</span>
-              <span>Settled by ArenaCore</span>
+              <span>Accounts by Mera</span>
+              <span>Test AUSD by Agora</span>
             </div>
           </div>
         </div>
@@ -141,9 +143,9 @@ export default function Landing() {
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Pick your fight</h2>
-            <p>Three formats, one rule: the best trader in the lobby walks away with the pot.</p>
+            <p>{REAL_TRADING ? 'One live format: a 60-second BTC Duel with test AUSD. Try free simulated Practice before entering.' : 'Three formats, one rule: the best trader in the lobby walks away with the pot.'}</p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className={`grid gap-4 ${REAL_TRADING ? 'md:max-w-xl' : 'md:grid-cols-3'}`}>
             {MODES.map(({ key, n, name, meta, line }, i) => (
               <motion.button
                 key={key}
@@ -186,12 +188,12 @@ export default function Landing() {
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Why it runs on Monad</h2>
-            <p>A one-minute match is hundreds of settlement events. Anywhere slower, your click lands after the chart has moved.</p>
+            <p>Each Duel uses real testnet transactions for entry, trading and payout. Receipt links show exactly what confirmed.</p>
           </div>
           <div className="lp-numbers">
             {[
-              ['400', 'ms', 'Block time. Every click is a real fill that confirms before the candle closes.'],
-              ['0', '%', 'House edge. The pot is only the players’ stakes, paid out by the contract.'],
+              ['1', 'passkey', 'Your account and round signers reconstruct from your passkey. No seed phrase or wallet extension.'],
+              ['2.5', '%', 'Prize-pool rake. Perpl trading fees apply separately and appear in the match report.'],
               ['60', 's', 'Per duel. Short enough for a coffee break, long enough to get liquidated.'],
             ].map(([v, u, d]) => (
               <div key={u}>
@@ -205,7 +207,7 @@ export default function Landing() {
           </div>
           {stats && (
             <div className="lp-live">
-              <span className="lp-dot" /> Live from the contract ·<b>{stats.settled.toLocaleString()}</b> matches settled ·<b>{stats.trades.toLocaleString()}</b> trades ·<b>{stats.txs.toLocaleString()}</b> transactions
+              <span className="lp-dot" /> Indexed contract activity ·<b>{stats.settled.toLocaleString()}</b> matches settled ·<b>{stats.trades.toLocaleString()}</b> trade opens
             </div>
           )}
         </div>
@@ -218,12 +220,12 @@ export default function Landing() {
       <section className="lp-closing">
         <div className="lp-wrap flex flex-col items-start gap-8 md:flex-row md:items-end md:justify-between">
           <h2 className="lp-h2 xl">
-            Your rival
+            Ready for
             <br />
-            is queued.
+            your Duel?
           </h2>
           <button className="lp-cta dark" onClick={() => play()} onMouseEnter={sfx.hover}>
-            <span>Play free</span>
+            <span>Play testnet</span>
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M5 12h13M13 6l6 6-6 6" />
             </svg>

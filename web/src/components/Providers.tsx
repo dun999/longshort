@@ -13,11 +13,12 @@ import { music } from '@/lib/music';
 import { Invites } from './lobby/Invites';
 import { initSettings } from '@/lib/settings';
 import { useWakeLock } from '@/lib/wakeLock';
+import { startJourney } from '@/lib/journey';
 
 const Stage = dynamic(() => import('./three/Stage'), { ssr: false });
 
 /** Reading pages get the game sub-menu treatment: the 3D world blurs and darkens behind the content. */
-const DIMMED = ['/stats', '/rules', '/profile', '/leaderboard'];
+const DIMMED = ['/stats', '/rules', '/profile', '/leaderboard', '/recover', '/demo'];
 
 function Flash() {
   const flash = useScene((s) => s.flash);
@@ -29,6 +30,7 @@ function Flash() {
 function Toast() {
   const toast = useSocket((s) => s.toast);
   useEffect(() => {
+    startJourney();
     if (!toast) return;
     const t = setTimeout(() => useSocket.setState({ toast: undefined }), 3500);
     return () => clearTimeout(t);
@@ -64,7 +66,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     startSocket();
     startAuth();
-    void useWallet.getState().restore();
+    void useWallet.getState().restore().catch(() => {});
     initLang();
     initSettings();
   }, []);

@@ -41,6 +41,8 @@ chains:
     rpc:
       - url: ${ENVIO_RPC_URL:-https://testnet-rpc.monad.xyz}
         for: fallback # HyperSync is primary (ENVIO_API_TOKEN); this RPC is the backup
+      - url: ${ENVIO_RPC_BACKUP_URL:-https://testnet-rpc.monad.xyz}
+        for: fallback # A second provider if the first RPC fallback is unavailable
     contracts:
       - name: ArenaCore
         address:

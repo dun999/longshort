@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useMemo, useRef } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'motion/react';
 import { ColorType, LineSeries, LineStyle, createChart, type UTCTimestamp } from 'lightweight-charts';
 import { CLASSES, MARGIN, MARKETS, MODES, Mode, REAL_TRADING, STAKE, classOf, explorerTx, fmtPx, fmtUsd, shortAddr } from '@longshort/shared';
@@ -16,6 +16,8 @@ import { BackButton } from '../ui/BackButton';
 import { awards, compute, type Row, type Stats } from '@/lib/matchStats';
 import type { MatchView } from '@/lib/match';
 import { TradingCapital } from './TradingCapital';
+import { PrivateJournal } from './PrivateJournal';
+import { friendly } from '@/lib/errors';
 
 const LINE = ['#e7e1d3', '#6f8fd0', '#cf8a52', '#4aa37c', '#c46a5e', '#b3a27a', '#8f7fc4', '#6f9fc0'];
 
@@ -49,14 +51,23 @@ function EquityChart({ stats }: { stats: Stats[] }) {
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 export function Report({ id }: { id: number }) {
-  const { data, reload } = useIndexed<{ match: any; players: any[]; trades: Row[]; accounts?:MatchView['accounts']; fills?:any[] }>(() => envioMatch(id), `/match/${id}`, 5000);
+  const { data, reload } = useIndexed<{ match: any; players: any[]; trades: Row[]; accounts?:MatchView['accounts']; fills?:any[] }>(() => envioMatch(id, { finalized: true }), `/match/${id}`, 5000);
   const me = useWallet((s) => s.address?.toLowerCase());
   const router = useRouter();
+  const [joining, setJoining] = useState(false);
+  const [entryError, setEntryError] = useState<string>();
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
   const stats = useMemo(() => (data?.match ? compute(data.match, data.players, data.trades, data.fills) : []), [data]);
   if (!data?.match) return <div className="grid h-[60vh] place-items-center font-display tracking-[0.4em] text-muted uppercase">Loading report #{id}…</div>;
 
   const m = data.match;
+  if (m.state !== 2) return <div className="mx-auto grid max-w-xl gap-3 px-4 py-12">
+    <div className="panel grid gap-3 p-5">
+      <h1 className="font-display text-2xl font-bold uppercase">{m.state === 3 ? 'Round cancelled' : 'Round has not settled'}</h1>
+      <p className="text-sm text-muted">{m.state === 3 ? 'This round ended before trading. View the round to check returned funds.' : 'The final result and payout appear after the settlement transaction confirms. Your round and any position remain live until then.'}</p>
+      <Link className="gbtn sm justify-self-start" href={`/match/${id}`}>View round #{id} →</Link>
+    </div>
+  </div>;
   const mode = m.mode as Mode;
   const pot = m.entry * data.players.length;
   const mine = stats.find((s) => s.addr === me);
@@ -65,9 +76,13 @@ export function Report({ id }: { id: number }) {
   const awardList = awards(stats);
   const outcome = !mine ? null : mine.result === 'win' ? 'Victory' : mine.result === 'loss' ? 'Defeat' : mine.result === 'draw' ? 'Draw' : null;
   const again = async () => {
+    if (joining) return;
     sfx.click();
-    const next = await quickPlay(mode, m.entry, lastLeverage()).catch(() => null);
-    router.push(next ? `/match/${next}` : '/play');
+    if (!me) return router.push('/play');
+    setJoining(true); setEntryError(undefined);
+    try { const next = await quickPlay(mode, m.entry, lastLeverage()); router.push(`/match/${next}`); }
+    catch (e) { setEntryError(friendly(e)); }
+    finally { setJoining(false); }
   };
 
   return (
@@ -103,12 +118,13 @@ export function Report({ id }: { id: number }) {
               Settlement tx ↗
             </a>
           )}
-          <button className="btn-play sm" onClick={again}>
-            Play again
+          <button className="btn-play sm" disabled={joining} onClick={again}>
+            {joining ? 'Confirming entry…' : 'Play again'}
           </button>
           <BackButton />
         </div>
       </motion.div>
+      {entryError && <p role="alert" className="panel p-3 text-xs text-red">{entryError}</p>}
 
       {REAL_TRADING && <div className="panel p-3">
         <PanelHeader title="AUSD ledger" sub="actual balances, separate capital and prize" hint="The entry funds the prize pool. The trading budget goes into your isolated Perpl account; trading PnL and Perpl fees change it. Remaining trading capital returns to your wallet separately from the prize." />
@@ -120,6 +136,8 @@ export function Report({ id }: { id: number }) {
         </div>
         <TradingCapital id={id} accounts={data.accounts} onRecovered={()=>void reload()} />
       </div>}
+
+      {mine && <PrivateJournal id={id} />}
 
       {/* standings + equity curve */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[380px_minmax(0,1fr)]">

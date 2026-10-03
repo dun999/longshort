@@ -1,7 +1,6 @@
 import {
   createPublicClient,
   createWalletClient,
-  http,
   nonceManager,
   type Account,
   type Hash,
@@ -9,13 +8,14 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { ADDR, REAL_TRADING, activeChain, arenaAbi, monadTestnet } from '@longshort/shared';
 import { env } from './env';
+import { rpcTransport } from './rpc';
 
-export const pub = createPublicClient({ chain: activeChain, transport: http(env.rpcUrl, { timeout: 10_000, retryCount: 2 }) });
-export const perplPub = createPublicClient({ chain: monadTestnet, transport: http(env.perplRpcUrl, { timeout: 8000 }) });
+export const pub = createPublicClient({ chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl, { timeout: 10_000, retryCount: 2 }) });
+export const perplPub = createPublicClient({ chain: monadTestnet, transport: rpcTransport(env.perplRpcUrl, env.perplRpcBackupUrl, { timeout: 8000 }) });
 
 export const keeperAccount = privateKeyToAccount(env.keeperKey, { nonceManager });
 export const walletFor = (account: Account) =>
-  createWalletClient({ account, chain: activeChain, transport: http(env.rpcUrl) });
+  createWalletClient({ account, chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl) });
 export const keeper = walletFor(keeperAccount);
 
 // Own nonce sequence. Sharing the settlement key here collides with settle/liquidate.

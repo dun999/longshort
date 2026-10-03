@@ -1,10 +1,11 @@
-import { createWalletClient, encodeFunctionData, http, keccak256 } from 'viem';
+import { createWalletClient, encodeFunctionData, keccak256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { ADDR, REAL_TRADING, activeChain, erc20Abi } from '@longshort/shared';
 import { AUSDClaims } from './claims';
 import { db } from './db';
 import { env } from './env';
 import { pub } from './chain';
+import { rpcTransport } from './rpc';
 
 let service: AUSDClaims | undefined;
 export function ausdClaims() {
@@ -13,7 +14,7 @@ export function ausdClaims() {
   if (!env.faucetKey) throw new Error('AUSD funding is not configured');
   if (!service) {
     const account = privateKeyToAccount(env.faucetKey);
-    const wallet = createWalletClient({ account, chain: activeChain, transport: http(env.rpcUrl) });
+    const wallet = createWalletClient({ account, chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl) });
     service = new AUSDClaims(db, {
       chainId: () => pub.getChainId(),
       balance: (address) => pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'balanceOf', args: [address] }),

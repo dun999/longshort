@@ -17,6 +17,8 @@ import { followersOf, matchmake, opened, pendingFor, release } from './queue';
 import { relay } from './relay';
 import { ausdClaims } from './faucet';
 import { recoverCapital } from './recovery';
+import { readMatchKey, saveMatchKey } from './passkeys';
+import { JournalError, readJournal, saveJournal } from './journal';
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 type Handler = (req: IncomingMessage, params: string[], body: any) => unknown | Promise<unknown>;
@@ -32,7 +34,7 @@ function playersOf(matchId: number) {
   });
 }
 
-route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING }));
+route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING, accountLayer:'mera', recoveryMetadata:1, privateJournal:1 }));
 route('GET', '/faucet/:addr', (_r, [addr]) => ausdClaims().status(addr));
 // Caddy's forward_auth asks this before serving the Envio GraphQL; handle() has already checked the gate
 route('GET', '/gate', () => ({ ok: true }));
@@ -51,6 +53,10 @@ route('POST', '/lobby-options', async (_r, _p, body) => {
 route('POST', '/rematch', (_r, _p, body) => reserveRematch(body));
 route('POST', '/rematch-release', (_r, _p, body) => releaseRematch(body));
 route('POST', '/auth', (_r, _p, body) => signIn(body));
+route('POST', '/passkey/match-key', (_r, _p, body) => saveMatchKey(body));
+route('GET', '/passkey/match-key/:owner/:session', (_r, [owner, session]) => readMatchKey(owner, session));
+route('POST', '/journal/read', (_r, _p, body) => readJournal(body));
+route('POST', '/journal/save', (_r, _p, body) => saveJournal(body));
 route('POST', '/recover', (_r, _p, body) => recoverCapital(Number(body?.id), signedIn(body)));
 route('POST', '/relay', (req, _p, body) => {
   const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
@@ -217,7 +223,12 @@ route('POST', '/faucet', async (req, _p, body) => {
 
 async function readBody(req: IncomingMessage) {
   let s = '';
-  for await (const c of req) s += c;
+  let bytes = 0;
+  for await (const c of req) {
+    bytes += Buffer.byteLength(c);
+    if (bytes > 32_768) throw new JournalError('Request is too large', 413, 'REQUEST_TOO_LARGE');
+    s += c;
+  }
   return s ? JSON.parse(s) : undefined;
 }
 
@@ -238,8 +249,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('content-type', 'application/json');
       return void res.end(JSON.stringify(out));
     } catch (e) {
-      res.statusCode = 500;
-      return void res.end(JSON.stringify({ error: (e as Error).message }));
+      res.statusCode = e instanceof JournalError ? e.status : 500;
+      res.setHeader('content-type', 'application/json');
+      return void res.end(JSON.stringify({ error: (e as Error).message, ...(e instanceof JournalError ? { code: e.code } : {}) }));
     }
   }
   res.statusCode = 404;
@@ -331,7 +343,7 @@ function onMessage(c: Client, msg: any) {
     case 'party:join': {
       const p = parties.get(msg.partyId);
       if (me && p?.members.some((m) => m.addr === me)) return pushParty(p);
-      if (!me || !p || p.members.length >= 3) return send(c, { t: 'toast', text: 'Party is full or gone' });
+      if (!me || !p || p.members.length >= (REAL_TRADING ? 2 : 3)) return send(c, { t: 'toast', text: 'Party is full or gone' });
       leaveParty(me);
       p.members.push({ addr: me, name: c.name, ready: false, leverage: 25 });
       p.chat.push({ from: 'system', text: `${c.name ?? me.slice(0, 6)} joined the party`, at: Date.now() });

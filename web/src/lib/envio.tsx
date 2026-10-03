@@ -4,7 +4,7 @@
  * entities; this is the source of truth for onchain history. The keeper API only adds
  * off-chain profile data (display names, bot flags). Unset → pages use the keeper.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ADDR } from '@longshort/shared';
 import { api } from './api';
 
@@ -35,7 +35,7 @@ async function profiles(addresses: string[]): Promise<Record<string, { name: str
 export const matchEntityId = (id: number) => `${ADDR.arena.toLowerCase()}-${id}`;
 
 /** Match report in the same shape the keeper's /match/:id returns. */
-export async function envioMatch(id: number) {
+export async function envioMatch(id: number, options: { finalized?: boolean } = {}) {
   const d = await gql<{ Match_by_pk: any }>(
     `query($id: String!) { Match_by_pk(id: $id) {
         matchId mode entry duration state startAt endAt rake settleTx createTx asset tradingBudget
@@ -48,6 +48,9 @@ export async function envioMatch(id: number) {
   );
   const m = d.Match_by_pk;
   if (!m) return null;
+  // HyperSync can pause under rate limits. Until its terminal event arrives,
+  // a report uses the keeper's receipt rather than presenting an older snapshot as final.
+  if (options.finalized && (m.state !== 'SETTLED' || !m.settleTx)) return null;
   const names = await profiles(m.players.map((p: any) => addressOf(p.trader_id)));
   return {
     source: 'envio' as const,
@@ -139,30 +142,41 @@ export async function envioProfile(addr: string) {
 }
 
 /** Polls an Envio reader; falls back to the keeper endpoint when Envio is off or errors. */
-export function useIndexed<T>(envio: (() => Promise<T | null>) | null, keeperPath: string | null, refreshMs?: number) {
-  const [data, setData] = useState<(T & { source?: 'envio' | 'keeper' }) | undefined>();
+export function useIndexed<T>(envio: (() => Promise<T | null>) | null, keeperPath: string | null, refreshMs?: number, scope?: string) {
+  type Indexed = T & { source?: 'envio' | 'keeper' };
+  const currentScope = scope ?? keeperPath ?? 'global';
+  const [snapshot, setSnapshot] = useState<{ scope: string; data: Indexed }>();
+  const active = useRef(currentScope);
+  const fetcher = useRef(envio);
+  active.current = currentScope;
+  fetcher.current = envio;
   const load = useCallback(async () => {
-    if (envio && envioEnabled()) {
+    const commit = (value: T, source: 'envio' | 'keeper') => {
+      if (active.current !== currentScope) return;
+      const data = (Array.isArray(value) ? Object.assign(value, { source }) : { ...(value as object), source }) as Indexed;
+      setSnapshot({ scope: currentScope, data });
+    };
+    const query = fetcher.current;
+    if (query && envioEnabled()) {
       try {
-        const r = await envio();
-        if (r) return setData((Array.isArray(r) ? Object.assign(r, { source: 'envio' }) : { ...(r as object), source: 'envio' }) as any);
+        const r = await query();
+        if (r) return commit(r, 'envio');
       } catch {
         /* fall through to the keeper */
       }
     }
     if (keeperPath) {
       const r = await api<T>(keeperPath).catch(() => undefined);
-      if (r) setData(Array.isArray(r) ? (Object.assign(r, { source: 'keeper' }) as any) : { ...(r as object), source: 'keeper' });
+      if (r) commit(r, 'keeper');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keeperPath]);
+  }, [keeperPath, currentScope]);
   useEffect(() => {
     void load();
     if (!refreshMs) return;
     const t = setInterval(load, refreshMs);
     return () => clearInterval(t);
   }, [load, refreshMs]);
-  return { data, reload: load };
+  return { data: snapshot?.scope === currentScope ? snapshot.data : undefined, reload: load };
 }
 
 export function EnvioBadge({ source }: { source?: 'envio' | 'keeper' }) {

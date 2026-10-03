@@ -26,7 +26,7 @@ export const isBot = (a: string) => botSet.has(a.toLowerCase());
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)];
 
-async function fund(b: Bot) {
+export async function fundBot(b: Bot) {
   const addr = b.account.address;
   const [mon, usd, allowance] = await Promise.all([
     pub.getBalance({ address: addr }),
@@ -34,7 +34,8 @@ async function fund(b: Bot) {
     pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'allowance', args: [addr, ADDR.arena] }),
   ]);
   if (mon < parseEther(env.botFundMon) / 2n) {
-    await send('fund', () => keeper.sendTransaction({ to: addr, value: parseEther(env.botFundMon), gas: 21_000n }));
+    const hash = await send('fund', () => keeper.sendTransaction({ to: addr, value: parseEther(env.botFundMon), gas: 21_000n }));
+    if (!hash || (await pub.waitForTransactionReceipt({ hash })).status !== 'success') throw new Error('Bot gas funding did not confirm');
   }
   const want = parseUnits(env.botFundStake, 6);
   if (usd < (REAL_TRADING ? parseUnits(String(TRADING_BUDGET+50),6) : want / 5n)) {
@@ -43,15 +44,21 @@ async function fund(b: Bot) {
     if (have >= want) {
       const estimate=await pub.estimateContractGas({address:ADDR.stake,abi:erc20Abi,functionName:'transfer',args:[addr,want],account:keeper.account.address});
       const hash=await send('fund', () => keeper.writeContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'transfer', args: [addr, want], gas: estimate*120n/100n }));
-      if(hash) await pub.waitForTransactionReceipt({hash});
+      if (!hash || (await pub.waitForTransactionReceipt({ hash })).status !== 'success') throw new Error('Bot AUSD funding did not confirm');
     }
-    else log('fund', `keeper holds too little ${ADDR.stakeSymbol ?? 'stake'} to fund ${b.name}; send some to ${keeper.account.address}`);
+    else throw new Error('Bot AUSD budget unavailable');
+    if (await pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'balanceOf', args: [addr] }) < (REAL_TRADING ? parseUnits(String(TRADING_BUDGET + 50), 6) : want / 5n))
+      throw new Error('Bot AUSD budget did not confirm');
   }
-  if (allowance < parseUnits('1000000', 6)) {
-    await new Promise((r) => setTimeout(r, 1500)); // let the MON top-up land first
-    await send(b.name, () =>
-      b.wallet.writeContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256], gas: GAS.approve }),
-    );
+  const approval = REAL_TRADING ? parseUnits(String(TRADING_BUDGET + 50), 6) : maxUint256;
+  if (REAL_TRADING ? allowance !== approval : allowance < parseUnits('1000000', 6)) {
+    const args = [ADDR.arena, approval] as const;
+    // Estimate the AUSD proxy call instead of relying on the legacy fixed 70k cap.
+    const gas = (await pub.estimateContractGas({ address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args, account: b.account })) * 120n / 100n;
+    const hash = await send(b.name, () => b.wallet.writeContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args, gas }));
+    if (!hash || (await pub.waitForTransactionReceipt({ hash })).status !== 'success' ||
+        await pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'allowance', args: [addr, ADDR.arena] }) < approval)
+      throw new Error('Bot approval did not confirm');
   }
 }
 
@@ -101,7 +108,7 @@ export async function fillLobbies(now: number) {
         const b = freeBots().find((b) => b.account.address.toLowerCase() === p.addr);
         if (!b) continue;
         const args = [BigInt(m.id), p.team, p.leverage, '0x0000000000000000000000000000000000000000'] as const;
-        if(REAL_TRADING) await fund(b);
+        if(REAL_TRADING) await fundBot(b);
         const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
         if (!ok) continue;
         const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -125,7 +132,7 @@ export async function fillLobbies(now: number) {
       teamCount[team]++;
       claim(b, m.id);
       const args = [BigInt(m.id), team, pick(LEVS), '0x0000000000000000000000000000000000000000'] as const;
-      if(REAL_TRADING) await fund(b);
+      if(REAL_TRADING) await fundBot(b);
       const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
       if (!ok) continue;
       const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -219,8 +226,12 @@ export async function startBots() {
     ensureProfile(account.address, true, name);
     db.prepare('UPDATE profiles SET name = ?, bot = 1 WHERE addr = ?').run(name, account.address.toLowerCase());
   }
-  for (const b of bots) await fund(b);
-  log('bots', `${bots.length} bots funded & approved`);
+  let ready = 0;
+  for (const b of bots) {
+    try { await fundBot(b); ready++; }
+    catch { log('bots', `${b.name} funding/approval pending; retrying before its next match`); }
+  }
+  log('bots', `${ready}/${bots.length} bots funded & approved`);
   const loop = async () => {
     try {
       const now = await chainNow();

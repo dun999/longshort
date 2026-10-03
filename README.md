@@ -18,20 +18,22 @@ The deployed website uses testnet contracts and tokens. Production deployment of
 
 ## Integration documentation
 
-The `docs/` directory contains three guides explaining the integrations used by Longshort:
+The `docs/` directory explains the integrations:
 
 - [Agora AUSD](docs/AGORAUSD.md): wallet funding, entry escrow, real Perpl collateral, prizes, returned capital, and recorded transaction evidence.
 - [Envio](docs/ENVIO.md): contract events, GraphQL entities, fills, results, rankings, statistics, and keeper fallback.
-- [Mera](docs/MERA.md): passkey sign-in, owner/match-key derivation, signing sessions, key lifetime, and sponsored execution.
+- [Mera](docs/MERA.md): the live passkey account layer, stateless recovery, scoped signing sessions, and the separate encrypted journal namespace.
 
 ## Try it
 
-1. Open [longshort.fun](https://longshort.fun). If the private-preview gate is enabled, enter the preview access code.
-2. Sign in with a passkey through Mera. Browser-wallet and guest options are also available.
+1. Open [longshort.fun](https://longshort.fun); the live demo is public.
+2. Create or sign in with a passkey through Mera. Existing guest/browser-wallet accounts retain a separate recovery page; new live entries require a passkey.
 3. Use **Claim AUSD** to request the testnet funding transfer. The current claim amount is 200 AUSD per eligible wallet.
-4. Choose **Duel** and an entry. The lobby shows the separate 100 AUSD trading budget and the total required balance before joining.
+4. Choose **Duel** and an entry. The lobby shows the separate 100 AUSD trading budget and total required balance. If alone, turn on **Match with bots** in **Settings** before joining; bot opponents are labelled.
 5. After the 15-second countdown, trade BTC with **Long**, **Short**, and **Close**. Perpl executes the orders onchain using the player's isolated trading account.
-6. At the bell, positions are flattened, the entry prize is distributed, and remaining collateral returns to each owner. The result screen links to the match report and sharing options.
+6. At the bell, positions are flattened, the entry prize is distributed, and remaining collateral returns to each owner. The report shows actual ledger/receipts and an optional private journal. Open the journal with an explicit passkey verification; only ciphertext is saved.
+
+The account menu's **Demo evidence** page records actual navigation-to-confirmation time, control activations, ceremonies, and public receipts. Measurements are not an achieved performance claim until the browser test is run.
 
 **Practice** needs no account or AUSD. It uses live BTC, ETH, and MON prices with simulated positions in the browser. It waits for usable prices and pauses when the feed becomes unavailable.
 
@@ -73,9 +75,11 @@ Envio HyperIndex → GraphQL → profiles, ranks, stats, match reports
 | `packages/shared/` | Active deployment addresses, ABIs, chains, relay types, and shared game constants |
 | `_legacy/` | Original prototype |
 
-Mera derives the owner and each match key from passkey PRF output. Passkey-derived keys stay in memory; the owner holds AUSD, while the registered match key signs round actions. The keyring locks after inactivity or page unload and stays pinned during a round.
+Mera derives the owner and each match key from passkey PRF output. Passkey-derived keys stay in memory; the owner holds AUSD, while the registered match key signs round actions. Public derivation hints are saved durably before entry and verified against the onchain session during recovery, so browser storage is an optional cache. The keyring locks after inactivity or page unload and stays pinned during a round. Verification permits one entry attempt within two minutes; later entries ask again, and token approval is bounded to entry plus trading budget.
 
-For passkey accounts, the configured EIP-7702 delegate and keeper relayer sponsor gas. The delegate restricts destinations and methods, verifies signed payloads, and advances its nonce. Browser-wallet owner transactions can use the wallet's own gas flow.
+For passkey accounts, the configured EIP-7702 delegate and keeper relayer sponsor gas. The delegate restricts destinations and methods, verifies signed payloads, and advances its nonce. Existing browser-wallet accounts can still recover through their wallet's own gas flow.
+
+The private journal evaluates a separate, versioned PRF salt through Mera, then derives a non-extractable AES-256-GCM key. Each save uses a fresh nonce and authenticates its deployment, owner, match and namespace. Plaintext/keys remain in memory; durable ciphertext uses revision checks to prevent silent concurrent overwrites.
 
 Envio indexes onchain history independently of the keeper's live API. Historical pages prefer GraphQL when configured and can fall back to keeper reads. Contracts determine execution and payouts; neither the keeper database nor the indexer can invent an onchain fill.
 
@@ -83,13 +87,14 @@ Envio indexes onchain history independently of the keeper's live API. Historical
 
 ```bash
 npm -w keeper test
+npm -w web test
 npm -w keeper run typecheck
 npm run contracts:test
 node_modules/.bin/tsc --noEmit -p web/tsconfig.json
 NEXT_DIST_DIR=.next-prod npm -w web run build
 ```
 
-The contract suite includes local regression tests and optional RPC-backed fork tests. The real-exchange fork checks are enabled explicitly with `PERPL_FORK_RPC`; see [PerplFork.t.sol](contracts/test/PerplFork.t.sol). Keeper tests use fixtures rather than deployed signing keys.
+The contract suite includes local regression tests. Keeper tests use fixtures rather than deployed signing keys.
 
 ## Run locally
 
@@ -112,4 +117,6 @@ The web app runs at `http://localhost:3000`; the keeper API runs at `http://loca
 
 The active AUSD/Perpl deployment is recorded in [addresses.json](packages/shared/src/addresses.json) and [addresses.testnet-perpl.json](packages/shared/src/addresses.testnet-perpl.json). Testnet configuration needs the matching RPC, keeper funding/relay settings, and browser API URL. Environment files and signing keys are excluded from Git. Selecting a different profile changes the app's contract bindings; use the matching keeper configuration.
 
-Website releases use [scripts/deploy.sh](scripts/deploy.sh). `scripts/deploy.sh web` builds the production standalone web bundle and restarts the web service on the configured VPS. Contract deployment commands create new onchain deployments; they are separate from a website release.
+The keeper accepts `RPC_BACKUP_URL` for ordered provider failover across reads, bot/settlement/relay transactions and AUSD funding. `PERPL_RPC_BACKUP_URL` overrides the price client's backup; on Monad testnet it defaults to `RPC_BACKUP_URL`. A primary timeout, HTTP error or rate limit advances to the backup without background ranking probes; contract reverts still surface to the caller. Envio keeps HyperSync primary and accepts `ENVIO_RPC_BACKUP_URL` as a second RPC fallback after `ENVIO_RPC_URL`. Keep provider URLs with credentials in ignored environment files, outside the public web bundle.
+
+Website releases use [scripts/deploy.sh](scripts/deploy.sh). It builds artifacts before activation, refuses to restart the keeper with active rounds, saves a consistent SQLite backup and previous code, and activates/health-checks the keeper before the web. `scripts/deploy.sh web` releases only the web bundle. Contract deployment commands create new onchain deployments; they are separate from a website release.

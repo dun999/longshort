@@ -51,8 +51,7 @@ function ArtBox({ art }: { art: Art }) {
         <div className="gd-big num">${MARGIN.toLocaleString('en-US')}</div>
         <div className="gd-tickers num">
           <span>BTC</span>
-          <span>ETH</span>
-          <span>MON</span>
+          {!REAL_TRADING && <><span>ETH</span><span>MON</span></>}
           <span className="text-dim">{t('gd.clock')}</span>
         </div>
       </div>

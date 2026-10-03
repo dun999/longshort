@@ -12,17 +12,22 @@ import { BackButton } from '@/components/ui/BackButton';
 export default function Profile({ params }: { params: Promise<{ addr: string }> }) {
   const { addr } = use(params);
   const { data, reload } = useApi<any>(`/profile/${addr}`, 10_000);
-  const { data: ix } = useIndexed<any>(() => envioProfile(addr), null, 10_000);
-  const { address, main, kind, disconnect } = useWallet();
+  const { data: ix } = useIndexed<any>(() => envioProfile(addr), null, 10_000, `profile:${addr.toLowerCase()}`);
+  const { address, disconnect } = useWallet();
   const mine = address?.toLowerCase() === addr.toLowerCase();
   const [name, setName] = useState('');
   const [msg, setMsg] = useState<string>();
+  const [saving, setSaving] = useState(false);
   const p = data?.profile;
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
 
   const save = async () => {
-    if (!main || !address) return;
+    if (!address || saving) return;
+    setSaving(true); setMsg(undefined);
     try {
+      await useWallet.getState().ensureUnlocked();
+      const { main, address: current } = useWallet.getState();
+      if (!main || current !== address) throw new Error('Account changed. Sign in again.');
       const ts = Math.floor(Date.now() / 1000);
       const sig = await main.signMessage({ account: main.account ?? address, message: `longshort.fun name:${name} ts:${ts}` });
       await api('/profile', { addr: address, name, ts, sig });
@@ -30,7 +35,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
       reload();
     } catch (e) {
       setMsg((e as Error).message.split('\n')[0]);
-    }
+    } finally { setSaving(false); }
   };
 
   const xp = p?.xp ?? 1000;
@@ -82,13 +87,13 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
       {mine && (
         <div className="panel flex flex-wrap items-center gap-3 p-4">
           <span className="panel-title">Callsign</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={p?.name ?? 'pick a name'} maxLength={20} className="border border-line bg-black/30 px-3 py-2 text-sm outline-none focus:border-violet" />
-          <button className="gbtn sm" onClick={save} disabled={name.length < 2}>
-            Sign & save
+          <input aria-label="Callsign" value={name} disabled={saving} onChange={(e) => setName(e.target.value)} placeholder={p?.name ?? 'pick a name'} maxLength={20} className="border border-line bg-black/30 px-3 py-2 text-sm outline-none focus:border-violet" />
+          <button className="gbtn sm" onClick={save} disabled={saving || !/^[\w .·-]{2,20}$/.test(name) || /^bot/i.test(name)}>
+            {saving ? 'Saving…' : 'Save callsign'}
           </button>
           {msg && <span className="text-xs text-muted">{msg}</span>}
           <button className="ml-auto text-xs text-dim hover:text-red" onClick={disconnect}>
-            disconnect {kind}
+            Sign out
           </button>
         </div>
       )}

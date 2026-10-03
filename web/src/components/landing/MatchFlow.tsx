@@ -57,7 +57,7 @@ function Payout() {
 const STEPS = [
   { n: '01', t: 'Queue', d: REAL_TRADING ? 'Sign in with Mera, claim AUSD, then fund a duel: entry plus a separate 100 AUSD Perpl account.' : 'Pick a mode and stake. Matchmaking fills the lobby in seconds; a labelled bot takes any seat still empty after 12s.', v: <Radar /> },
   { n: '02', t: 'Face-off', d: REAL_TRADING ? 'Meet your rival. Equal AUSD balances, BTC at 5x, and a countdown before the 60 second round.' : 'Match found. Lock your class (Tank 10x, Scout 25x, Sniper 50x), see who you drew, then the countdown.', v: <FaceOff /> },
-  { n: '03', t: 'Fight', d: 'Long, short, close, repeat. Every click is a Monad transaction that confirms before the candle does.', v: <Candles /> },
+  { n: '03', t: 'Fight', d: 'Long, short, close, repeat. Round controls use your scoped signing session without extra passkey prompts. Each confirmed trade has a Monad receipt.', v: <Candles /> },
   { n: '04', t: 'Payout', d: REAL_TRADING ? 'Close on Perpl. The higher final balance wins the AUSD pot. Your remaining trading capital returns for the next duel.' : 'At the bell ArenaCore closes every position at the oracle mark and pays the winners from the pot.', v: <Payout /> },
 ];
 
@@ -67,7 +67,7 @@ export function MatchFlow() {
       <div className="lp-wrap">
         <div className="lp-head">
           <h2 className="lp-h2">From queue to payout</h2>
-          <p>A whole match fits in a minute. Here is what happens between hitting Play and getting paid.</p>
+          <p>The trading round lasts one minute. Matchmaking, countdown and settlement are shown separately.</p>
         </div>
         <div className="lpf-grid">
           {STEPS.map((s, i) => (

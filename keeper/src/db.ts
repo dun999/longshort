@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS rematches (
   match_id INTEGER UNIQUE, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, addr TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS passkey_match_keys (
+  chain_id INTEGER NOT NULL, arena TEXT NOT NULL, owner TEXT NOT NULL, session TEXT NOT NULL,
+  label TEXT NOT NULL, created_at INTEGER NOT NULL,
+  PRIMARY KEY(chain_id, arena, owner, session)
+);
+CREATE TABLE IF NOT EXISTS private_journals (
+  chain_id INTEGER NOT NULL, arena TEXT NOT NULL, owner TEXT NOT NULL, match_id INTEGER NOT NULL,
+  envelope TEXT NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  PRIMARY KEY(chain_id, arena, owner, match_id)
+);
 CREATE INDEX IF NOT EXISTS matches_state ON matches(state, mode, entry);
 CREATE INDEX IF NOT EXISTS players_addr ON players(addr);
 CREATE TABLE IF NOT EXISTS trading_accounts (

@@ -28,7 +28,7 @@ const MODE_INFO: Record<string, { desc: Key }> = {
   royale: { desc: 'mode.royale' },
   practice: { desc: 'mode.practice' },
 };
-const modeCfg = (m: LobbyMode) => (m === 'practice' ? { key: 'practice', name: 'Practice', tagline: 'vs bot · live prices · no stake', maxPlayers: 2, duration: 60 } : MODES[m]);
+const modeCfg = (m: LobbyMode) => (m === 'practice' ? { key: 'practice', name: 'Practice', tagline: 'simulated · live prices · no stake', maxPlayers: 2, duration: 60 } : MODES[m]);
 
 /** Mode "art": the seats each mode fills, as class-coloured pips (you are the bright one). */
 function Seats({ n, me = -1 }: { n: number; me?: number }) {
@@ -93,7 +93,7 @@ function QueueCard({ mode, entry, locked, onOpen }: { mode: LobbyMode; entry: nu
         </button>
       </div>
       <div className="hidden sm:block">
-        <PanelHeader title={t('lb.gameMode')} hint="What you'll queue into when you press PLAY. Duel is 1v1, Squad is 3v3 with your party, Royale is 8-player elimination, and Practice is free against a bot." />
+        <PanelHeader title={t('lb.gameMode')} hint={REAL_TRADING ? 'Duel is a 60-second BTC match for two players. Practice is simulated, free, and needs no account.' : 'Choose Duel, Squad, Royale, or free simulated Practice.'} />
       </div>
       <div className="hidden sm:block">
         <div className="font-display text-2xl leading-none font-bold tracking-[0.08em] uppercase">{cfg.name}</div>
@@ -209,7 +209,7 @@ function ModeSelect({
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
               <div className="panel grid content-start gap-2 p-4">
-                <PanelHeader title={t('ms.stake')} sub={t('ms.stakeSub')} hint="Every player escrows the same stake in the ArenaCore contract. Winners are paid from the pot minus a 2.5% rake. This stake is the most you can lose." />
+                <PanelHeader title={t('ms.stake')} sub={t('ms.stakeSub')} hint={m === 'practice' ? 'Practice uses simulated trades. No account, entry or trading deposit is needed.' : REAL_TRADING ? 'The entry funds the prize pool with a 2.5% rake. An additional 100 test AUSD funds your trading account and can lose value through trading and fees.' : 'Every player escrows the same stake. Winners receive the pot minus a 2.5% rake.'} />
                 {m === 'practice' ? (
                   <p className="text-sm text-muted">{t('ms.practiceFree')}</p>
                 ) : (
@@ -234,7 +234,7 @@ function ModeSelect({
                       </div>
                     )}
                     <p className="text-[11px] text-dim">
-                      {t('ms.onlyStake')} <Link href="/rules" className="link">{t('lb.rules')}</Link>
+                      {t(REAL_TRADING ? 'ms.liveRisk' : 'ms.onlyStake')} <Link href="/rules" className="link">{t('lb.rules')}</Link>
                     </p>
                   </>
                 )}
@@ -274,6 +274,7 @@ export function Lobby() {
   // first visit: the how-to-play tour opens once the lobby has laid out; /play?guide=1 reopens it
   useEffect(() => {
     if (search.get('guide') === '1') return setGuide(true);
+    if (REAL_TRADING) return;
     if (guideSeen()) return;
     const t = setTimeout(() => setGuide(true), 900);
     return () => clearTimeout(t);
@@ -336,8 +337,9 @@ export function Lobby() {
   useEffect(() => () => void (busyRef.current && (cancelQ.current = true)), []); // leaving the page mid-queue cancels too
 
   const findMatch = async () => {
-    if (!address) return setConnect(true);
     if (effMode === 'practice') return router.push('/practice');
+    if (!address) return setConnect(true);
+    if (REAL_TRADING && kind !== 'passkey') return router.push('/recover');
     setErr(undefined);
     setBusy(true);
     cancelQ.current = false;
@@ -372,7 +374,8 @@ export function Lobby() {
   };
 
   const pay = effMode === 'practice' ? null : payouts(effMode, effEntry, MODES[effMode].maxPlayers);
-  const lowFunds = address && effMode !== 'practice' && Number(usd) / 1e6 < effEntry + TRADING_BUDGET;
+  const legacy = REAL_TRADING && address && kind !== 'passkey';
+  const lowFunds = address && !legacy && effMode !== 'practice' && Number(usd) / 1e6 < effEntry + TRADING_BUDGET;
 
   const cfg = modeCfg(effMode);
   return (
@@ -387,6 +390,7 @@ export function Lobby() {
 
       {/* the one primary action */}
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
+        {legacy && effMode !== 'practice' && <Link href="/recover" className="pointer-events-auto max-w-sm text-center text-xs text-gold underline">Existing account detected · finish rounds or recover capital</Link>}
         <AnimatePresence>
           {queuedAt && (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="font-display text-xs tracking-[0.4em] text-muted uppercase">
@@ -406,15 +410,15 @@ export function Lobby() {
           onMouseEnter={sfx.hover}
         >
           <span className="grid text-center leading-tight">
-            {t(!address ? 'nav.signIn' : inParty && !leader ? 'lb.ready' : busy ? 'lb.queueing' : 'lb.play')}
-            <span className="sub">{!address ? t('lb.signInSub') : inParty && !leader ? t('lb.waitLeader') : `${cfg.name}${pay ? ` · ${effEntry} ${STAKE}` : ''}`}</span>
+            {t(effMode === 'practice' ? 'lb.play' : !address ? 'nav.signIn' : inParty && !leader ? 'lb.ready' : busy ? 'lb.queueing' : 'lb.play')}
+            <span className="sub">{!address && effMode !== 'practice' ? t(REAL_TRADING ? 'lb.passkeySub' : 'lb.signInSub') : inParty && !leader ? t('lb.waitLeader') : `${cfg.name}${pay ? ` · ${effEntry} ${STAKE}` : ''}`}</span>
           </span>
         </motion.button>
         <div className="lobby-payout num pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 text-[12px] text-muted">
           {pay ? (
             <>
               {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
-              <Hint text="PLAY escrows your stake in the arena contract and finds a lobby (or opens one). When enabled in Settings, sparring bots fill empty seats after ~12s. During the match every trade is an onchain transaction." />
+              <Hint text="PLAY commits the entry and separate trading budget. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution." />
             </>
           ) : (
             <>{t('lb.freePractice')}</>
@@ -429,6 +433,7 @@ export function Lobby() {
             </div>
           )}
         {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">{t('live.budget',{amount:TRADING_BUDGET,total:effEntry+TRADING_BUDGET})}</p>}
+        {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[10px] text-dim">{t('live.session')}</p>}
         {err && <span className="pointer-events-auto max-w-md text-center text-xs text-red">{err}</span>}
         {busy && queuedAt ? (
           <button className="guide-link pointer-events-auto" disabled={cancelQueued} onClick={() => (sfx.click(), (cancelQ.current = true), setCancelQueued(true))}>
@@ -504,7 +509,7 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
           <h3>{t('lb.party')}</h3>
         </span>
         <span className="num ml-auto text-[11px] text-muted">
-          <span className="text-green">●</span> {t('lb.online', { n: online.length })} · {party?.members.length ?? 1}/3
+          <span className="text-green">●</span> {t('lb.online', { n: online.length })} · {party?.members.length ?? 1}/{REAL_TRADING ? 2 : 3}
         </span>
         <span className="text-dim">{open ? '▴' : '▾'}</span>
       </button>
@@ -634,8 +639,8 @@ function OnlinePanel({ me, online }: { me?: string; online: string[] }) {
 
 function LivePanel() {
   const t = useT();
-  const { data: live } = useApi<any[]>('/matches?state=live', 3000);
-  const { data: open } = useApi<any[]>('/matches?state=open', 3000);
+  const { data: live, error: liveError } = useApi<any[]>('/matches?state=live', 3000);
+  const { data: open, error: openError } = useApi<any[]>('/matches?state=open', 3000);
   const rows = useMemo(() => {
     // a lobby can appear in both polls while it flips open → live; keep the live copy
     const liveIds = new Set((live ?? []).map((m) => m.id));
@@ -644,7 +649,8 @@ function LivePanel() {
   return (
     <div className="panel grid gap-1 p-2.5">
       <PanelHeader title={t('lb.watch')} sub={t('lb.watchSub')} hint="Open lobbies are waiting for players, and you can join one. Live matches are in progress; open one to spectate every trade as it happens." />
-      {!rows.length && <span className="text-xs text-dim">{t('lb.noMatches')}</span>}
+      {(liveError || openError) && <span role="status" className="text-xs text-gold">{t('lb.matchesUnavailable')}</span>}
+      {!rows.length && !liveError && !openError && <span className="text-xs text-dim">{t(live && open ? 'lb.noMatches' : 'lb.loadingMatches')}</span>}
       {rows.map((m) => (
         <Link key={m.id} href={`/match/${m.id}`} className="flex items-center gap-2 border border-line px-2 py-1 text-[11px] hover:border-[var(--line-hi)]" onMouseEnter={sfx.hover}>
           <span className={`px-1 text-[9px] font-bold tracking-widest uppercase ${m.tag === 'live' ? 'text-red' : 'text-green'}`}>{m.tag}</span>

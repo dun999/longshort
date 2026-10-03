@@ -39,7 +39,10 @@ const listeners = new Set<(e: ChainEvent) => void>();
 
 // sign-in tokens, one per address, kept by this browser (see lib/auth)
 const TOKEN = (addr: string) => `ls.auth.v1:${addr.toLowerCase()}`;
+const memoryTokens = new Map<string, string>();
 export const tokenFor = (addr: string) => {
+  const token = memoryTokens.get(addr.toLowerCase());
+  if (token) return token;
   try {
     return localStorage.getItem(TOKEN(addr)) ?? undefined;
   } catch {
@@ -47,6 +50,8 @@ export const tokenFor = (addr: string) => {
   }
 };
 export const saveToken = (addr: string, token?: string) => {
+  if (token) memoryTokens.set(addr.toLowerCase(), token);
+  else memoryTokens.delete(addr.toLowerCase());
   try {
     if (token) localStorage.setItem(TOKEN(addr), token);
     else localStorage.removeItem(TOKEN(addr));

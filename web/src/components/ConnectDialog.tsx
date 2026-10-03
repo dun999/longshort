@@ -2,7 +2,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { STAKE } from '@longshort/shared';
+import { REAL_TRADING, STAKE } from '@longshort/shared';
+import Link from 'next/link';
 import { useWallet } from '@/lib/wallet';
 import { signIn } from '@/lib/auth';
 import { hasSavedPasskey, passkeySupported } from '@/lib/mera';
@@ -74,7 +75,7 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
                     aria-label={t('cd.callsign')}
                     className="min-h-[44px] min-w-0 border border-line bg-black/30 px-3 py-2 text-[16px] outline-none focus:border-[var(--accent)]"
                   />
-                  <button className="btn-play sm w-full" disabled={connecting || username.length < 3} onClick={() => (sfx.lockIn(), void connectPasskey({ create: true, username }))}>
+                  <button className="btn-play sm w-full" disabled={connecting} onClick={() => (sfx.lockIn(), void connectPasskey({ create: true, username }))}>
                     {t(connecting ? 'cd.waiting' : 'cd.create')}
                   </button>
                   {saved && (
@@ -83,7 +84,7 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
                     </button>
                   )}
                   {!saved && (
-                    <button className="text-[11px] text-dim hover:text-[var(--text)]" onClick={() => (sfx.click(), void connectPasskey())}>
+                    <button className="gbtn ghost sm w-full !min-h-[44px]" disabled={connecting} onClick={() => (sfx.click(), void connectPasskey())}>
                       {t('cd.usedBefore')}
                     </button>
                   )}
@@ -100,7 +101,7 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
               )}
             </div>
 
-            <div className="my-4 flex items-center gap-3 text-[10px] tracking-[0.2em] text-dim uppercase">
+            {!REAL_TRADING && <><div className="my-4 flex items-center gap-3 text-[10px] tracking-[0.2em] text-dim uppercase">
               <span className="h-px flex-1 bg-[var(--line)]" /> {t('cd.or')} <span className="h-px flex-1 bg-[var(--line)]" />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -110,10 +111,11 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
               <button className="gbtn ghost sm" disabled={connecting} onClick={() => (sfx.click(), void connectGuest())}>
                 {t('cd.guest')}
               </button>
-            </div>
+            </div></>}
             <p className="mt-3 text-[10px] leading-relaxed text-dim">
-              {t('cd.footer', { stake: STAKE })}
+              {t(REAL_TRADING ? 'cd.liveFooter' : 'cd.footer', { stake: STAKE })}
             </p>
+            {REAL_TRADING && <Link href="/recover" onClick={onClose} className="mt-3 block text-[11px] text-dim underline">{t('cd.legacy')}</Link>}
             {error && <p className="mt-3 text-xs text-red">{error}</p>}
           </motion.div>
         </motion.div>

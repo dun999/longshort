@@ -2,7 +2,7 @@ import { AgoraLogo, EnvioLogo, MeraLogo, MonadLogo } from './SponsorLogos';
 
 /** Bounty tracks this build targets, and what each one does in the game. Monochrome marks on the violet band. */
 const TRACKS = [
-  { name: 'Monad', Logo: MonadLogo, h: 22, what: 'Settles every click' },
+  { name: 'Monad', Logo: MonadLogo, h: 22, what: 'Trades & settlement' },
   { name: 'Envio', Logo: EnvioLogo, h: 19, what: 'Indexes every match' },
   { name: 'Mera', Logo: MeraLogo, h: 34, what: 'Passkey sign-in' },
   { name: 'Agora AUSD', Logo: AgoraLogo, h: 19, what: 'AUSD stakes & payouts' },

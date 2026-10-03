@@ -26,7 +26,9 @@ const need = (k: string) => {
 
 export const env = {
   rpcUrl: need('RPC_URL'),
+  rpcBackupUrl: process.env.RPC_BACKUP_URL || undefined,
   perplRpcUrl: process.env.PERPL_RPC_URL ?? 'https://testnet-rpc.monad.xyz',
+  perplRpcBackupUrl: process.env.PERPL_RPC_BACKUP_URL || (activeChain.id === 10143 ? process.env.RPC_BACKUP_URL : undefined),
   keeperKey: need('KEEPER_KEY') as `0x${string}`,
   botMnemonic: need('BOT_MNEMONIC'),
   botCount: Number(process.env.BOT_COUNT ?? 12),

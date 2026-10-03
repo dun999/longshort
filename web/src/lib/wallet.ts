@@ -5,7 +5,7 @@ import {
   custom,
   encodeFunctionData,
   http,
-  maxUint256,
+  isAddress,
   nonceManager,
   numberToHex,
   parseEther,
@@ -18,10 +18,11 @@ import { ADDR, REAL_TRADING, OWNER_GAS_LOW, activeChain, erc20Abi, relayLive } f
 import { publicClient, GAS } from './clients';
 import { RPC_URL } from './config';
 import { api } from './api';
-import { useSocket } from './socket';
+import { saveToken, useSocket } from './socket';
 import * as mera from './mera';
 import { friendly } from './errors';
 import { relayTx, sponsorAccount } from './relay';
+import { recordReceipt } from './journey';
 
 type Kind = 'injected' | 'guest' | 'passkey';
 const LS = { kind: 'ls.kind', guest: 'ls.guest.v1', session: 'ls.session.v1', passkeyAddr: 'ls.passkey.owner' };
@@ -78,17 +79,18 @@ interface WalletState {
   claim?: { status: string; amount: string; before?: string; after?: string; balance: string; tx?: Hash; eligible?: boolean };
   claimError?: string;
   checkClaim: () => Promise<void>;
-  connectInjected: () => Promise<void>;
+  connectInjected: (opts?: { legacy?: boolean }) => Promise<void>;
   connectPasskey: (opts?: { create?: boolean; username?: string }) => Promise<void>;
   /** Prompts the passkey (from a user click) if the keyring is locked. */
-  ensureUnlocked: () => Promise<void>;
+  ensureUnlocked: (opts?: { verify?: boolean }) => Promise<void>;
+  authorizeEntry: () => Promise<void>;
   lock: () => void;
-  connectGuest: () => Promise<void>;
+  connectGuest: (opts?: { legacy?: boolean }) => Promise<void>;
   disconnect: () => void;
   restore: () => Promise<void>;
   refresh: () => Promise<void>;
   faucet: () => Promise<void>;
-  ensureAllowance: () => Promise<void>;
+  ensureAllowance: (amount: bigint) => Promise<void>;
   /** Passkey/guest accounts: top up network fees from the faucet when nearly dry, silently. */
   ensureGas: () => Promise<void>;
 }
@@ -155,7 +157,6 @@ export const useWallet = create<WalletState>((set, get) => ({
       if (REAL_TRADING) await get().checkClaim();
       else {
         if (needsFunds()) await get().faucet();
-        await get().ensureAllowance();
       }
     } catch (e) {
       set({ error: friendly(e) });
@@ -164,25 +165,37 @@ export const useWallet = create<WalletState>((set, get) => ({
     }
   },
 
-  async ensureUnlocked() {
+  async ensureUnlocked(opts = {}) {
     if (get().kind !== 'passkey') return;
-    if (mera.isUnlocked()) return mera.touch();
+    if (mera.isUnlocked() && !opts.verify) return mera.touch();
+    const expected = get().address;
     const owner = await mera.unlock();
-    if (owner.address.toLowerCase() !== get().address?.toLowerCase()) {
-      // a different passkey was picked: switch to that account
-      store.set(LS.passkeyAddr, owner.address);
+    if (expected && owner.address.toLowerCase() !== expected.toLowerCase()) {
+      mera.lock();
+      throw new Error('Choose the passkey for this account. Sign out to use a different account.');
     }
+    store.set(LS.passkeyAddr, owner.address);
     set({ address: owner.address, main: localClient(owner), locked: false });
     await get().refresh();
+  },
+
+  async authorizeEntry() {
+    if (REAL_TRADING && get().kind !== 'passkey') throw new Error('New Duels use a passkey account. Existing accounts can still finish rounds and recover capital.');
+    if (get().kind !== 'passkey') return;
+    await get().ensureUnlocked();
+    if (mera.consumeEntryApproval()) return;
+    await get().ensureUnlocked({ verify: true });
+    if (!mera.consumeEntryApproval()) throw new Error('Entry approval expired. Verify your passkey again.');
   },
 
   lock() {
     mera.lock();
   },
 
-  async connectInjected() {
+  async connectInjected(opts = {}) {
+    if (REAL_TRADING && !opts.legacy) { set({ error: 'Sign in with a passkey to play. Existing wallet access is on the recovery page.' }); return; }
     if (!window.ethereum) {
-      set({ error: 'No browser wallet found — try “Play as guest”.' });
+      set({ error: 'Open this page in the browser where your existing wallet is installed.' });
       return;
     }
     set({ connecting: true, error: undefined });
@@ -190,11 +203,12 @@ export const useWallet = create<WalletState>((set, get) => ({
       const [address] = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as `0x${string}`[];
       await switchChain();
       const main = createWalletClient({ account: address, chain: activeChain, transport: custom(window.ethereum) });
-      const session = localAccount(LS.session);
-      set({ address, kind: 'injected', main, trader: localClient(session), sessionAddress: session.address });
+      const savedSession = store.get(LS.session);
+      const session = REAL_TRADING ? (savedSession ? privateKeyToAccount(savedSession as `0x${string}`, { nonceManager }) : undefined) : localAccount(LS.session);
+      mera.lock();
+      set({ address, kind: 'injected', main, trader: session ? localClient(session) : main, sessionAddress: session?.address, locked: false, claimOpen: false });
       store.set(LS.kind, 'injected');
       await get().refresh();
-      if (REAL_TRADING) await get().checkClaim();
     } catch (e) {
       set({ error: friendly(e) });
     } finally {
@@ -202,18 +216,18 @@ export const useWallet = create<WalletState>((set, get) => ({
     }
   },
 
-  async connectGuest() {
+  async connectGuest(opts = {}) {
+    if (REAL_TRADING && (!opts.legacy || !store.get(LS.guest))) { set({ error: 'No existing guest account found in this browser. New accounts use passkeys.' }); return; }
     set({ connecting: true, error: undefined });
-    const account = localAccount(LS.guest);
-    const client = localClient(account);
-    set({ address: account.address, kind: 'guest', main: client, trader: client, sessionAddress: undefined });
-    store.set(LS.kind, 'guest');
     try {
+      const account = localAccount(LS.guest);
+      const client = localClient(account);
+      mera.lock();
+      set({ address: account.address, kind: 'guest', main: client, trader: client, sessionAddress: undefined, locked: false, claimOpen: false });
+      store.set(LS.kind, 'guest');
       await get().refresh();
-      if (REAL_TRADING) await get().checkClaim();
-      else {
+      if (!REAL_TRADING) {
         if (needsFunds()) await get().faucet();
-        await get().ensureAllowance();
       }
     } catch (e) {
       set({ error: friendly(e) });
@@ -223,27 +237,28 @@ export const useWallet = create<WalletState>((set, get) => ({
   },
 
   disconnect() {
-    if (get().kind === 'passkey') mera.lock();
+    const address = get().address;
+    if (address) saveToken(address, undefined);
+    mera.lock();
     store.set(LS.kind, null);
     set({ address: undefined, kind: undefined, main: undefined, trader: undefined, sessionAddress: undefined, locked: false, usd: 0n, mon: 0n, allowance: 0n, claim: undefined, claimOpen: false, claimError: undefined });
   },
 
   async restore() {
     const kind = store.get(LS.kind) as Kind | null;
-    if (kind === 'guest') return get().connectGuest();
+    if (kind === 'guest') return get().connectGuest({ legacy: true });
     if (kind === 'passkey') {
       // no silent passkey prompts: show the (public) owner address, unlock on the next action
       const addr = store.get(LS.passkeyAddr) as `0x${string}` | null;
-      if (addr) {
+      if (addr && isAddress(addr)) {
         set({ address: addr, kind: 'passkey', locked: !mera.isUnlocked() });
         await get().refresh();
-        if (REAL_TRADING) await get().checkClaim();
       }
       return;
     }
     if (kind === 'injected' && window.ethereum) {
       const accts = (await window.ethereum.request({ method: 'eth_accounts' }).catch(() => [])) as string[];
-      if (accts.length) return get().connectInjected();
+      if (accts.length) return get().connectInjected({ legacy: true });
     }
   },
 
@@ -275,6 +290,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     const { address } = get();
     if (!address) return;
     if (REAL_TRADING) {
+      if (get().kind !== 'passkey') throw new Error('Welcome AUSD is claimed from a passkey account. Existing accounts can recover their trading capital.');
       if (get().claimBusy) return;
       set({ claimBusy: true, claimError: undefined, claimOpen: true });
       try {
@@ -284,6 +300,7 @@ export const useWallet = create<WalletState>((set, get) => ({
         const result = await authed<NonNullable<WalletState['claim']>>('/faucet', {});
         if (get().address !== address) return;
         set({ claim: result, usd: BigInt(result.balance) });
+        if (result.status === 'confirmed' && result.tx) recordReceipt('funding', result.tx);
         await get().refresh();
       } catch (e) {
         if (get().address === address) {
@@ -310,17 +327,23 @@ export const useWallet = create<WalletState>((set, get) => ({
     await get().faucet().catch(() => {});
   },
 
-  async ensureAllowance() {
+  async ensureAllowance(amount) {
     const { main, address, allowance, kind } = get();
-    if (!main || !address || allowance > 10n ** 12n) return;
+    if (!main || !address) throw new Error('Sign in before approving an entry');
+    if (amount <= 0n) throw new Error('Invalid entry amount');
+    // Replace even a legacy unlimited approval with this entry plus its trading budget.
+    if (allowance === amount) return;
+    let tx: TxResult;
     if (relayLive(ADDR.relayDelegate) && kind !== 'injected') {
-      const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256] });
-      await relayTx(sponsorAccount(main.account), ADDR.stake, data);
+      const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, amount] });
+      tx = await relayTx(sponsorAccount(main.account), ADDR.stake, data);
     } else {
-      await timedTx(() =>
-        main.writeContract({ account: main.account ?? address, chain: activeChain, address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, maxUint256], gas: GAS.approve }),
+      tx = await timedTx(() =>
+        main.writeContract({ account: main.account ?? address, chain: activeChain, address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, amount], gas: GAS.approve }),
       );
     }
+    if (tx.status !== 'success') throw new Error('Entry approval reverted. Retry before joining.');
+    recordReceipt('approval', tx.hash);
     await get().refresh();
   },
 }));
