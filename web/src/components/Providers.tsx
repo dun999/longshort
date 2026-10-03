@@ -12,6 +12,7 @@ import { initLang } from '@/lib/i18n';
 import { music } from '@/lib/music';
 import { Invites } from './lobby/Invites';
 import { initSettings } from '@/lib/settings';
+import { useWakeLock } from '@/lib/wakeLock';
 
 const Stage = dynamic(() => import('./three/Stage'), { ssr: false });
 
@@ -56,6 +57,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const joinMatch = useSocket((s) => s.joinMatch);
   const router = useRouter();
   const path = usePathname();
+  useWakeLock(path === '/play' || path === '/practice' || /^\/match\/\d+\/?$/.test(path));
   const dimmed = DIMMED.some((p) => path.startsWith(p)) || path.endsWith('/report');
   // the fight HUD and the result screen sit on a plain, solid background
   const off = useScene((s) => s.shot === 'arena' || s.shot === 'result');

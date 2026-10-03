@@ -10,7 +10,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
-import { MARGIN, STAKE } from '@longshort/shared';
+import { MARGIN, REAL_TRADING, STAKE } from '@longshort/shared';
 
 const DONE = 'ls.guide.v1';
 export const guideSeen = () => {
@@ -36,7 +36,7 @@ interface Step {
 const STEPS: Step[] = [
   { art: 'intro', n: 1 },
   { target: 'mode', n: 2 },
-  { target: 'class', n: 3 },
+  { target: REAL_TRADING ? undefined : 'class', n: 3 },
   { target: 'party', n: 4 },
   { target: 'play', n: 5 },
   { art: 'trade', n: 6 },

@@ -12,7 +12,6 @@ import { Hud } from '@/components/hud/Hud';
 import type { HudActions } from '@/components/hud/TradePanel';
 import { Result, VsScreen } from '@/components/match/Phases';
 import { useT } from '@/lib/i18n';
-import { useWakeLock } from '@/lib/wakeLock';
 
 const DURATION = 60;
 const COUNTDOWN = 4;
@@ -82,7 +81,6 @@ export default function Practice() {
       setStartAt((s) => s === null ? at + COUNTDOWN : s + downtime);
     }
   }, [pricesReady, startAt, done]);
-  useWakeLock(!done);
 
   const push = useCallback((who: string, text: string, tone: FeedItem['tone'], kind: FeedItem['kind']) => {
     setFeed((f) => [...f, { id: `${Date.now()}-${Math.random()}`, at: Date.now(), who, text, tone, kind }].slice(-60));

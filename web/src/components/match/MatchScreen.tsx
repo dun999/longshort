@@ -7,7 +7,6 @@ import { useMatch, type MatchView } from '@/lib/match';
 import { useChainNow } from '@/lib/clock';
 import { useScene, CLASS_COLOR, TEAM_COLOR, type Shot, type Slot } from '@/lib/scene';
 import { cancelMatchmaking, joinAny, joinMatch, lastLeverage, rematch, setClass, sweepMatchKey, tradeClose, tradeOpen } from '@/lib/actions';
-import { useWakeLock } from '@/lib/wakeLock';
 import { formatEther } from 'viem';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -28,7 +27,7 @@ function phaseOf(m: MatchView, now: number): Phase {
   if (m.state === MatchState.CLOSING) return 'settling';
   const toStart = m.startAt - now;
   if (toStart > 12) return 'found';
-  if (toStart > 4) return m.me && !m.me.out ? 'select' : 'vs';
+  if (toStart > 4) return !REAL_TRADING && m.me && !m.me.out ? 'select' : 'vs';
   if (toStart > 0) return 'vs';
   return now < m.endAt ? 'live' : 'settling';
 }
@@ -77,7 +76,6 @@ export function MatchScreen({ id }: { id: number }) {
 
   // ─── passkey: no idle lock from queue to the bell ────────────────────────
   const active = ['waiting', 'found', 'select', 'vs', 'live', 'settling'].includes(phase) && !!m.me;
-  useWakeLock(['waiting', 'found', 'select', 'vs', 'live', 'settling'].includes(phase));
   useEffect(() => (active ? mera.pin() : undefined), [active]);
 
   // ─── lobby guard heartbeat: bots only fill a lobby whose players are actually here ─

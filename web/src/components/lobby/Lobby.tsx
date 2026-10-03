@@ -383,7 +383,7 @@ export function Lobby() {
         <SocialDrawer me={me} online={online} />
       </div>
       <div className="lobby-footer">
-      <Loadout lev={lev} onClass={pickClass} />
+      {!REAL_TRADING && <Loadout lev={lev} onClass={pickClass} />}
 
       {/* the one primary action */}
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
