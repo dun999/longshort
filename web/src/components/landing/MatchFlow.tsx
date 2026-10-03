@@ -1,7 +1,6 @@
 'use client';
 import { motion } from 'motion/react';
 import { MODES, Mode, REAL_TRADING, STAKE } from '@longshort/shared';
-import { Chapter } from './Chapter';
 
 /*
  * "From queue to payout": the four beats of a match, each with a small looping vignette.
@@ -66,7 +65,6 @@ export function MatchFlow() {
   return (
     <section id="how" className="lp-flow">
       <div className="lp-wrap">
-        <Chapter n="02" name="How a match runs" aside="Queue · face-off · fight · payout" />
         <div className="lp-head">
           <h2 className="lp-h2">From queue to payout</h2>
           <p>The round clock runs {MODES[Mode.DUEL].duration}s in a Duel, {MODES[Mode.SQUAD].duration}s in a Squad and {MODES[Mode.ROYALE].duration}s in a Royale. Matchmaking, the countdown and settlement happen outside it.</p>
