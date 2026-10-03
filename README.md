@@ -1,6 +1,6 @@
 # longshort.fun
 
-**Sixty-second trading duels on Monad.** Two players commit AUSD entry stakes and separate trading budgets, execute real BTC positions on Perpl, and compete for the entry pot. At settlement, the higher final trading balance wins; both players receive their remaining trading collateral separately.
+**PvP BTC trading battles on Monad.** Players commit AUSD entry stakes and separate trading budgets, execute real BTC positions on Perpl, and compete for the entry pot: 1v1 Duels, 2v2 Squads and 8-player Royales. At settlement the bigger final trading balance wins (a team's summed balance in Squad; Royale pays the top three); every player receives their remaining trading collateral separately.
 
 Built for [Monad Metropolis](https://hackathon.monad.xyz/).
 
@@ -8,10 +8,11 @@ Built for [Monad Metropolis](https://hackathon.monad.xyz/).
 | --- | --- |
 | Live application | [longshort.fun](https://longshort.fun) |
 | Network | Monad testnet, chain 10143 |
-| Live mode | BTC Duel, 60 seconds, 5× leverage |
+| Live modes | Duel 1v1 · 60 s, Squad 2v2 · 120 s, Royale 8 players · 180 s (lowest equity cut every 30 s), all BTC |
+| Leverage | Tank 5×, Scout 10×, Sniper 15× (Perpl's BTC limit is 15×); a Squad team plays at its leader's pick |
 | Entry | 5, 20, or 50 AUSD per player |
 | Trading capital | 100 AUSD per player, separate from the entry |
-| Active arena | [`0xbD4F69440C3c5cb84769d74c595E33ca6044a414`](https://testnet.monadscan.com/address/0xbD4F69440C3c5cb84769d74c595E33ca6044a414) |
+| Active arena | [`0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A`](https://testnet.monadscan.com/address/0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A) (v2; the Duel-only v1 was `0xbD4F69440C3c5cb84769d74c595E33ca6044a414`) |
 | AUSD | [`0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC`](https://testnet.monadscan.com/address/0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC) |
 
 The deployed website uses testnet contracts and tokens. Production deployment of the website does not switch the application to Monad mainnet.
@@ -27,25 +28,33 @@ The `docs/` directory explains the integrations:
 ## Try it
 
 1. Open [longshort.fun](https://longshort.fun); the live demo is public.
-2. Create or sign in with a passkey through Mera. Existing guest/browser-wallet accounts retain a separate recovery page; new live entries require a passkey.
-3. Use **Claim AUSD** to request the testnet funding transfer. The current claim amount is 200 AUSD per eligible wallet.
-4. Choose **Duel** and an entry. The lobby shows the separate 100 AUSD trading budget and total required balance. If alone, turn on **Match with bots** in **Settings** before joining; bot opponents are labelled.
+2. Create or sign in with a passkey through Mera. No passkey on the device (for example a judge's test machine)? Use **Try as a guest** under the passkey options: a wallet kept in that browser whose key can be exported from the account menu. Browser-wallet accounts keep a separate recovery page.
+3. Use **Claim AUSD** to request the testnet funding transfer (200 AUSD per eligible wallet), or **Deposit AUSD** from the account menu to send your own testnet AUSD to the account address.
+4. Choose **Duel**, **Squad** or **Royale**, an entry and a class (5×, 10× or 15×). The lobby shows the separate 100 AUSD trading budget and total required balance. If alone, turn on **Match with bots** in **Settings** before joining; bot opponents are labelled.
 5. After the 15-second countdown, trade BTC with **Long**, **Short**, and **Close**. Perpl executes the orders onchain using the player's isolated trading account.
 6. At the bell, positions are flattened, the entry prize is distributed, and remaining collateral returns to each owner. The report shows actual ledger/receipts and an optional private journal. Open the journal with an explicit passkey verification; only ciphertext is saved.
 
 The account menu's **Demo evidence** page records actual navigation-to-confirmation time, control activations, ceremonies, and public receipts. Measurements are not an achieved performance claim until the browser test is run.
 
-**Practice** needs no account or AUSD. It uses live BTC, ETH, and MON prices with simulated positions in the browser. It waits for usable prices and pauses when the feed becomes unavailable.
+**Practice** needs no account or AUSD. It uses live BTC prices with simulated positions in the browser, at the same leverage classes. It waits for usable prices and pauses when the feed becomes unavailable.
 
 ## Prize and trading capital
 
 Each live player supplies an entry plus a 100 AUSD Perpl budget. These amounts have separate purposes: entry stakes form the prize pot; the trading budgets collateralize real positions and can decrease through losses, fees, and funding.
 
-A 5 AUSD duel requires 105 AUSD per player. Its 10 AUSD entry pot pays a 9.75 AUSD prize after the 2.5% rake. Equal final balances refund both entries without a rake. Returned trading collateral belongs to each player and is independent of the prize.
+A 5 AUSD entry requires 105 AUSD per player. The pot is every entry added together, minus a 2.5% rake:
 
-The arena enters `CLOSING` at settlement and retries incomplete exchange closes. It reaches `SETTLED` after both accounts are flat. Collateral return and recovery always target the account's owner beneficiary.
+| Mode | Winner | 5 AUSD entry pays |
+| --- | --- | --- |
+| Duel | bigger final balance | 9.75 AUSD |
+| Squad | bigger summed team balance, split equally | 9.75 AUSD to each winner |
+| Royale | survivors by final balance, then later cuts rank higher; top three paid 60/30/10 | 23.40 / 11.70 / 3.90 AUSD |
 
-The legacy `ArenaCore` implementation remains available for local virtual-margin Duel, Squad, and Royale regression tests. The current live AUSD deployment exposes Duel and Practice.
+Equal final balances (or team totals) refund every entry without a rake. Returned trading collateral belongs to each player and is independent of the prize. The full disclosure is on the site's Rules & Risks page.
+
+The arena enters `CLOSING` at settlement and retries incomplete exchange closes. It reaches `SETTLED` after every account is flat. Collateral return and recovery always target the account's owner beneficiary.
+
+The legacy `ArenaCore` implementation remains available for local virtual-margin regression tests. The live AUSD deployment exposes Duel, Squad, Royale and Practice. A live 15× Duel against a keeper bot, with real Perpl fills and a reconciled ledger, is recorded by `keeper/scripts/arena-v2-smoke.ts`.
 
 ## Architecture
 
