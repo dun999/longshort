@@ -26,7 +26,8 @@ function emblemTexture() {
   g.translate(512, 512);
   g.strokeStyle = 'rgba(169,184,212,0.5)';
   g.lineWidth = 3;
-  for (const r of [150, 330, 470]) {
+  // the inner ring is the wordmark ring's job now (ringTexture); spokes start outside it
+  for (const r of [330, 470]) {
     g.beginPath();
     g.arc(0, 0, r, 0, Math.PI * 2);
     g.stroke();
@@ -34,7 +35,7 @@ function emblemTexture() {
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
     g.beginPath();
-    g.moveTo(Math.cos(a) * 170, Math.sin(a) * 170);
+    g.moveTo(Math.cos(a) * 200, Math.sin(a) * 200);
     g.lineTo(Math.cos(a) * 320, Math.sin(a) * 320);
     g.stroke();
   }
@@ -64,9 +65,84 @@ function logoTexture() {
   return t;
 }
 
+/*
+ * "LONGSHORT.FUN" set round the mark like a centre-court stamp: arched over the top and under the
+ * bottom, both upright for the main camera, with the mark's diamond between them at either side.
+ * Drawn in the site's display face; redrawn once the webfont has loaded.
+ */
+const RING = 3.8; // plane size in world units
+function ringTexture() {
+  const S = 2048;
+  const u = S / RING; // px per world unit
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')! as CanvasRenderingContext2D & { fontStretch?: string; letterSpacing?: string };
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  const family = getComputedStyle(document.documentElement).getPropertyValue('--font-saira').trim() || 'sans-serif';
+  const font = `italic 800 ${Math.round(0.33 * u)}px ${family}`;
+  const draw = () => {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, S, S);
+    g.translate(S / 2, S / 2);
+    g.lineWidth = 0.012 * u;
+    g.strokeStyle = 'rgba(239, 233, 220, 0.38)';
+    for (const r of [1.34, 1.82]) {
+      g.beginPath();
+      g.arc(0, 0, r * u, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.font = font;
+    g.fontStretch = 'condensed';
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const cap = 0.24 * u; // the band the letters fill, between the two rules
+    const r0 = 1.46 * u;
+    const mid = r0 + cap / 2;
+    const track = 0.035 * u;
+    const parts: [string, string][] = [...'LONGSHORT'].map((ch) => [ch, '#efe9dc'] as [string, string]).concat([...'.FUN'].map((ch) => [ch, LOGO_COLORS.violet] as [string, string]));
+    const adv = parts.map(([ch]) => g.measureText(ch).width + track);
+    const span = (adv.reduce((a, b) => a + b, 0) - track) / mid;
+    // top: clockwise from the left, tops outward; bottom: anticlockwise from the left, tops inward
+    for (const top of [true, false]) {
+      let a = (top ? -Math.PI / 2 : Math.PI / 2) + (top ? -span / 2 : span / 2);
+      parts.forEach(([ch, color], i) => {
+        const half = (adv[i] - track) / 2 / mid;
+        a += top ? half : -half;
+        const r = top ? r0 : r0 + cap;
+        g.save();
+        g.rotate(a);
+        g.translate(r, 0);
+        g.rotate(top ? Math.PI / 2 : -Math.PI / 2);
+        g.fillStyle = color;
+        g.fillText(ch, 0, 0);
+        g.restore();
+        a += (top ? 1 : -1) * (half + track / mid);
+      });
+    }
+    // the mark's diamond, left and right, where the two arcs meet
+    g.fillStyle = LOGO_COLORS.violet;
+    for (const side of [-1, 1]) {
+      g.save();
+      g.translate(side * mid, 0);
+      g.rotate(Math.PI / 4);
+      const d = 0.08 * u;
+      g.fillRect(-d / 2, -d / 2, d, d);
+      g.restore();
+    }
+    t.needsUpdate = true;
+  };
+  draw();
+  // the arena can mount before the display face has loaded; draw again with the real glyphs
+  document.fonts?.load(font).then(draw, () => {});
+  return t;
+}
+
 function Floor() {
   const emblem = useMemo(emblemTexture, []);
   const logo = useMemo(logoTexture, []);
+  const ring = useMemo(ringTexture, []);
   const edge = useMemo(() => {
     const pts = Array.from({ length: 9 }, (_, i) => {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
@@ -88,6 +164,10 @@ function Floor() {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
         <planeGeometry args={[2.4, 2.4]} />
         <meshBasicMaterial map={logo} transparent opacity={0.9} depthWrite={false} toneMapped={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.007, 0]}>
+        <planeGeometry args={[RING, RING]} />
+        <meshBasicMaterial map={ring} transparent opacity={0.85} depthWrite={false} toneMapped={false} />
       </mesh>
       {/* glowing octagon rim, twice for a soft falloff */}
       <lineLoop geometry={edge}>

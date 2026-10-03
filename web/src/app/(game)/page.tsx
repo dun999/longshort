@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { useScene } from '@/lib/scene';
-import { REAL_TRADING, fmtPx } from '@longshort/shared';
+import { LEVERAGES, REAL_TRADING, fmtPx } from '@longshort/shared';
 import { useWallet } from '@/lib/wallet';
 import { useApi } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
@@ -15,6 +15,7 @@ import { HeroChart } from '@/components/landing/HeroChart';
 import { Tracks } from '@/components/landing/Tracks';
 import { ModeViz } from '@/components/landing/ModeViz';
 import { MatchFlow } from '@/components/landing/MatchFlow';
+import { Chapter } from '@/components/landing/Chapter';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
@@ -136,11 +137,12 @@ export default function Landing() {
       {/* ─── modes ─── */}
       <section id="modes" className="lp-section">
         <div className="lp-wrap">
+          <Chapter n="01" name="Modes" aside={`BTC only · ${LEVERAGES.map((l) => `${l}x`).join(' / ')}`} />
           <div className="lp-head">
             <h2 className="lp-h2">Pick your fight</h2>
             <p>Three formats, one rule: the best trader walks away with the pot. All live on BTC with real Perpl orders; warm up in free Practice first.</p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="lp-modes">
             {MODES.map(({ key, n, name, meta, line }, i) => (
               <motion.button
                 key={key}
@@ -179,18 +181,20 @@ export default function Landing() {
       <MatchFlow />
 
       {/* ─── numbers ─── */}
-      <section className="lp-section">
+      <section id="monad" className="lp-section lp-raised">
         <div className="lp-wrap">
+          <Chapter n="03" name="Why Monad" aside="Monad testnet · chain 10143" />
           <div className="lp-head">
             <h2 className="lp-h2">Why it runs on Monad</h2>
+            <p>Every Long, Short and Close is its own onchain transaction, so the chain has to keep up with a trader’s thumb.</p>
           </div>
           <div className="lp-numbers">
             {[
-              ['300', 'ms', 'Block time. A 60-second duel is about 200 blocks, so every Long, Short and Close is its own transaction and still lands while the price matters. The in-match Ping meter shows each order’s real time.'],
+              ['300', 'ms', 'Block time. A 60-second Duel spans about 200 blocks, so an order still lands while the price that made you click is on screen. The in-match Ping meter shows each order’s real time.'],
               ['600', 'ms', 'To finality. After two blocks a result can’t be reversed, so the payout and the proof behind “Verified result” are final almost as soon as they appear.'],
               ['0', 'MON', 'Gas you need to hold. Your passkey is the account (Face ID or a device PIN, no seed phrase), and because Monad supports EIP-\u20607702 a relay pays the network fee. Trades never pop up a wallet.'],
             ].map(([v, u, d]) => (
-              <div key={u}>
+              <div key={v + u}>
                 <div className="lp-num">
                   {v}
                   <small>{u}</small>
@@ -198,12 +202,12 @@ export default function Landing() {
                 <p>{d}</p>
               </div>
             ))}
+            {stats && (
+              <div className="lp-live">
+                <span className="lp-dot" /> Indexed contract activity ·<b>{stats.settled.toLocaleString()}</b> {stats.settled === 1 ? 'match' : 'matches'} settled ·<b>{stats.trades.toLocaleString()}</b> {stats.trades === 1 ? 'trade' : 'trades'} opened
+              </div>
+            )}
           </div>
-          {stats && (
-            <div className="lp-live">
-              <span className="lp-dot" /> Indexed contract activity ·<b>{stats.settled.toLocaleString()}</b> matches settled ·<b>{stats.trades.toLocaleString()}</b> trade opens
-            </div>
-          )}
         </div>
       </section>
 
@@ -259,8 +263,11 @@ export default function Landing() {
 function Faq() {
   const [open, setOpen] = useState<number | null>(null);
   return (
-    <section id="faq" className="lp-section pt-0">
-      <div className="lp-wrap grid gap-10 lg:grid-cols-[1fr_1.6fr]">
+    <section id="faq" className="lp-section">
+      <div className="lp-wrap">
+        <Chapter n="04" name="FAQ" aside={`${FAQ.length} answers`} />
+      </div>
+      <div className="lp-wrap grid gap-8 lg:grid-cols-[1fr_1.6fr] lg:gap-10">
         <div className="lg:sticky lg:top-28 lg:self-start">
           {/* The heading is what scrolls into view. The words start below its clip edge, so they can't be the
               thing observed: a fully clipped element never counts as visible and would stay hidden forever. */}

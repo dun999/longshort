@@ -123,7 +123,8 @@ export default function Leaderboard() {
           >
             <div className="text-[10px] font-semibold tracking-[0.16em] text-dim uppercase sm:ml-[var(--n-tl-w)] max-sm:mt-[var(--n-tl-h)]">Chasing the crown</div>
             <div className="grid grid-cols-2 gap-4 py-6">
-              {[2, 3].map((place) => {
+              {/* #3 on the left, #2 on the right */}
+              {[3, 2].map((place) => {
                 const r = top[place - 1];
                 const color = place === 2 ? '#a3a8b0' : '#9a6b3f';
                 return (
