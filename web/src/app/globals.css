@@ -1895,18 +1895,31 @@ button.notch-pill:hover {
     color: var(--ink);
     clip-path: polygon(0 5vw, 100% 0, 100% calc(100% - 5vw), 0 100%);
   }
-  /* sections separate by tone across a slanted cut, never by a rule: ink, paper, ink, paper, violet.
-     Every cut rises to the right, parallel to the flow band and the tilted marquee. */
-  .lp-paper {
+  /* sections separate by tone across a slanted cut, never by a rule: hero ink, violet band, raised modes,
+     paper flow, ink Monad, raised FAQ, violet closing. Every cut rises to the right. */
+  .lp-tone {
     position: relative;
-    z-index: 1;
-    padding: calc(56px + 5vw) 0 calc(64px + 5vw);
-    background: var(--paper);
-    color: var(--ink);
+    background: var(--ink-2);
     clip-path: polygon(0 5vw, 100% 0, 100% 100%, 0 100%);
+    padding-top: calc(5vw + 64px);
   }
-  .lp-paper .lp-head p {
-    color: #55525c;
+  @media (min-width: 768px) {
+    .lp-tone {
+      padding-top: calc(5vw + 80px);
+    }
+  }
+  /* modes: tucked under the tilted band, cut along its slope */
+  #modes.lp-tone {
+    margin-top: -2vw;
+    clip-path: polygon(0 2.8vw, 100% 0, 100% 100%, 0 100%);
+    padding-bottom: calc(5vw + 72px);
+  }
+  .lp-tone .lp-mode {
+    background: var(--ink);
+  }
+  /* the flow's cut opens onto the raised modes, not onto the page */
+  .lp-tone + .lp-flow {
+    margin-top: -5vw;
   }
   .lp-flow .lp-head p {
     color: #55525c;
@@ -2532,6 +2545,7 @@ button.notch-pill:hover {
      the slanted leading edge is the rail's own clip. Marks are spaced by distance, never by rules. */
   .lp-tracks {
     position: relative;
+    z-index: 2;
     display: flex;
     align-items: stretch;
     overflow: hidden;
@@ -2703,32 +2717,6 @@ button.notch-pill:hover {
     line-height: 1.6;
     color: #b9b6c2;
   }
-  .lp-paper .lp-faq {
-    border-color: rgba(10, 10, 13, 0.14);
-  }
-  .lp-paper .lp-faq-n {
-    color: #6d6a73;
-  }
-  .lp-paper .lp-faq.open .lp-faq-n,
-  .lp-paper .lp-faq-q:hover .lp-faq-n {
-    color: var(--violet);
-  }
-  .lp-paper .lp-faq-q:hover .lp-faq-t {
-    color: var(--ink);
-  }
-  .lp-paper .lp-faq-a {
-    color: #45424c;
-  }
-  .lp-paper .lp-faq-aside {
-    color: #55525c;
-  }
-  .lp-paper .lp-textlink {
-    color: var(--ink);
-    border-color: rgba(10, 10, 13, 0.2);
-  }
-  .lp-paper .lp-textlink:hover {
-    border-color: var(--violet);
-  }
   .lp-faq-aside {
     margin-top: 20px;
     max-width: 20rem;
@@ -2741,6 +2729,9 @@ button.notch-pill:hover {
   }
 
   /* closing + footer */
+  #faq.lp-tone {
+    padding-bottom: calc(5vw + 72px);
+  }
   .lp-closing {
     position: relative;
     z-index: 2;

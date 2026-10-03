@@ -122,20 +122,21 @@ export default function Leaderboard() {
             }}
           >
             <div className="text-[10px] font-semibold tracking-[0.16em] text-dim uppercase sm:ml-[var(--n-tl-w)] max-sm:mt-[var(--n-tl-h)]">Chasing the crown</div>
-            <div className="grid grid-cols-2 gap-4 py-6">
-              {/* #3 on the left, #2 on the right */}
+            {/* a podium, not a tie: #3 a step lower and smaller on the left, #2 higher and bigger on the right */}
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-start gap-4 py-6">
               {[3, 2].map((place) => {
                 const r = top[place - 1];
-                const color = place === 2 ? '#a3a8b0' : '#9a6b3f';
+                const second = place === 2;
+                const color = second ? '#a3a8b0' : '#9a6b3f';
                 return (
-                  <div key={place} className="flex min-w-0 flex-col items-center gap-1 text-center">
-                    <span className="font-display text-3xl font-bold" style={{ color }}>
+                  <div key={place} className={`flex min-w-0 flex-col items-center gap-1 text-center ${second ? '' : 'pt-8'}`}>
+                    <span className={`font-display font-bold ${second ? 'text-5xl' : 'text-2xl'}`} style={{ color }}>
                       #{place}
                     </span>
                     {r ? (
                       <>
-                        <PlayerMark addr={r.addr} size={56} />
-                        <Link href={`/profile/${r.addr}`} className="rank-runner-name max-w-full truncate font-semibold hover:text-gold">
+                        <PlayerMark addr={r.addr} size={second ? 72 : 44} />
+                        <Link href={`/profile/${r.addr}`} className={`rank-runner-name max-w-full truncate font-semibold hover:text-gold ${second ? 'text-lg' : 'text-sm'}`}>
                           {r.name ?? shortAddr(r.addr)}
                         </Link>
                         <span className="num text-xs text-muted">
@@ -143,7 +144,7 @@ export default function Leaderboard() {
                         </span>
                       </>
                     ) : (
-                      <span className="grid h-[88px] place-items-center text-xs text-dim">Open seat</span>
+                      <span className={`grid place-items-center text-xs text-dim ${second ? 'h-[104px]' : 'h-[72px]'}`}>Open seat</span>
                     )}
                   </div>
                 );
