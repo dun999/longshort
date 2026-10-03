@@ -48,7 +48,7 @@ function Squad() {
   return (
     <svg viewBox="0 0 400 300" className="lpv" aria-hidden>
       <text x="22" y="34" className="lpv-label">
-        team equity · 3v3
+        team equity · 2v2
       </text>
       {/* the rope: alpha pulls from the left, bravo from the right, the knot swings */}
       <rect x="20" y="138" width="360" height="24" className="lpv-track" />

@@ -26,20 +26,30 @@ export const RAKE_BPS = 250;
 export const COUNTDOWN = 15;
 
 export type ClassId = 'tank' | 'scout' | 'sniper';
-export const CLASSES: Record<ClassId, { name: string; leverage: 5 | 10 | 25 | 50; role: string; blurb: string }> = {
-  tank: { name: 'Tank', leverage: REAL_TRADING ? 5 : 10, role: 'Low risk', blurb: REAL_TRADING ? '5x BTC on Perpl. Your trading balance is at risk.' : 'Survives a ~9% move against you. Slow and steady.' },
-  scout: { name: 'Scout', leverage: 25, role: 'Balanced', blurb: 'Liquidated on a ~3.6% adverse move.' },
-  sniper: { name: 'Sniper', leverage: 50, role: 'High risk', blurb: 'One-shot potential. Liquidated on a ~1.8% adverse move.' },
+export type Leverage = 5 | 10 | 15 | 25 | 50;
+/** Live classes stay inside Perpl's BTC limit (15x); the virtual arena keeps its 10/25/50. */
+export const CLASSES: Record<ClassId, { name: string; leverage: Leverage; role: string }> = {
+  tank: { name: 'Tank', leverage: REAL_TRADING ? 5 : 10, role: 'Low risk' },
+  scout: { name: 'Scout', leverage: REAL_TRADING ? 10 : 25, role: 'Balanced' },
+  sniper: { name: 'Sniper', leverage: REAL_TRADING ? 15 : 50, role: 'High risk' },
 };
-export const classOf = (lev: number): ClassId => (lev >= 50 ? 'sniper' : lev >= 25 ? 'scout' : 'tank');
+export const LEVERAGES = [CLASSES.tank.leverage, CLASSES.scout.leverage, CLASSES.sniper.leverage] as const;
+export const classOf = (lev: number): ClassId => (lev >= CLASSES.sniper.leverage ? 'sniper' : lev >= CLASSES.scout.leverage ? 'scout' : 'tank');
+/** Perpl closes a BTC position once its equity falls to 4% of the position's size (maintenance_margin 2500). */
+export const PERPL_BTC_MAINT = 1 / 25;
+/**
+ * Roughly how far BTC can move against a full-size position before it is liquidated (fees and funding ignored).
+ * Live: positions use 95% of the balance and Perpl's 4% maintenance. Virtual arena: out at 10% of margin.
+ */
+export const liqMove = (lev: number) => (REAL_TRADING ? (1 - 0.95 * lev * PERPL_BTC_MAINT) / (0.95 * lev) : 0.9 / lev);
 
 export const MODES: Record<
   Mode,
   { key: string; name: string; tagline: string; maxPlayers: number; duration: number; teams: boolean }
 > = {
   [Mode.DUEL]: { key: 'duel', name: 'Duel', tagline: '1v1 · 60s · winner takes pot', maxPlayers: 2, duration: 60, teams: true },
-  [Mode.SQUAD]: { key: 'squad', name: 'Squad', tagline: '3v3 · 120s · team PnL wins', maxPlayers: 6, duration: 120, teams: true },
-  [Mode.ROYALE]: { key: 'royale', name: 'Royale', tagline: '8 FFA · 180s · lowest cut every round', maxPlayers: 8, duration: 180, teams: false },
+  [Mode.SQUAD]: { key: 'squad', name: 'Squad', tagline: '2v2 · 120s · bigger team total wins', maxPlayers: 4, duration: 120, teams: true },
+  [Mode.ROYALE]: { key: 'royale', name: 'Royale', tagline: '8 players · 180s · lowest cut every 30s', maxPlayers: 8, duration: 180, teams: false },
 };
 export const ENTRY_TIERS = [5, 20, 50] as const;
 export const STAKE_DECIMALS = 6;

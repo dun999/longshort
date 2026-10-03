@@ -18,6 +18,7 @@ contract MatchTradingAccount {
     uint256 public matchId;
     uint256 public accountId;
     uint256 private sequence;
+    uint8 private leverageOpen; // set by open(); clones start zeroed, so closes fall back to 5x
     bool private initialized;
     error Unauthorized();
     error BadExecution();
@@ -59,6 +60,7 @@ contract MatchTradingAccount {
         // BTC price has 1 decimal and size 5: their product is directly AUSD's 6-decimal notional.
         uint256 lots = a.balanceCNS * leverage * sizeBps * 95 / 1_000_000 / mark;
         if (lots == 0) revert BadExecution();
+        leverageOpen = leverage;
         exchange.execOrder(_order(isLong ? 0 : 1, lots, mark, leverage, true));
         (,p,) = snapshot();
         // Perpl can reject an order inside a successful tx. Prove a complete fill before emitting game events.
@@ -72,7 +74,7 @@ contract MatchTradingAccount {
         uint256 mark = IPerplExchange(address(exchange)).getPerpetualInfo(PERP_ID).markPNS;
         if (mark == 0) revert BadExecution();
         // Reduce-only + IOC: retries never flip the position or leave resting orders behind.
-        exchange.execOrder(_order(p.positionType == 0 ? 2 : 3, p.lotLNS, mark, 5, false));
+        exchange.execOrder(_order(p.positionType == 0 ? 2 : 3, p.lotLNS, mark, leverageOpen == 0 ? 5 : leverageOpen, false));
         (,IPerplTrading.PositionInfoV2 memory afterPos,) = snapshot();
         if (afterPos.lotLNS > p.lotLNS) revert BadExecution();
         return afterPos.lotLNS == 0;

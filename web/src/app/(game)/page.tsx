@@ -18,16 +18,17 @@ import { MatchFlow } from '@/components/landing/MatchFlow';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
-const ALL_MODES: { key: 'duel' | 'squad' | 'royale'; n: string; name: string; meta: string; line: string }[] = [
-  { key: 'duel', n: '01', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. Higher equity at the bell takes the pot.' },
-  { key: 'squad', n: '02', name: 'Squad', meta: '3v3 · 120s', line: 'Party up with friends. Summed team PnL wins and the pot is split.' },
-  { key: 'royale', n: '03', name: 'Royale', meta: '8 FFA · 180s', line: 'Lowest equity is cut every round. The top three are paid 60/30/10.' },
+const MODES: { key: 'duel' | 'squad' | 'royale'; n: string; name: string; meta: string; line: string }[] = [
+  { key: 'duel', n: '01', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. The bigger balance at the bell takes the pot.' },
+  { key: 'squad', n: '02', name: 'Squad', meta: '2v2 · 120s', line: 'Team up with a friend or a stranger. Your leader picks the leverage; the bigger team total splits the pot.' },
+  { key: 'royale', n: '03', name: 'Royale', meta: '8 players · 180s', line: 'The lowest balance is cut every 30 seconds. Outlast the field; the top three are paid 60/30/10.' },
 ];
-const MODES = REAL_TRADING ? ALL_MODES.slice(0, 1) : ALL_MODES;
 
 const FAQ = [
   ['Is this real money?', 'longshort runs on Monad testnet with test AUSD. Duels execute real testnet Perpl trades, while Practice is a simulation. The tokens have no monetary value.'],
-  ['Do I need a wallet?', 'Create a Mera passkey account with your device, then claim 200 test AUSD. No seed phrase, extension, email or OTP. Use the same passkey to recover the account in a fresh browser.'],
+  ['Do I need a wallet?', 'Create a Mera passkey account with your device, then claim 200 test AUSD. No seed phrase, extension, email or OTP, and the same passkey restores the account in a fresh browser. No passkey on your device? Play as a guest and export its key from the account menu.'],
+  ['What is leverage?', 'A multiplier on your position. At 5x, 95 AUSD controls a 475 AUSD BTC position: wins and losses both grow five times, and a big enough move against you knocks you out. Pick Tank (5x) to start, Scout (10x) or Sniper (15x) when you feel brave.'],
+  ['How are winners paid?', 'Each pot is every entry added together, minus a 2.5% rake. A Duel winner takes it all, the winning Squad team splits it, and Royale pays the top three 60%, 30% and 10%. Ties get their entries back. The full math is on the Rules & Risks page.'],
   ['Who holds the pot?', REAL_TRADING ? 'The PerplArena contract escrows entries and pays prizes onchain after settlement. A separate trading account holds each player’s 100 AUSD budget. Trading and fees can reduce it; remaining capital returns to that player. Settlement is coordinated by the keeper.' : 'The arena contract escrows stakes and pays prizes after settlement.'],
   ['What happens if I get liquidated?', REAL_TRADING ? 'Perpl closes the position and the round uses the actual remaining trading balance. Entry and trading capital are both at risk. The report shows returned capital separately from the prize.' : 'The position closes when it reaches its liquidation threshold.'],
   ['How long does matchmaking take?', 'By default, matchmaking waits for human players. Enable Match with bots in Settings to let labelled sparring bots fill empty seats after about 12 seconds.'],
@@ -111,7 +112,7 @@ export default function Landing() {
               ))}
             </h1>
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="lp-lead">
-              Sixty-second BTC duels. Sign in with a passkey, go long or short, and outtrade your rival. Trades execute on Monad testnet and the contract pays the winner.
+              BTC trading battles: 1v1 Duels, 2v2 Squads and 8-player Royales. Sign in with a passkey, go long or short, and outtrade everyone. Trades execute on Monad testnet and the contract pays the winners.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, ease: EASE }} className="mt-9 flex flex-wrap items-center gap-x-8 gap-y-4">
               <button className="lp-cta" onClick={() => play()} onMouseEnter={sfx.hover}>
@@ -124,18 +125,12 @@ export default function Landing() {
                 Practice vs a bot
               </Link>
             </motion.div>
-            <div className="lp-credits">
-              <span>Built on Monad</span>
-              <span>Priced by Perpl</span>
-              <span>Accounts by Mera</span>
-              <span>Test AUSD by Agora</span>
-            </div>
           </div>
         </div>
         <MarkTag />
       </section>
 
-      {/* ─── bounty tracks ─── */}
+      {/* ─── built on ─── */}
       <Tracks />
 
       {/* ─── modes ─── */}
@@ -143,9 +138,9 @@ export default function Landing() {
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Pick your fight</h2>
-            <p>{REAL_TRADING ? 'One live format: a 60-second BTC Duel with test AUSD. Try free simulated Practice before entering.' : 'Three formats, one rule: the best trader in the lobby walks away with the pot.'}</p>
+            <p>Three formats, one rule: the best trader walks away with the pot. All live on BTC with real Perpl orders; warm up in free Practice first.</p>
           </div>
-          <div className={`grid gap-4 ${REAL_TRADING ? 'md:max-w-xl' : 'md:grid-cols-3'}`}>
+          <div className="grid gap-4 md:grid-cols-3">
             {MODES.map(({ key, n, name, meta, line }, i) => (
               <motion.button
                 key={key}
@@ -188,13 +183,12 @@ export default function Landing() {
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Why it runs on Monad</h2>
-            <p>Each Duel uses real testnet transactions for entry, trading and payout. Receipt links show exactly what confirmed.</p>
           </div>
           <div className="lp-numbers">
             {[
-              ['1', 'passkey', 'Your account and round signers reconstruct from your passkey. No seed phrase or wallet extension.'],
-              ['2.5', '%', 'Prize-pool rake. Perpl trading fees apply separately and appear in the match report.'],
-              ['60', 's', 'Per duel. Short enough for a coffee break, long enough to get liquidated.'],
+              ['300', 'ms', 'Block time. A 60-second duel is about 200 blocks, so every Long, Short and Close is its own transaction and still lands while the price matters. The in-match Ping meter shows each order’s real time.'],
+              ['600', 'ms', 'To finality. After two blocks a result can’t be reversed, so the payout and the proof behind “Verified result” are final almost as soon as they appear.'],
+              ['0', 'MON', 'Gas you need to hold. Your passkey is the account (Face ID or a device PIN, no seed phrase), and because Monad supports EIP-\u20607702 a relay pays the network fee. Trades never pop up a wallet.'],
             ].map(([v, u, d]) => (
               <div key={u}>
                 <div className="lp-num">
@@ -222,7 +216,7 @@ export default function Landing() {
           <h2 className="lp-h2 xl">
             Ready for
             <br />
-            your Duel?
+            a fight?
           </h2>
           <button className="lp-cta dark" onClick={() => play()} onMouseEnter={sfx.hover}>
             <span>Play testnet</span>
@@ -268,13 +262,21 @@ function Faq() {
     <section id="faq" className="lp-section pt-0">
       <div className="lp-wrap grid gap-10 lg:grid-cols-[1fr_1.6fr]">
         <div className="lg:sticky lg:top-28 lg:self-start">
-          <h2 className="lp-h2 overflow-hidden">
-            {['Ques', 'tions'].map((w, i) => (
-              <motion.span key={w} className="inline-block" initial={{ y: '105%' }} whileInView={{ y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.7, ease: EASE }}>
+          {/* The heading is what scrolls into view. The words start below its clip edge, so they can't be the
+              thing observed: a fully clipped element never counts as visible and would stay hidden forever. */}
+          <motion.h2
+            className="lp-h2 overflow-hidden"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
+          >
+            {['Ques', 'tions'].map((w) => (
+              <motion.span key={w} className="inline-block" variants={{ hidden: { y: '105%' }, show: { y: 0, transition: { duration: 0.7, ease: EASE } } }}>
                 {w}
               </motion.span>
             ))}
-          </h2>
+          </motion.h2>
           <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="lp-faq-aside">
             Still unsure? The full risk disclosure lives on the{' '}
             <Link href="/rules" className="lp-textlink small">

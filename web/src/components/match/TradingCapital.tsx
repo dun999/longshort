@@ -18,12 +18,16 @@ export function TradingCapital({id,accounts,onRecovered}: {id:number;accounts:Ma
     try {const result=await authed<{pending:boolean}>('/recover',{id});await useWallet.getState().refresh();onRecovered?.();setMessage(t(result.pending?'capital.retry':'capital.recovered'));}
     catch(e){setMessage(friendly(e));}finally{setPending(false);}
   };
-  return <div className="my-3 border border-line p-3 text-xs">
-    <div className="text-muted">{t('capital.title')}</div>
-    <div className="num mt-1 text-green">{account.returned.toFixed(2)} AUSD {t('capital.returned')}</div>
-    <p className="mt-1 text-[10px] text-dim">{t('capital.separate')}</p>
+  return <div className="rs-capital my-3 w-full border border-line p-3 text-left text-xs">
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-muted">{t('capital.title')}</span>
+      <span className="num text-green">{account.returned.toFixed(2)} AUSD {t('capital.returned')}</span>
+    </div>
+    <p className="mt-1.5 text-[11px] leading-snug text-dim">
+      {t('capital.separate')}{' '}
+      <a className="whitespace-nowrap text-muted underline" href={explorerAddr(account.account)} target="_blank" rel="noreferrer">Perpl #{account.account_id} ↗</a>
+    </p>
     {outstanding>0.000001 && <button className="gbtn ghost sm mt-2" disabled={pending} onClick={()=>void recover()}>{t(pending?'capital.pending':'capital.recover',{amount:outstanding.toFixed(2)})}</button>}
-    <a className="mt-2 block text-[10px] text-muted underline" href={explorerAddr(account.account)} target="_blank" rel="noreferrer">Perpl #{account.account_id} ↗</a>
     {message && <p role="status" className="mt-2 text-muted">{message}</p>}
   </div>;
 }

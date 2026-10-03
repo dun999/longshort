@@ -1,6 +1,6 @@
 'use client';
 import { createWalletClient, encodeFunctionData, http, parseEventLogs, parseUnits, zeroAddress, type Address, type LocalAccount, type WalletClient } from 'viem';
-import { ADDR, REAL_TRADING, TRADING_BUDGET, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive } from '@longshort/shared';
+import { ADDR, CLASSES, LEVERAGES, REAL_TRADING, TRADING_BUDGET, MODES, MatchState, Mode, activeChain, arenaAbi, delegatedTo, relayLive, type Leverage } from '@longshort/shared';
 import { arena, GAS, publicClient } from './clients';
 import { RPC_URL } from './config';
 import * as mera from './mera';
@@ -12,13 +12,14 @@ import { relayTx, sponsorAccount } from './relay';
 import { recordReceipt } from './journey';
 
 const LAST_CLASS = 'ls.class';
-export const lastLeverage = (): 5 | 10 | 25 | 50 => {
-  if (REAL_TRADING) return 5;
+/** The class this player last picked; a newcomer starts as the low-risk Tank. */
+export const lastLeverage = (): Leverage => {
   try {
     const v = Number(localStorage.getItem(LAST_CLASS));
-    if (v === 10 || v === 25 || v === 50) return v;
+    const hit = LEVERAGES.find((l) => l === v);
+    if (hit) return hit;
   } catch {}
-  return 25;
+  return CLASSES.tank.leverage;
 };
 export const rememberLeverage = (l: number) => {
   try {
@@ -103,9 +104,7 @@ async function sessionArgs(): Promise<{ session: `0x${string}`; value: bigint; l
 export async function createMatch(mode: Mode, entry: number, leverage: number, team = 0, rematch?: { source: number; token: string; duration: number; maxPlayers: number }, lease?: string): Promise<{ id: number; tx: TxResult }> {
   const allowBots = useSettings.getState().allowBots;
   const { w, client, account } = await mainCtx(true);
-  if (REAL_TRADING && mode !== Mode.DUEL) throw new Error('Live Perpl currently supports BTC Duel');
   if (w.usd < parseUnits(String(entry + TRADING_BUDGET),6)) throw new Error(`You need ${entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
-  if (REAL_TRADING) leverage = 5;
   await w.ensureAllowance(parseUnits(String(entry + TRADING_BUDGET), 6));
   const cfg = rematch ?? MODES[mode];
   const { session, value, label } = await sessionArgs();
@@ -158,7 +157,6 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   if (!useSettings.getState().allowBots && (info.match.allow_bots || info.players.some((p: any) => p.bot))) throw new Error('Enable bot matching in Settings to join this lobby');
   if (info.match.rematch_of && !info.roster?.some((p: any) => p.addr === w.address?.toLowerCase() && p.team === team)) throw new Error('Rematch is reserved for the previous players and teams');
   if (w.usd < parseUnits(String(info.match.entry + TRADING_BUDGET),6)) throw new Error(`You need ${info.match.entry + TRADING_BUDGET} AUSD: entry plus trading balance`);
-  if (REAL_TRADING) leverage = 5;
   await w.ensureAllowance(parseUnits(String(info.match.entry + TRADING_BUDGET), 6));
   const { session, value, label } = await sessionArgs();
   const args = [BigInt(id), team, leverage, session] as const;

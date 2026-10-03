@@ -11,6 +11,7 @@ import { TopBar } from './TopBar';
 import { initLang } from '@/lib/i18n';
 import { music } from '@/lib/music';
 import { Invites } from './lobby/Invites';
+import { DepositDialog } from './DepositDialog';
 import { initSettings } from '@/lib/settings';
 import { useWakeLock } from '@/lib/wakeLock';
 import { startJourney } from '@/lib/journey';
@@ -105,6 +106,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <main className="relative flex-1 pe-none [&>*]:pointer-events-auto">{children}</main>
       </div>
       <Invites open={invitesOpen} onClose={() => setInvitesOpen(false)} />
+      <DepositDialog />
       <Toast />
     </>
   );

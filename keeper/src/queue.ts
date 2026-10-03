@@ -63,11 +63,12 @@ function hold(matchId: number, seats: Seat[], leader: string) {
 }
 
 export async function matchmake(t: Ticket): Promise<Assignment> {
-  if (REAL_TRADING && (t.mode !== Mode.DUEL || !ENTRY_TIERS.some((n)=>n===t.entry))) throw new Error('Live Perpl supports BTC Duel with 5, 20 or 50 AUSD entry');
+  if (REAL_TRADING && (!(t.mode in MODES) || !ENTRY_TIERS.some((n)=>n===t.entry))) throw new Error('Live matches take a 5, 20 or 50 AUSD entry');
   prune();
   const cfg = MODES[t.mode as Mode];
   if (!cfg || !(t.entry > 0) || !t.party.length || t.party.length > 3) throw new Error('Invalid matchmaking request');
   if (t.mode === Mode.DUEL && t.party.length > 2) throw new Error('Duel parties are 2 players: switch to Squad or Royale');
+  if (t.mode === Mode.SQUAD && t.party.length > 2) throw new Error('A Squad team is 2 players: switch to Royale for a party of 3');
   // asking again replaces whatever this group was holding
   holds = holds.filter((h) => !t.party.includes(h.addr));
   const own = [...leases.values()].find((l) => l.creator === t.addr);

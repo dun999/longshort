@@ -112,15 +112,16 @@ export function Report({ id }: { id: number }) {
             <div className="num text-lg font-semibold">{v}</div>
           </div>
         ))}
-        <div className="ml-auto flex items-center gap-2">
+        {/* phones: Play again on its own full-width row, the two quiet actions share the row below */}
+        <div className="report-actions">
+          <button className="btn-play sm" disabled={joining} onClick={again}>
+            {joining ? 'Confirming entry…' : 'Play again'}
+          </button>
           {m.settle_tx && (
             <a className="gbtn ghost sm" href={explorerTx(m.settle_tx)} target="_blank" rel="noreferrer">
               Settlement tx ↗
             </a>
           )}
-          <button className="btn-play sm" disabled={joining} onClick={again}>
-            {joining ? 'Confirming entry…' : 'Play again'}
-          </button>
           <BackButton />
         </div>
       </motion.div>

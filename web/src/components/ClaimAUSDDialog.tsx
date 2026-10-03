@@ -61,6 +61,7 @@ export function ClaimAUSDDialog() {
         {confirmed ? <button className="btn-play sm min-h-12 w-full !px-4 !text-[13px] !tracking-[0.12em]" onClick={dismiss}>{t('claim.play')}</button> :
           <button className="btn-play sm min-h-12 w-full !px-4 !text-[13px] !tracking-[0.12em]" disabled={claimBusy} onClick={()=>void faucet().catch(()=>{})}>{t(claimBusy?'claim.pending':claim?.status==='pending'?'claim.check':'claim.action',{amount:dollars(claim?.amount??'200000000')})}</button>}
         {claim?.tx && <a className="mt-3 block text-center text-xs text-muted underline" href={explorerTx(claim.tx)} target="_blank" rel="noreferrer">{t('claim.transaction')} ↗</a>}
+        {!confirmed && <button className="mt-3 block w-full text-center text-xs text-muted underline" onClick={() => useWallet.setState({ claimOpen: false, depositOpen: true })}>{t('claim.deposit')}</button>}
         <p className="mt-4 text-center text-[10px] text-dim">{t('claim.testnet')}</p>
       </motion.div>
     </motion.div>

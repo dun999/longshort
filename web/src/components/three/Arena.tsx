@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { MeshReflectorMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 import { useScene } from '@/lib/scene';
+import { LOGO_COLORS, LOGO_MARK, MARK_VIEWBOX } from '../brandPaths';
 
 /*
  * The arena: an octagonal glass stage ringed by chasing LEDs, tiered stands full of steady crowd
@@ -37,30 +38,35 @@ function emblemTexture() {
     g.lineTo(Math.cos(a) * 320, Math.sin(a) * 320);
     g.stroke();
   }
-  // the longshort diamond
-  g.fillStyle = 'rgba(231,225,211,0.85)';
-  g.beginPath();
-  g.moveTo(0, -95);
-  g.lineTo(95, 0);
-  g.lineTo(0, 95);
-  g.lineTo(-95, 0);
-  g.closePath();
-  g.fill();
-  g.globalCompositeOperation = 'destination-out';
-  g.beginPath();
-  g.moveTo(0, -36);
-  g.lineTo(36, 0);
-  g.lineTo(0, 36);
-  g.lineTo(-36, 0);
-  g.closePath();
-  g.fill();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
+/** The longshort mark, drawn from the same traced paths as the site logo. */
+function logoTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const g = c.getContext('2d')!;
+  const [x, y, w, h] = MARK_VIEWBOX.split(' ').map(Number);
+  const s = 1024 / Math.max(w, h);
+  g.translate((1024 - w * s) / 2 - x * s, (1024 - h * s) / 2 - y * s);
+  g.scale(s, s);
+  g.translate(0, 1100); // LOGO_TRANSFORM: potrace's flipped 0.1-unit space
+  g.scale(0.1, -0.1);
+  for (const shape of LOGO_MARK) {
+    g.fillStyle = LOGO_COLORS[shape.tone];
+    g.fill(new Path2D(shape.d));
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8; // seen at a grazing angle from the stands
+  return t;
+}
+
 function Floor() {
   const emblem = useMemo(emblemTexture, []);
+  const logo = useMemo(logoTexture, []);
   const edge = useMemo(() => {
     const pts = Array.from({ length: 9 }, (_, i) => {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
@@ -77,6 +83,11 @@ function Floor() {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
         <planeGeometry args={[11, 11]} />
         <meshBasicMaterial map={emblem} transparent opacity={0.22} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {/* the longshort mark at centre stage, upright for the main camera */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
+        <planeGeometry args={[2.4, 2.4]} />
+        <meshBasicMaterial map={logo} transparent opacity={0.9} depthWrite={false} toneMapped={false} />
       </mesh>
       {/* glowing octagon rim, twice for a soft falloff */}
       <lineLoop geometry={edge}>

@@ -41,7 +41,7 @@ function useDismiss(open: boolean, close: () => void) {
 export function TopBar({ onInvites }: { onInvites: () => void }) {
   const t = useT();
   const path = usePathname();
-  const { address, kind, usd, mon, refresh } = useWallet();
+  const { address, kind, usd, mon, refresh, balanceReady } = useWallet();
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState(false);
   const inviteCount = useSocket((s) => s.invites.length + s.rematchInvites.length);
@@ -76,7 +76,7 @@ export function TopBar({ onInvites }: { onInvites: () => void }) {
       </nav>
       <div className="topbar-actions ml-auto flex min-w-0 shrink-0 items-center gap-3">
         {address ? (
-          <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} onSettings={() => setSettings(true)} />
+          <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} ready={balanceReady} onSettings={() => setSettings(true)} />
         ) : (
           <>
             {/* signed out there's no account menu: a gear opens settings (phones use the menu) */}
@@ -106,7 +106,7 @@ function SettingsIcon() {
 }
 
 /** Compact player chip; the details live in a dropdown so the bar stays clean. */
-function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address: string; name: string; kind?: string; xp: number; usd: bigint; mon: bigint; onSettings: () => void }) {
+function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { address: string; name: string; kind?: string; xp: number; usd: bigint; mon: bigint; ready: boolean; onSettings: () => void }) {
   const t = useT();
   const router = useRouter();
   const guest = kind === 'guest';
@@ -131,7 +131,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
         onClick={() => (sfx.click(), setOpen((o) => !o))}
         onMouseEnter={sfx.hover}
         aria-expanded={open}
-        aria-label={`${name} · ${stake.toFixed(2)} ${STAKE}`}
+        aria-label={ready ? `${name} · ${stake.toFixed(2)} ${STAKE}` : name}
         title={name}
         className={`player-chip flex h-9 items-center gap-2.5 border px-2 transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line bg-white/[0.02] hover:border-[var(--line-hi)]'}`}
       >
@@ -141,7 +141,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
         </span>
         <span className="ml-1 hidden max-w-[120px] truncate text-[12px] font-semibold lg:block">{name}</span>
         <span className="num text-[11px] text-muted" aria-live="polite">
-          {stake.toFixed(2)} <span className="balance-unit">{STAKE}</span>
+          {ready ? stake.toFixed(2) : '···'} <span className="balance-unit">{STAKE}</span>
         </span>
         <span className="text-[10px] text-dim">{open ? '▴' : '▾'}</span>
       </button>
@@ -183,7 +183,7 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
               <div className="border border-line py-1.5">
                 <div className="text-[9px] tracking-wider text-dim uppercase">{t('acct.balance')}</div>
                 <div className="text-[13px]">
-                  {stake.toFixed(2)} <span className="text-dim">{STAKE}</span>
+                  {ready ? stake.toFixed(2) : '···'} <span className="text-dim">{STAKE}</span>
                 </div>
               </div>
               {/* passkey and guest accounts are topped up automatically; only a browser wallet manages its own gas */}
@@ -229,7 +229,13 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
                 {t('acct.profile')}
               </Link>
               <Link href="/demo" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Demo evidence</Link>
-              {REAL_TRADING && !passkey && <Link href="/recover" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Account recovery</Link>}
+              {REAL_TRADING && injected && <Link href="/recover" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Account recovery</Link>}
+              {!injected && (
+                <button className="gbtn ghost sm w-full" onClick={() => (sfx.click(), setOpen(false), useWallet.setState({ depositOpen: true }))}>
+                  {t('acct.deposit', { stake: STAKE })}
+                </button>
+              )}
+              {guest && <GuestKey />}
               <button
                 className="gbtn ghost sm w-full"
                 onClick={() => {
@@ -243,10 +249,13 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
               >
                 {t('acct.funds')}
               </button>
-              <button className="gbtn ghost sm flex w-full items-center justify-center gap-2" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
-                <SettingsIcon />
-                {t('set.title')}
-              </button>
+              {/* phones already have Settings in the menu button; the wrapper keeps the unlayered .gbtn display from beating the utility */}
+              <div className="max-lg:hidden">
+                <button className="gbtn ghost sm flex w-full items-center justify-center gap-2" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
+                  <SettingsIcon />
+                  {t('set.title')}
+                </button>
+              </div>
               <button className="w-full py-1.5 text-[11px] tracking-wider text-dim uppercase hover:text-red" onClick={() => (disconnect(), setOpen(false))}>
                 {t(passkey ? 'acct.signOut' : guest ? 'acct.disconnectGuest' : 'acct.disconnectWallet')}
               </button>
@@ -255,6 +264,32 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, onSettings }: { address
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** Guest accounts live in this browser only: show the key on purpose, behind a warning, so it can be kept. */
+function GuestKey() {
+  const t = useT();
+  const [shown, setShown] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const key = shown ? useWallet.getState().exportGuestKey() : undefined;
+  if (!shown)
+    return (
+      <button className="gbtn ghost sm w-full" onClick={() => (sfx.click(), setShown(true))}>
+        {t('acct.exportKey')}
+      </button>
+    );
+  return (
+    <div className="grid gap-2 border border-gold/40 p-2.5 text-[11px]">
+      <p className="leading-relaxed text-gold">{t('acct.exportWarn')}</p>
+      <code className="num block bg-black/40 p-2 text-[11px] break-all select-all">{key}</code>
+      <div className="flex gap-2">
+        <button className="gbtn sm flex-1" onClick={() => (void navigator.clipboard?.writeText(key ?? ''), setCopied(true), setTimeout(() => setCopied(false), 1500))}>
+          {t(copied ? 'dep.copied' : 'dep.copy')}
+        </button>
+        <button className="gbtn ghost sm flex-1" onClick={() => setShown(false)}>{t('acct.hideKey')}</button>
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { REAL_TRADING, TRADING_BUDGET, CLASSES, ENTRY_TIERS, MODES, Mode, classOf, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, TRADING_BUDGET, CLASSES, ENTRY_TIERS, MODES, Mode, classOf, liqMove, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
 import { Hint, PanelHeader } from '../ui/Hint';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -20,7 +20,7 @@ import { PlayerSearch } from '../PlayerSearch';
 import { useDialog } from '@/lib/useDialog';
 
 type LobbyMode = Mode | 'practice';
-const MODE_LIST: LobbyMode[] = REAL_TRADING ? [Mode.DUEL, 'practice'] : [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
+const MODE_LIST: LobbyMode[] = [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
 
 const MODE_INFO: Record<string, { desc: Key }> = {
   duel: { desc: 'mode.duel' },
@@ -73,7 +73,7 @@ function ModeArt({ mode }: { mode: LobbyMode }) {
   );
 }
 
-function QueueCard({ mode, entry, locked, onOpen }: { mode: LobbyMode; entry: number; locked: boolean; onOpen: () => void }) {
+function QueueCard({ mode, entry, lev, locked, onOpen }: { mode: LobbyMode; entry: number; lev: number; locked: boolean; onOpen: () => void }) {
   const t = useT();
   const cfg = modeCfg(mode);
   const { data: live } = useApi<any[]>('/matches?state=live', 5000);
@@ -84,7 +84,7 @@ function QueueCard({ mode, entry, locked, onOpen }: { mode: LobbyMode; entry: nu
         <div className="min-w-0 flex-1">
           <div className="font-display text-lg leading-none font-bold tracking-[0.08em] uppercase">{cfg.name}</div>
           <div className="num mt-1 truncate text-[10px] text-muted">
-            {cfg.maxPlayers}p · {cfg.duration}s · {mode === 'practice' ? t('lb.free') : `${entry} ${STAKE}`}
+            {cfg.maxPlayers}p · BTC {lev}x · {cfg.duration}s · {mode === 'practice' ? t('lb.free') : `${entry} ${STAKE}`}
             {!!live?.length && <span className="text-red"> · ● {t('lb.live', { n: live.length })}</span>}
           </div>
         </div>
@@ -93,13 +93,13 @@ function QueueCard({ mode, entry, locked, onOpen }: { mode: LobbyMode; entry: nu
         </button>
       </div>
       <div className="hidden sm:block">
-        <PanelHeader title={t('lb.gameMode')} hint={REAL_TRADING ? 'Duel is a 60-second BTC match for two players. Practice is simulated, free, and needs no account.' : 'Choose Duel, Squad, Royale, or free simulated Practice.'} />
+        <PanelHeader title={t('lb.gameMode')} hint="Duel is 1v1 for 60 seconds. Squad is 2v2 for 120 seconds, and each team's leader sets its leverage. Royale is 8 players for 180 seconds, and the lowest balance is cut every 30 seconds. Everyone trades BTC. Practice is simulated and free."  />
       </div>
       <div className="hidden sm:block">
         <div className="font-display text-2xl leading-none font-bold tracking-[0.08em] uppercase">{cfg.name}</div>
         <div className="mt-1 text-[11px] text-muted">{cfg.tagline}</div>
       </div>
-      <div className="num hidden grid-cols-3 border-y border-line py-1.5 text-center text-[10px] sm:grid">
+      <div className="num hidden grid-cols-4 border-y border-line py-1.5 text-center text-[10px] sm:grid">
         <div>
           <div className="text-dim uppercase">{t('lb.players')}</div>
           <div className="text-[12px] text-[var(--text)]">{cfg.maxPlayers}</div>
@@ -107,6 +107,10 @@ function QueueCard({ mode, entry, locked, onOpen }: { mode: LobbyMode; entry: nu
         <div>
           <div className="text-dim uppercase">{t('lb.length')}</div>
           <div className="text-[12px] text-[var(--text)]">{cfg.duration}s</div>
+        </div>
+        <div>
+          <div className="text-dim uppercase">{t('lb.lev')}</div>
+          <div className="text-[12px] text-[var(--text)]">{lev}x</div>
         </div>
         <div>
           <div className="text-dim uppercase">{t('lb.entry')}</div>
@@ -172,7 +176,7 @@ function ModeSelect({
                 <h2 id="mode-title" className="font-display text-3xl font-bold tracking-[0.1em] uppercase">{t('ms.title')}</h2>
               </div>
               <button className="gbtn ghost sm shrink-0" onClick={onClose}>
-                {t('ms.back')}
+                <span className="kbd mr-1">Esc</span> {t('ms.back')}
               </button>
             </div>
             <div className="mode-select-body scroll-thin grid content-start gap-4 overflow-y-auto">
@@ -257,12 +261,12 @@ function ModeSelect({
 export function Lobby() {
   const router = useRouter();
   const search = useSearchParams();
-  const { address, kind, usd, claimOpen } = useWallet();
+  const { address, kind, usd, claimOpen, balanceReady } = useWallet();
   const { party, online, send } = useSocket();
   const me = address?.toLowerCase();
   const [mode, setMode] = useState<LobbyMode>(Mode.DUEL);
   const [entry, setEntry] = useState<number>(5);
-  const [lev, setLev] = useState<number>(REAL_TRADING ? 5 : 25);
+  const [lev, setLev] = useState<number>(CLASSES.tank.leverage);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
   const [connect, setConnect] = useState(false);
@@ -282,7 +286,7 @@ export function Lobby() {
   // landing page deep-links: /play?mode=duel|squad|royale
   useEffect(() => {
     const m = Object.entries(MODES).find(([, v]) => v.key === search.get('mode'));
-    if (m && (!REAL_TRADING || Number(m[0]) === Mode.DUEL)) setMode(Number(m[0]) as Mode);
+    if (m) setMode(Number(m[0]) as Mode);
   }, [search]);
 
   const inParty = !!party && party.members.length > 1;
@@ -313,11 +317,11 @@ export function Lobby() {
       color: CLASS_COLOR[isMe ? lev : m.leverage],
       me: isMe,
     });
-    const cap = effMode === Mode.SQUAD ? 3 : effMode === Mode.DUEL ? 2 : effMode === 'practice' ? 2 : 3;
+    const cap = effMode === Mode.ROYALE ? 3 : 2;
     const slots: Slot[] = others.map((m) => toSlot(m, false));
     if (me) slots.splice(Math.floor(slots.length / 2), 0, toSlot(mine ?? { addr: me, leverage: lev }, true));
     else slots.push({ empty: true, color: '#626873', name: t('lb.slotSignIn') });
-    if (effMode === 'practice') slots.push({ name: 'Sparring bot', leverage: 25, color: '#626873' });
+    if (effMode === 'practice') slots.push({ name: 'bot·Rex', leverage: lev, color: '#626873' });
     while (slots.length < cap && effMode !== 'practice') slots.push({ empty: true, color: '#626873', name: t(effMode === Mode.DUEL ? 'lb.slotRival' : 'lb.slotInvite') });
     useScene.getState().set({ shot: queuedAt ? 'queue' : 'lobby', slots, intensity: 0.25 });
   }, [slotsKey, queuedAt, t]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -339,7 +343,7 @@ export function Lobby() {
   const findMatch = async () => {
     if (effMode === 'practice') return router.push('/practice');
     if (!address) return setConnect(true);
-    if (REAL_TRADING && kind !== 'passkey') return router.push('/recover');
+    if (REAL_TRADING && kind === 'injected') return router.push('/recover'); // browser wallets only finish old rounds
     setErr(undefined);
     setBusy(true);
     cancelQ.current = false;
@@ -374,19 +378,20 @@ export function Lobby() {
   };
 
   const pay = effMode === 'practice' ? null : payouts(effMode, effEntry, MODES[effMode].maxPlayers);
-  const legacy = REAL_TRADING && address && kind !== 'passkey';
-  const lowFunds = address && !legacy && effMode !== 'practice' && Number(usd) / 1e6 < effEntry + TRADING_BUDGET;
+  const legacy = REAL_TRADING && address && kind === 'injected';
+  // only once the balance has actually loaded: a read in flight is not an empty wallet
+  const lowFunds = address && balanceReady && !legacy && effMode !== 'practice' && Number(usd) / 1e6 < effEntry + TRADING_BUDGET;
 
   const cfg = modeCfg(effMode);
   return (
     <div className="lobby pointer-events-none! relative">
       {/* desktop: corner panels; phone: stacked at the top (see .lobby-top) */}
       <div className="lobby-top">
-        <QueueCard mode={effMode} entry={effEntry} locked={inParty && !leader} onOpen={() => setPicker(true)} />
+        <QueueCard mode={effMode} entry={effEntry} lev={lev} locked={inParty && !leader} onOpen={() => setPicker(true)} />
         <SocialDrawer me={me} online={online} />
       </div>
       <div className="lobby-footer">
-      {!REAL_TRADING && <Loadout lev={lev} onClass={pickClass} />}
+      <Loadout lev={lev} mode={effMode} follower={inParty && !leader && effMode === Mode.SQUAD} onClass={pickClass} />
 
       {/* the one primary action */}
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
@@ -411,14 +416,14 @@ export function Lobby() {
         >
           <span className="grid text-center leading-tight">
             {t(effMode === 'practice' ? 'lb.play' : !address ? 'nav.signIn' : inParty && !leader ? 'lb.ready' : busy ? 'lb.queueing' : 'lb.play')}
-            <span className="sub">{!address && effMode !== 'practice' ? t(REAL_TRADING ? 'lb.passkeySub' : 'lb.signInSub') : inParty && !leader ? t('lb.waitLeader') : `${cfg.name}${pay ? ` · ${effEntry} ${STAKE}` : ''}`}</span>
+            <span className="sub">{!address && effMode !== 'practice' ? t(REAL_TRADING ? 'lb.passkeySub' : 'lb.signInSub') : inParty && !leader ? t('lb.waitLeader') : `${cfg.name}${pay ? ` · BTC ${lev}x · ${effEntry} ${STAKE}` : ''}`}</span>
           </span>
         </motion.button>
         <div className="lobby-payout num pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 text-[12px] text-muted">
           {pay ? (
             <>
               {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
-              <Hint text="PLAY commits the entry and separate trading budget. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution." />
+              <Hint text={`PLAY commits the entry and separate trading budget. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution.${REAL_TRADING ? ` ${t('live.session')}` : ''}`} />
             </>
           ) : (
             <>{t('lb.freePractice')}</>
@@ -430,10 +435,12 @@ export function Lobby() {
               <button className="link" onClick={() => REAL_TRADING ? useWallet.setState({claimOpen:true}) : void useWallet.getState().faucet().catch((e) => setErr(friendly(e)))}>
                 {t('lb.getFunds')}
               </button>
+              <button className="link" onClick={() => useWallet.setState({ depositOpen: true })}>
+                {t('lb.orDeposit')}
+              </button>
             </div>
           )}
         {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">{t('live.budget',{amount:TRADING_BUDGET,total:effEntry+TRADING_BUDGET})}</p>}
-        {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[10px] text-dim">{t('live.session')}</p>}
         {err && <span className="pointer-events-auto max-w-md text-center text-xs text-red">{err}</span>}
         {busy && queuedAt ? (
           <button className="guide-link pointer-events-auto" disabled={cancelQueued} onClick={() => (sfx.click(), (cancelQ.current = true), setCancelQueued(true))}>
@@ -463,22 +470,22 @@ export function Lobby() {
   );
 }
 
-/** Bottom-left loadout: your class, a real leverage parameter in the contract. */
-function Loadout({ lev, onClass }: { lev: number; onClass: (l: number) => void }) {
+/** Bottom-left loadout: your class is your leverage, a real parameter in the contract (and in every Perpl order). */
+function Loadout({ lev, mode, follower, onClass }: { lev: number; mode: LobbyMode; follower: boolean; onClass: (l: number) => void }) {
   const t = useT();
   const id = classOf(lev);
   return (
     <motion.div data-tour="class" initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="lobby-loadout panel pointer-events-auto absolute bottom-3 left-3 grid w-[270px] gap-2.5 p-2 sm:p-3">
       <div>
         <div className="hidden sm:block">
-          <PanelHeader title={t('lb.class')} sub={t('lb.leverage')} hint="Your class is your leverage, a real parameter in the contract. Higher leverage means bigger positions and bigger PnL swings, but you get liquidated on a smaller price move. You can switch until the match starts." />
+          <PanelHeader title={t('lb.class')} sub={t('lb.leverage')} hint="Leverage multiplies both your wins and your losses. Higher leverage opens a bigger position from the same balance, so a smaller BTC move against you knocks you out. You can switch until the round starts. In Squad, each team's leader sets one leverage for the whole team." />
         </div>
         <div className="seg block sm:mt-1.5">
-          {(Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank').map((id) => {
+          {(Object.keys(CLASSES) as ClassId[]).map((id) => {
             const k = CLASSES[id];
             const on = lev === k.leverage;
             return (
-              <button key={id} onMouseEnter={sfx.hover} onClick={() => onClass(k.leverage)} className={`px-1! text-[12px]! ${on ? 'on' : ''}`}>
+              <button key={id} disabled={follower} onMouseEnter={sfx.hover} onClick={() => onClass(k.leverage)} className={`px-1! text-[12px]! ${on ? 'on' : ''}`}>
                 <span>
                   {k.name} {k.leverage}x
                 </span>
@@ -488,8 +495,9 @@ function Loadout({ lev, onClass }: { lev: number; onClass: (l: number) => void }
         </div>
         <div className="mt-1.5 text-[10px] text-muted sm:text-[11px]">
           <span className="sm:hidden">{t('lb.classPrefix')}</span>
-          {REAL_TRADING ? t('live.class') : t('lb.liq', { role: t(`role.${id}`), pct: `~${(90 / CLASSES[id].leverage).toFixed(1)}%` })}
+          {t('lb.liq', { role: t(`role.${id}`), pct: `~${(liqMove(lev) * 100).toFixed(liqMove(lev) < 0.1 ? 1 : 0)}%` })}
         </div>
+        {mode === Mode.SQUAD && <div className="mt-1 text-[10px] text-gold sm:text-[11px]">{t(follower ? 'lb.squadFollower' : 'lb.squadRule')}</div>}
       </div>
     </motion.div>
   );
@@ -509,7 +517,7 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
           <h3>{t('lb.party')}</h3>
         </span>
         <span className="num ml-auto text-[11px] text-muted">
-          <span className="text-green">●</span> {t('lb.online', { n: online.length })} · {party?.members.length ?? 1}/{REAL_TRADING ? 2 : 3}
+          <span className="text-green">●</span> {t('lb.online', { n: online.length })} · {party?.members.length ?? 1}/3
         </span>
         <span className="text-dim">{open ? '▴' : '▾'}</span>
       </button>

@@ -1,5 +1,6 @@
 'use client';
 import { create } from 'zustand';
+import { CLASSES } from '@longshort/shared';
 
 export type Shot = 'title' | 'lobby' | 'queue' | 'select' | 'vs' | 'arena' | 'result' | 'podium' | 'backdrop';
 export interface Slot {
@@ -35,7 +36,11 @@ export const useScene = create<SceneState>((set) => ({
   shake: (color = 'rgba(210,90,85,0.5)') => set({ shakeAt: performance.now(), flash: color }),
 }));
 
-export const CLASS_COLOR: Record<number, string> = { 5: '#6f9fc0', 10: '#6f9fc0', 25: '#b3a27a', 50: '#c46a5e' };
+const CLASS_TONE = { tank: '#6f9fc0', scout: '#b3a27a', sniper: '#c46a5e' } as const;
+/** Colour by leverage, from the active class table (live 5/10/15, virtual 10/25/50). */
+export const CLASS_COLOR: Record<number, string> = Object.fromEntries(
+  (Object.keys(CLASSES) as (keyof typeof CLASSES)[]).map((id) => [CLASSES[id].leverage, CLASS_TONE[id]]),
+);
 export const TEAM_COLOR = ['#6f8fd0', '#cf8a52'];
 export const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;

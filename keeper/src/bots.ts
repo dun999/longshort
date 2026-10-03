@@ -1,6 +1,6 @@
 import { maxUint256, nonceManager, parseEther, parseUnits, type PrivateKeyAccount } from 'viem';
 import { mnemonicToAccount } from 'viem/accounts';
-import { ADDR, REAL_TRADING, TRADING_BUDGET, MARKETS, MODES, Mode, erc20Abi } from '@longshort/shared';
+import { ADDR, LEVERAGES, REAL_TRADING, TRADING_BUDGET, MARKETS, MODES, Mode, erc20Abi } from '@longshort/shared';
 import { GAS, arena, chainNow, estimateGas, keeper, log, pub, send, walletFor } from './chain';
 import { db, ensureProfile } from './db';
 import { env } from './env';
@@ -82,7 +82,7 @@ const claim = (b: Bot, matchId?: number) => {
   const n = cur && cur.until > Date.now() ? cur.n + 1 : 1;
   pendingSeats.set(matchId, { n, until: Date.now() + 6000 });
 };
-const LEVS = REAL_TRADING ? [5] as const : [10, 25, 50] as const;
+const LEVS = LEVERAGES; // a Squad bot's pick is overridden by its side's leader on-chain
 const RESERVE = 6; // bots kept free so a human never waits on a full fleet
 
 export async function fillLobbies(now: number) {

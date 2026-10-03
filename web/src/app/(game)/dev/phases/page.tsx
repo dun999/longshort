@@ -2,7 +2,7 @@
 /* Dev-only QA harness: renders each match phase with sample players (no chain, no stake). 404 in production. */
 import { notFound, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { MARGIN, Mode, MatchState, MARKETS, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MODES, Mode, MatchState, MARKETS, payouts, type MarketSymbol } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { useScene, type Shot } from '@/lib/scene';
 import { ClassSelect, MatchFound, Result, VsScreen, Waiting } from '@/components/match/Phases';
@@ -12,24 +12,33 @@ const ADDRS = ['0x5bf0b1240279edcbf19942dd934565eb76852384', '0x20b0c479c08e9d34
 const NAMES = ['sigmaboy', 'bot·Vega', 'Dun', 'kira', 'bot·Nyx', 'mo', 'bot·Atlas', 'zed'];
 
 function sample(mode: Mode, filled: number): MatchView {
-  const max = mode === Mode.DUEL ? 2 : mode === Mode.SQUAD ? 6 : 8;
+  const max = MODES[mode].maxPlayers;
   const now = Date.now() / 1000;
+  // a Squad side shares its leader's leverage
   const players: PlayerView[] = Array.from({ length: Math.min(filled, max) }, (_, i) => {
     const equity = MARGIN + (i % 2 ? -1 : 1) * (12 + i * 7.3);
-    return { addr: ADDRS[i], name: NAMES[i], bot: NAMES[i].startsWith('bot'), team: mode === Mode.ROYALE ? 0 : i % 2, leverage: [25, 10, 50][i % 3], out: false, outRank: 0, realized: 0, pos: null, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
+    return { addr: ADDRS[i], name: NAMES[i], bot: NAMES[i].startsWith('bot'), team: mode === Mode.ROYALE ? 0 : i % 2, leverage: REAL_TRADING ? (mode === Mode.SQUAD ? [10, 5][i % 2] : [5, 10, 15][i % 3]) : [25, 10, 50][i % 3], out: false, outRank: 0, realized: 0, pos: null, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
   });
   const sorted = [...players].sort((a, b) => b.equity - a.equity);
   return {
     id: 42, trades: [], loaded: true, mode, state: MatchState.SETTLED, entry: 5, maxPlayers: max, nPlayers: players.length, duration: 60,
     createdAt: now - 7, startAt: now - 70, endAt: now - 10, round: 0, players, me: players[0],
     prices: Object.fromEntries(MARKETS.map((m) => [m, 1])) as Record<MarketSymbol, number>, feed: [],
-    results: sorted.map((p, i) => ({ addr: p.addr, result: mode === Mode.ROYALE ? (i < 3 ? 'win' : 'loss') : p.team === sorted[0].team ? 'win' : 'loss', payout: i === 0 ? 9.75 : 0, final_equity: p.equity, xp_delta: i === 0 ? 50 : -20 })),
+    // paid as the contract would: Duel winner, both Squad winners, Royale's top three
+    results: sorted.map((p, i) => {
+      const pay = payouts(mode, 5, max);
+      const win = mode === Mode.ROYALE ? i < 3 : p.team === sorted[0].team;
+      const payout = !win ? 0 : mode === Mode.ROYALE ? [pay.first, pay.second!, pay.third!][i] : pay.first;
+      return { addr: p.addr, result: win ? 'win' : 'loss', payout, final_equity: p.equity, xp_delta: win ? 50 : -20 };
+    }),
     settleTx: '0x7671077fb046c018458c08f9e869970cf663def96ad0eea8363b55d6d3ac5679', refresh: () => {},
   };
 }
 
 const SHOT: Record<string, Shot> = { waiting: 'queue', found: 'lobby', select: 'select', vs: 'vs', live: 'arena', result: 'result' };
 const NOOP = { open: async () => ({ ms: 0 }), close: async () => ({ ms: 0 }), simulated: true };
+/** ?real=1: the HUD as a live (non-simulated) match renders it */
+const LIVE = { ...NOOP, simulated: false };
 
 function Harness() {
   const q = useSearchParams();
@@ -49,7 +58,7 @@ function Harness() {
         <Hud
           m={{ ...m, state: MatchState.LIVE, startAt: now - 20, endAt: now + 40, results: undefined, players: m.players.map((p, i) => (mode === Mode.ROYALE && i >= 6 ? { ...p, out: true, outRank: i } : p)) }}
           now={now}
-          actions={NOOP}
+          actions={q.get('real') ? LIVE : NOOP}
           live
         />
       )}

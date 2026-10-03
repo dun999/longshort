@@ -115,7 +115,16 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
             <p className="mt-3 text-[10px] leading-relaxed text-dim">
               {t(REAL_TRADING ? 'cd.liveFooter' : 'cd.footer', { stake: STAKE })}
             </p>
-            {REAL_TRADING && <Link href="/recover" onClick={onClose} className="mt-3 block text-[11px] text-dim underline">{t('cd.legacy')}</Link>}
+            {/* secondary on purpose: Mera stays the account layer, a guest is for judges and devices without passkeys */}
+            {REAL_TRADING && (
+              <div className="mt-4 grid gap-1.5 border-t border-line pt-3">
+                <button className="min-h-[44px] justify-self-start text-left text-[12px] text-muted underline decoration-[var(--line-hi)] underline-offset-4 hover:text-[var(--text)]" disabled={connecting} onClick={() => (sfx.click(), void connectGuest())}>
+                  {t('cd.guestTry')}
+                </button>
+                <p className="text-[10px] leading-relaxed text-dim">{t('cd.guestNote')}</p>
+                <Link href="/recover" onClick={onClose} className="mt-1 text-[11px] text-dim underline">{t('cd.legacy')}</Link>
+              </div>
+            )}
             {error && <p className="mt-3 text-xs text-red">{error}</p>}
           </motion.div>
         </motion.div>

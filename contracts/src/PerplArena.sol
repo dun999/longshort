@@ -9,7 +9,10 @@ import {IPerplTrading} from "./interfaces/IPerplTrading.sol";
 import {IPerplExchange} from "./interfaces/IPerplExchange.sol";
 import {MatchTradingAccount} from "./MatchTradingAccount.sol";
 
-/// @notice AUSD duels ranked by actual, flat Perpl balances. Entry stakes never collateralize trades.
+/// @notice AUSD matches ranked by actual, flat Perpl balances: Duel (1v1), Squad (2v2) and Royale (8 players,
+///         lowest equity cut each round). Entry stakes only fund the prize pool; every player trades BTC from
+///         an isolated Perpl account funded with a separate trading budget that returns to them afterwards.
+///         Leverage: Duel and Royale players pick their own; a Squad side shares the leverage its leader picks.
 contract PerplArena is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     enum Mode { DUEL, SQUAD, ROYALE }
@@ -58,7 +61,7 @@ contract PerplArena is Ownable, ReentrancyGuard {
     event FinalBalance(uint256 indexed id, address indexed player, uint256 balance);
     event CollateralReturned(uint256 indexed id, address indexed player, uint256 amount);
     error BadParams(); error NotOpen(); error NotLive(); error NotPlayer(); error AlreadyJoined();
-    error PlayerOut(); error NoPosition(); error TooEarly(); error NotLiquidatable(); error NotFlat();
+    error PlayerOut(); error NoPosition(); error TooEarly(); error NotLiquidatable(); error NotFlat(); error NotLeader();
 
     constructor(IERC20 token_, IPerplTrading exchange_, address treasury_, address owner_) Ownable(owner_) {
         (,,,uint256 decimals,address collateral,) = exchange_.getExchangeInfo();
@@ -68,14 +71,25 @@ contract PerplArena is Ownable, ReentrancyGuard {
         stake = token_; exchange = exchange_; treasury = treasury_; tradingBudget = 100e6;
         accountImplementation = address(new MatchTradingAccount(exchange_, token_));
     }
+
+    /// @notice Fixed formats: Duel 2 players / 60 s, Squad 2v2 / 120 s, Royale 8 players / 180 s.
+    function formatOf(Mode mode) public pure returns (uint8 maxPlayers, uint8 teamSize, uint32 duration) {
+        if (mode == Mode.DUEL) return (2, 1, 60);
+        if (mode == Mode.SQUAD) return (4, 2, 120);
+        return (8, 0, 180);
+    }
+    /// @notice Leverage classes stay inside Perpl's BTC limit (15x initial margin).
+    function validLeverage(uint8 leverage) public pure returns (bool) { return leverage == 5 || leverage == 10 || leverage == 15; }
+
     function createMatch(Mode mode, uint128 entry, uint32 duration, uint8 maxPlayers, uint8 team, uint8 leverage, address session)
         external payable nonReentrant returns (uint256 id)
     {
-        if (mode != Mode.DUEL || maxPlayers != 2 || duration != 60 ||
+        (uint8 max, uint8 teamSize, uint32 length) = formatOf(mode);
+        if (maxPlayers != max || duration != length ||
             (entry != 5e6 && entry != 20e6 && entry != 50e6) || msg.value != 0) revert BadParams();
         id = ++matchCount;
-        matches[id] = Match(mode, State.OPEN, 2, 1, 0, 0, 0, duration, uint64(block.timestamp), 0, 0, entry);
-        emit MatchCreated(id, mode, entry, maxPlayers, duration, msg.sender);
+        matches[id] = Match(mode, State.OPEN, max, teamSize, 0, 0, 0, length, uint64(block.timestamp), 0, 0, entry);
+        emit MatchCreated(id, mode, entry, max, length, msg.sender);
         _join(id, team, leverage, session);
     }
     function joinMatch(uint256 id, uint8 team, uint8 leverage, address session) external payable nonReentrant {
@@ -85,9 +99,18 @@ contract PerplArena is Ownable, ReentrancyGuard {
     function _join(uint256 id, uint8 team, uint8 leverage, address session) private {
         Match storage m = matches[id];
         if (m.createdAt == 0 || m.state != State.OPEN || block.timestamp >= m.createdAt + OPEN_TIMEOUT) revert NotOpen();
-        if (team > 1 || leverage != 5 || m.nPlayers >= 2) revert BadParams();
+        if (!validLeverage(leverage) || m.nPlayers >= m.maxPlayers) revert BadParams();
         if (indices[id][msg.sender] != 0 || (session != address(0) && indices[id][session] != 0)) revert AlreadyJoined();
-        if (m.nPlayers == 1 && players[id][0].team == team) revert BadParams();
+        if (m.mode == Mode.ROYALE) team = 0;
+        else {
+            if (team > 1) revert BadParams();
+            uint256 count;
+            Player[] storage cur = players[id];
+            for (uint256 i; i < cur.length; i++) if (cur[i].team == team) count++;
+            if (count >= m.teamSize) revert BadParams();
+            // A Squad side plays at one leverage: whoever sat down first on it (the leader) sets it.
+            if (count != 0 && m.mode == Mode.SQUAD) leverage = cur[_leader(id, team)].leverage;
+        }
         stake.safeTransferFrom(msg.sender, address(this), uint256(m.entry) + tradingBudget);
         MatchTradingAccount account = MatchTradingAccount(Clones.clone(accountImplementation));
         stake.safeTransfer(address(account), tradingBudget);
@@ -99,24 +122,39 @@ contract PerplArena is Ownable, ReentrancyGuard {
         if (session != address(0)) indices[id][session] = ix;
         emit PlayerJoined(id, msg.sender, team, leverage, session);
         emit TradingAccountCreated(id, msg.sender, address(account), account.accountId(), tradingBudget);
-        if (m.nPlayers == 2) {
+        if (m.nPlayers == m.maxPlayers) {
             m.state = State.LIVE; m.startAt = uint64(block.timestamp + COUNTDOWN); m.endAt = m.startAt + m.duration;
             emit MatchStarted(id, m.startAt, m.endAt);
         }
     }
+    /// @notice Change leverage class while the lobby fills or during the countdown. In a Squad only the side's
+    ///         leader can, and the change applies to the whole side.
     function setClass(uint256 id, uint8 leverage) external {
         Match storage m = matches[id];
-        if (leverage != 5) revert BadParams();
+        if (!validLeverage(leverage)) revert BadParams();
         if (m.state != State.OPEN && !(m.state == State.LIVE && block.timestamp < m.startAt)) revert NotOpen();
-        Player storage p = _player(id); emit ClassChanged(id, p.addr, leverage);
+        Player storage p = _player(id);
+        if (m.mode != Mode.SQUAD) { p.leverage = leverage; emit ClassChanged(id, p.addr, leverage); return; }
+        Player[] storage ps = players[id];
+        if (ps[_leader(id, p.team)].addr != p.addr) revert NotLeader();
+        for (uint256 i; i < ps.length; i++) {
+            if (ps[i].team != p.team) continue;
+            ps[i].leverage = leverage; emit ClassChanged(id, ps[i].addr, leverage);
+        }
+    }
+    /// @dev A side's leader is its earliest seated player still in the lobby.
+    function _leader(uint256 id, uint8 team) private view returns (uint256) {
+        Player[] storage ps = players[id];
+        for (uint256 i; i < ps.length; i++) if (ps[i].team == team) return i;
+        revert NotPlayer();
     }
     function open(uint256 id, uint8 market, bool isLong, uint16 sizeBps) external nonReentrant {
         Match storage m = matches[id];
         if (m.state != State.LIVE || block.timestamp < m.startAt || block.timestamp >= m.endAt) revert NotLive();
         if (market != 0 || sizeBps == 0 || sizeBps > 10_000) revert BadParams();
         Player storage p = _player(id);
-        _observeLiquidation(id, p);
-        if (p.out) return;
+        if (p.out) revert PlayerOut();
+        if (_observeLiquidation(id, p)) return;
         MatchTradingAccount a = accountOf[id][p.addr];
         if (p.hasPos && !_close(id, p)) revert NotFlat(); // a flip is atomic, never opens over an incomplete close
         (IPerplTrading.AccountInfo memory beforeAccount,,) = a.snapshot();
@@ -152,6 +190,7 @@ contract PerplArena is Ownable, ReentrancyGuard {
         uint8 ix = indices[id][who]; if (ix == 0) revert NotPlayer();
         if (!_observeLiquidation(id, players[id][ix - 1])) revert NotLiquidatable();
     }
+    /// @dev Perpl liquidates on its own; the arena only records that the position is gone.
     function _observeLiquidation(uint256 id, Player storage p) private returns (bool) {
         if (p.out || !p.hasPos) return false;
         (,IPerplTrading.PositionInfoV2 memory pos,) = accountOf[id][p.addr].snapshot();
@@ -159,12 +198,41 @@ contract PerplArena is Ownable, ReentrancyGuard {
         _refresh(id, p); p.out = true; p.outRank = ++matches[id].outCount;
         emit Liquidated(id, p.addr, msg.sender, 0); return true;
     }
+    /// @notice ROYALE: at each round boundary the alive player with the lowest Perpl equity is cut. Their
+    ///         position is closed on Perpl; their remaining balance still returns to them after settlement.
+    function eliminate(uint256 id) external nonReentrant {
+        Match storage m = matches[id];
+        if (m.mode != Mode.ROYALE || m.state != State.LIVE) revert NotLive();
+        uint8 rounds = m.maxPlayers - 3;
+        if (m.round >= rounds) revert BadParams();
+        uint256 due = m.startAt + uint256(m.duration) / (uint256(rounds) + 1) * (uint256(m.round) + 1);
+        if (block.timestamp < due || block.timestamp >= m.endAt) revert TooEarly();
+        m.round++;
+        Player[] storage ps = players[id];
+        uint256 alive;
+        int256 worst = type(int256).max;
+        uint256 worstIdx;
+        for (uint256 i; i < ps.length; i++) {
+            _observeLiquidation(id, ps[i]);
+            if (ps[i].out) continue;
+            alive++;
+            (,, int256 eq) = accountOf[id][ps[i].addr].snapshot();
+            if (eq < worst) (worst, worstIdx) = (eq, i);
+        }
+        if (alive <= 3) return; // liquidations already thinned the field
+        Player storage p = ps[worstIdx];
+        // A halted or partial close must not block the cut: the remainder is flattened at settlement.
+        if (p.hasPos) try this.finishPlayer(id, p.addr) {} catch (bytes memory reason) { emit CloseDeferred(id, p.addr, reason); }
+        _refresh(id, p);
+        p.out = true; p.outRank = ++m.outCount;
+        emit Eliminated(id, p.addr, p.frozenEquity, m.round);
+    }
     function settle(uint256 id) external nonReentrant {
         Match storage m = matches[id];
         if (m.state != State.LIVE && m.state != State.CLOSING) revert NotLive();
-        if (block.timestamp < m.endAt) {
+        if (m.state == State.LIVE && block.timestamp < m.endAt) {
             for (uint256 i; i < players[id].length; i++) _observeLiquidation(id, players[id][i]);
-            if (m.outCount == 0) revert TooEarly();
+            if (!_decided(id, m)) revert TooEarly();
         }
         if (m.state != State.CLOSING) { m.state = State.CLOSING; emit Closing(id); }
         bool flat = true;
@@ -177,31 +245,85 @@ contract PerplArena is Ownable, ReentrancyGuard {
         if (!flat) return;
         m.state = State.SETTLED;
         Player[] storage ps = players[id];
-        uint256[2] memory balances;
-        for (uint256 i; i < 2; i++) {
+        uint256 n = ps.length;
+        uint256[] memory balances = new uint256[](n);
+        for (uint256 i; i < n; i++) {
             (IPerplTrading.AccountInfo memory a,,) = accountOf[id][ps[i].addr].snapshot();
             balances[i] = a.balanceCNS;
             ps[i].frozenEquity = int128(int256(a.balanceCNS * 1e12));
             ps[i].realized = int128(int256(a.balanceCNS * 1e12) - MARGIN);
             emit FinalBalance(id, ps[i].addr, a.balanceCNS);
         }
-        uint256 pot = uint256(m.entry) * 2;
-        uint256 rake;
+        uint256 pot = uint256(m.entry) * n;
+        if (m.mode == Mode.ROYALE) _payRoyale(id, ps, balances, pot);
+        else _payTeams(id, m, ps, balances, pot);
+        for (uint256 i; i < n; i++) _return(id, ps[i].addr);
+    }
+    /// @dev Duel and Squad: the side with the larger summed final balance takes the pot minus rake, split
+    ///      equally among its players. Equal sides get their entries back with no rake.
+    function _payTeams(uint256 id, Match storage m, Player[] storage ps, uint256[] memory balances, uint256 pot) private {
+        uint256[2] memory side;
+        for (uint256 i; i < ps.length; i++) side[ps[i].team] += balances[i];
         address[] memory winners;
         uint256[] memory payouts;
-        if (balances[0] == balances[1]) {
-            winners = new address[](2); payouts = new uint256[](2);
-            for (uint256 i; i < 2; i++) { winners[i] = ps[i].addr; payouts[i] = m.entry; stake.safeTransfer(ps[i].addr, m.entry); }
-        } else {
-            uint256 winner = balances[0] > balances[1] ? 0 : 1;
-            winners = new address[](1); payouts = new uint256[](1); rake = pot * rakeBps / 10_000;
-            winners[0] = ps[winner].addr; payouts[0] = pot - rake;
-            stake.safeTransfer(winners[0], pot - rake); stake.safeTransfer(treasury, rake);
+        if (side[0] == side[1]) {
+            winners = new address[](ps.length); payouts = new uint256[](ps.length);
+            for (uint256 i; i < ps.length; i++) { winners[i] = ps[i].addr; payouts[i] = m.entry; stake.safeTransfer(ps[i].addr, m.entry); }
+            emit Settled(id, winners, payouts, 0);
+            return;
         }
+        uint8 win = side[0] > side[1] ? 0 : 1;
+        uint256 share = (pot - pot * rakeBps / 10_000) / m.teamSize;
+        winners = new address[](m.teamSize); payouts = new uint256[](m.teamSize);
+        uint256 k;
+        for (uint256 i; i < ps.length; i++) {
+            if (ps[i].team != win) continue;
+            winners[k] = ps[i].addr; payouts[k++] = share;
+            stake.safeTransfer(ps[i].addr, share);
+        }
+        uint256 rake = pot - share * m.teamSize; // rounding dust goes with the rake
+        if (rake != 0) stake.safeTransfer(treasury, rake);
         emit Settled(id, winners, payouts, rake);
-        for (uint256 i; i < 2; i++) _return(id, ps[i].addr);
     }
-    /// @dev An external self-call isolates a failed exchange close from the other player.
+    /// @dev Royale: survivors rank by final balance, then cut or liquidated players by how late they went out.
+    ///      The top three are paid 60% / 30% / 10% of the pot minus rake.
+    function _payRoyale(uint256 id, Player[] storage ps, uint256[] memory balances, uint256 pot) private {
+        uint256 n = ps.length;
+        uint256[] memory order = new uint256[](n);
+        for (uint256 i; i < n; i++) order[i] = i;
+        for (uint256 i = 1; i < n; i++) {
+            uint256 cur = order[i];
+            uint256 j = i;
+            while (j > 0 && _ranksAbove(ps[cur], balances[cur], ps[order[j - 1]], balances[order[j - 1]])) { order[j] = order[j - 1]; j--; }
+            order[j] = cur;
+        }
+        uint256 prize = pot - pot * rakeBps / 10_000;
+        uint16[3] memory split = [uint16(6000), 3000, 1000];
+        address[] memory winners = new address[](3);
+        uint256[] memory payouts = new uint256[](3);
+        uint256 paid;
+        for (uint256 k; k < 3; k++) {
+            uint256 amount = prize * split[k] / 10_000;
+            winners[k] = ps[order[k]].addr; payouts[k] = amount; paid += amount;
+            stake.safeTransfer(winners[k], amount);
+        }
+        uint256 rake = pot - paid;
+        if (rake != 0) stake.safeTransfer(treasury, rake);
+        emit Settled(id, winners, payouts, rake);
+    }
+    function _ranksAbove(Player storage a, uint256 balanceA, Player storage b, uint256 balanceB) private view returns (bool) {
+        if (a.out != b.out) return !a.out;
+        if (!a.out) return balanceA > balanceB;
+        return a.outRank > b.outRank;
+    }
+    /// @dev Early settlement only when nothing left can change the order: nobody can still trade in a
+    ///      Duel or Squad, or at most one player remains in a Royale.
+    function _decided(uint256 id, Match storage m) private view returns (bool) {
+        uint256 alive;
+        for (uint256 i; i < players[id].length; i++) if (!players[id][i].out) alive++;
+        return m.mode == Mode.ROYALE ? alive <= 1 : alive == 0;
+    }
+    /// @dev An external self-call isolates a failed exchange close from the other players.
     function finishPlayer(uint256 id, address who) external returns (bool) {
         if (msg.sender != address(this)) revert NotPlayer();
         Player storage p = players[id][indices[id][who] - 1];
@@ -222,15 +344,28 @@ contract PerplArena is Ownable, ReentrancyGuard {
             returnedCollateral[id][who] += amount; emit CollateralReturned(id, who, amount);
         } catch {} // settled scoring is final; recovery retries are independent of the prize
     }
+    /// @notice Leave a lobby before it fills: the entry and the untouched trading budget both come back.
     function leave(uint256 id) external nonReentrant {
         Match storage m = matches[id]; if (m.state != State.OPEN) revert NotOpen();
-        Player storage p = _player(id); if (p.addr != msg.sender) revert NotPlayer();
-        address who = p.addr;
-        delete indices[id][p.addr]; if (p.session != address(0)) delete indices[id][p.session];
-        // A duel has at most one player while OPEN. Closing the empty lobby also enables direct account recovery.
-        m.state = State.CANCELLED; m.nPlayers = 0;
-        stake.safeTransfer(who, m.entry); _return(id, who);
-        delete players[id]; emit PlayerLeft(id, who); emit Cancelled(id);
+        uint8 ix = indices[id][msg.sender];
+        if (ix == 0 || players[id][ix - 1].addr != msg.sender) revert NotPlayer();
+        Player[] storage ps = players[id];
+        uint256 i = ix - 1;
+        Player memory leaving = ps[i];
+        Player memory last = ps[ps.length - 1];
+        ps[i] = last; ps.pop();
+        delete indices[id][leaving.addr]; if (leaving.session != address(0)) delete indices[id][leaving.session];
+        if (i != ps.length) {
+            indices[id][last.addr] = uint8(i + 1);
+            if (last.session != address(0)) indices[id][last.session] = uint8(i + 1);
+        }
+        m.nPlayers--;
+        stake.safeTransfer(leaving.addr, m.entry);
+        // No trade can happen before the bell, so the budget is withdrawable; a failure reverts and the seat stays.
+        uint256 amount = accountOf[id][leaving.addr].returnCollateral();
+        returnedCollateral[id][leaving.addr] += amount; emit CollateralReturned(id, leaving.addr, amount);
+        emit PlayerLeft(id, leaving.addr);
+        if (m.nPlayers == 0) { m.state = State.CANCELLED; emit Cancelled(id); }
     }
     function cancel(uint256 id) external nonReentrant {
         Match storage m = matches[id];
@@ -290,9 +425,8 @@ contract PerplArena is Ownable, ReentrancyGuard {
         for (uint256 id = matchCount; id > stop; id--) {
             Match storage m = matches[id];
             if (m.state == State.OPEN && m.mode == mode && m.entry == entry && m.maxPlayers == maxPlayers &&
-                m.duration == duration && block.timestamp < m.createdAt + OPEN_TIMEOUT) return id;
+                m.duration == duration && m.nPlayers < m.maxPlayers && block.timestamp < m.createdAt + OPEN_TIMEOUT) return id;
         }
         return 0;
     }
-    function eliminate(uint256) external pure { revert BadParams(); }
 }

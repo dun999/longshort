@@ -132,6 +132,7 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
               trades={m.trades}
               players={m.players}
               real={REAL_TRADING && !actions.simulated}
+              leverage={m.me?.leverage}
             />
           </div>
           <Positions m={m} />
@@ -193,7 +194,7 @@ function SpectatorBar({ market, setMarket, prices, mode }: { market: number; set
     <div className="panel flex flex-wrap items-center gap-2 px-3 py-2">
       <span className="font-display text-xs font-bold tracking-[0.2em] text-muted uppercase">{t('hud.spectating')}</span>
       <div className="flex gap-1">
-        {MARKETS.map((mk, i) => (
+        {(REAL_TRADING ? MARKETS.slice(0, 1) : MARKETS).map((mk, i) => (
           <button key={mk} className={`chip ${market === i ? 'on' : ''}`} onClick={() => (sfx.click(), setMarket(i))}>
             {mk} <span className="num text-[10px] opacity-70">{prices[mk] ? fmtPx(prices[mk]!) : '…'}</span>
           </button>

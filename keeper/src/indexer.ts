@@ -155,9 +155,12 @@ async function onSettled(id: number, winners: string[], payouts: bigint[], rake:
 export async function startIndexer() {
   let from = BigInt(getMeta('cursor') ?? ADDR.deployBlock);
   if (getMeta('arena') !== lc(ADDR.arena)) {
-    if (REAL_TRADING && getMeta('arena')) throw new Error('Use a fresh DB_PATH for the AUSD Perpl arena; preserve the old database');
-    // new deployment → reset index
-    for (const t of ['matches', 'players', 'trades', 'trading_accounts', 'perpl_fills', 'collateral_returns']) db.exec(`DELETE FROM ${t}`);
+    // A new arena starts a new season. Its match tables are copied aside under the old arena's address first, so
+    // nothing is lost; AUSD claims, callsigns, passkey recovery hints and private journals are left untouched.
+    const old = getMeta('arena');
+    const tables = ['matches', 'players', 'trades', 'trading_accounts', 'perpl_fills', 'collateral_returns'];
+    if (old && /^0x[0-9a-f]{40}$/.test(old)) for (const t of tables) db.exec(`CREATE TABLE IF NOT EXISTS archive_${old.slice(2, 10)}_${t} AS SELECT * FROM ${t}`);
+    for (const t of tables) db.exec(`DELETE FROM ${t}`);
     db.exec('UPDATE profiles SET xp = 1000, wins = 0, losses = 0, matches = 0, volume = 0, earned = 0');
     from = BigInt(ADDR.deployBlock);
     setMeta('arena', lc(ADDR.arena));

@@ -9,7 +9,7 @@ export const arena = { address: ADDR.arena, abi: arenaAbi } as const;
 export const GAS = {
   createMatch: REAL_TRADING ? 750_000n : 300_000n,
   joinMatch: REAL_TRADING ? 700_000n : 160_000n,
-  setClass: 60_000n,
+  setClass: 120_000n, // a Squad leader's pick rewrites the whole team
   open: REAL_TRADING ? 900_000n : 190_000n,
   close: REAL_TRADING ? 500_000n : 90_000n,
   leave: 120_000n,

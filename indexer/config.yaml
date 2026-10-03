@@ -36,7 +36,7 @@ contracts:
       - event: Transfer
 chains:
   - id: 10143 # Monad testnet
-    start_block: 67316319
+    start_block: 67943161 # PerplArena v2 (Duel, 2v2 Squad, Royale)
     # HyperSync is used automatically when ENVIO_API_TOKEN is set; the RPC below is the fallback.
     rpc:
       - url: ${ENVIO_RPC_URL:-https://testnet-rpc.monad.xyz}
@@ -46,7 +46,7 @@ chains:
     contracts:
       - name: ArenaCore
         address:
-          - 0xbD4F69440C3c5cb84769d74c595E33ca6044a414 # actual AUSD Perpl arena
+          - 0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A # AUSD Perpl arena v2: Duel, Squad 2v2, Royale
       - name: Perpl
         address: 0x1964C32f0bE608E7D29302AFF5E61268E72080cc
       - name: AUSD

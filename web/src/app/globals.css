@@ -475,16 +475,6 @@ body {
   }
   .topbar .logo {
     min-width: 0;
-    gap: 6px;
-    font-size: 13px;
-    letter-spacing: 0.06em;
-  }
-  .topbar .logo-mark {
-    width: 24px;
-    height: 24px;
-  }
-  .topbar .logo-domain {
-    display: none;
   }
   .topbar-actions {
     gap: 8px;
@@ -1690,26 +1680,6 @@ button.notch-pill:hover {
   .lp-textlink:hover {
     border-color: var(--violet);
   }
-  .lp-credits {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 0;
-    margin-top: 64px;
-    font-family: var(--font-jet), monospace;
-    font-size: 11px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #6c6975;
-  }
-  .lp-credits span {
-    padding-right: 18px;
-    margin-right: 18px;
-    border-right: 1px solid var(--hair);
-  }
-  .lp-credits span:last-child {
-    border: 0;
-  }
-
   /* hero: copy on the left, the market streams in from the right and dissolves behind it */
   .lp-hero {
     position: relative;
@@ -2327,13 +2297,14 @@ button.notch-pill:hover {
     box-shadow: 0 0 0 4px rgba(47, 208, 138, 0.15);
   }
 
-  /* bounty tracks: sponsor marks riding the violet band */
+  /* built on: the stack's marks riding a tilted violet band.
+     The band is only the rail (the label is bare text), so no violet can leak around the label;
+     the slanted leading edge is the rail's own clip. Marks are spaced by distance, never by rules. */
   .lp-tracks {
     position: relative;
     display: flex;
     align-items: stretch;
     overflow: hidden;
-    background: var(--violet);
     color: var(--ink);
     transform: rotate(-1.6deg) scale(1.03);
     margin: -10px 0;
@@ -2345,16 +2316,13 @@ button.notch-pill:hover {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-block: -2px; /* bleed past the tilted band's anti-aliased edges */
-    padding: 0 34px 0 var(--gutter);
-    background: var(--ink);
+    padding: 0 40px 0 var(--gutter);
     color: var(--bone);
     font-family: var(--font-jet), monospace;
     font-size: 11px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     white-space: nowrap;
-    clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
   }
   .lp-tracks-label i {
     width: 7px;
@@ -2363,26 +2331,46 @@ button.notch-pill:hover {
     transform: skewX(-12deg);
   }
   .lp-tracks-rail {
+    position: relative;
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+    background: var(--violet);
+    clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  /* edge fades: violet laid over the marks (a mask here would force a repaint every frame) */
+  .lp-tracks-rail::before,
+  .lp-tracks-rail::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 7%;
+    pointer-events: none;
+  }
+  .lp-tracks-rail::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--violet), rgba(124, 92, 255, 0));
+  }
+  .lp-tracks-rail::after {
+    right: 0;
+    background: linear-gradient(270deg, var(--violet), rgba(124, 92, 255, 0));
   }
   .lp-tracks-move {
     display: flex;
     width: max-content;
-    animation: lp-marquee 42s linear infinite;
-  }
-  .lp-tracks:hover .lp-tracks-move {
-    animation-play-state: paused;
+    /* its own GPU layer, moved by translate3d only, never paused (a hover stop reads as a hitch) */
+    will-change: transform;
+    backface-visibility: hidden;
+    animation: lp-marquee 44s linear infinite;
   }
   .lp-track {
     display: inline-flex;
+    flex: none;
     align-items: center;
-    gap: 16px;
-    padding: 20px 46px;
-    border-right: 1px solid rgba(10, 10, 13, 0.2);
+    gap: 18px;
+    padding: 20px 64px;
   }
   .lp-track-logo {
     display: flex;
@@ -2519,8 +2507,11 @@ button.notch-pill:hover {
   }
 
   @keyframes lp-marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
     to {
-      transform: translateX(-33.3333%);
+      transform: translate3d(-33.3333%, 0, 0);
     }
   }
   @keyframes lp-bob {
@@ -2545,6 +2536,12 @@ button.notch-pill:hover {
     }
   }
   @media (prefers-reduced-motion: reduce) {
+    .lp-tracks-rail {
+      overflow-x: auto;
+    }
+    .lp-tracks-move > [aria-hidden='true'] {
+      display: none;
+    }
     .lp-tracks-move,
     .lpv-line,
     .lpv-tug,
@@ -4059,7 +4056,8 @@ button.notch-pill:hover {
   }
   /* names and scores on one line, the tug of war full width under them */
   .sb-tug {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* "YOU +$12.00" is short: the rival's name gets the rest of the row instead of half of it */
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
     grid-template-areas: 'l r' 'bar bar';
     gap: 4px 10px;
   }
@@ -4774,5 +4772,302 @@ button.notch-pill:hover {
   .sh-card {
     max-height: 130px;
     object-fit: contain;
+  }
+}
+
+/* ─── phone polish ──────────────────────────────────────────────────────────
+   One pass over every phone screen: no keyboard hints on touch, a result screen that reads
+   top to bottom without mirroring, and fewer words between the player and the next move. */
+
+/* a touch screen has no keyboard: shortcut hints (↵ Esc Q E Space) are noise there */
+@media (pointer: coarse) {
+  .kbd {
+    display: none;
+  }
+}
+
+/* top bar: the balance names its unit whenever the bar has room for it */
+@media (min-width: 380px) and (max-width: 1023px) {
+  .player-chip {
+    max-width: 164px;
+  }
+  .player-chip .balance-unit {
+    display: inline;
+  }
+}
+
+/* your leverage sits beside the market in the chart header, and the timeframe stays on that row */
+.pc-lev {
+  padding: 0 5px;
+  border: 1px solid rgba(201, 162, 74, 0.55);
+  font-family: var(--font-jet), monospace;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  color: var(--gold);
+}
+@container (max-width: 520px) {
+  .pc-head {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+  .pc-chg {
+    display: none;
+  }
+  .pc-tf {
+    width: auto;
+    margin-left: auto;
+    padding-right: 0;
+  }
+  .pc-tf > button {
+    min-width: 42px;
+    min-height: 40px;
+    font-size: 11px;
+  }
+}
+
+/* live duels are BTC only: the dock has a size picker, and nothing else to choose between */
+.dock-label {
+  font-family: var(--font-chakra);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+@media (max-width: 1100px) {
+  .dock-pick.one {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dock-pick.one .seg {
+    flex: 1;
+  }
+}
+
+/* practice: the "nothing at stake" note rides under the countdown, clear of the player cards */
+.vs-note {
+  margin-top: 10px;
+  max-width: 260px;
+  padding: 5px 10px;
+  border: 1px solid rgba(201, 162, 74, 0.4);
+  background: rgba(10, 11, 14, 0.82);
+  font-family: var(--font-chakra);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.5;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/* match report header: the primary action leads, desktop keeps its original order */
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.report-actions > a {
+  order: 1;
+}
+.report-actions > .btn-play {
+  order: 2;
+}
+.report-actions > button:last-child {
+  order: 3;
+}
+@media (max-width: 700px) {
+  .report-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .report-actions > .btn-play {
+    grid-column: 1 / -1;
+    order: 0;
+    width: 100%;
+    min-height: 52px;
+  }
+}
+
+/* after the fight, stacked: you on top, the rival below, everything reads left to right */
+@media (max-width: 1100px) {
+  .rs-center {
+    gap: 14px;
+  }
+  .rs-actions {
+    order: 1;
+    margin-top: 0;
+  }
+  .rs-capital,
+  .rs-tug {
+    order: 2;
+  }
+  /* a 1v1 needs no Alpha/Bravo headings or equity tug: the two cards already say it */
+  .rs-side.solo .rs-side-head,
+  .rs-tug.solo {
+    display: none;
+  }
+  .rs-side.r .rs-side-head {
+    flex-direction: row;
+  }
+  .rs-card.r .rs-card-head {
+    flex-direction: row;
+    text-align: left;
+  }
+  .rs-card.r .rs-name {
+    justify-content: flex-start;
+  }
+  .rs-card.r .rs-hero {
+    text-align: left;
+  }
+  .rs-card.r .rs-foot {
+    flex-direction: row;
+  }
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  .rs-card.r .rs-badge,
+  .rs-card.r .rs-card-eq {
+    margin: 0 0 0 auto;
+    text-align: right;
+  }
+  .rs-card.r .rs-badge + .rs-card-eq {
+    margin: 0;
+  }
+}
+@media (max-width: 700px) {
+  .rs {
+    gap: 14px;
+    padding-top: 16px;
+  }
+  .rs-center {
+    gap: 12px;
+  }
+  .rs-card {
+    gap: 12px;
+  }
+  .rs-actions {
+    justify-items: stretch;
+    width: 100%;
+    gap: 10px;
+  }
+  .rs-actions .btn-play {
+    width: 100%;
+    min-height: 56px;
+    padding: 8px 24px;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 10px 50%);
+  }
+  .rs-links {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .rs-links > * {
+    min-width: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .rs-proof {
+    justify-self: center;
+  }
+}
+
+/* lobby on phones: the arena rim must not run behind the Play button's small print */
+@media (max-width: 1023px), (max-height: 500px) and (max-width: 1100px) {
+  .lobby-footer {
+    position: relative;
+  }
+  .lobby-footer::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    inset: 0 -12px calc(-1 * max(12px, env(safe-area-inset-bottom))) -12px;
+    background: linear-gradient(180deg, transparent, rgba(10, 11, 14, 0.9) 56px);
+    pointer-events: none;
+  }
+  .lobby-footer > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* tap targets: small text controls keep their look and get a 44px hit area */
+@media (pointer: coarse) {
+  .logo,
+  .link,
+  .profile-page .ml-auto[class*='text-dim'] {
+    position: relative;
+  }
+  .logo::after,
+  .link::after,
+  .profile-page .ml-auto[class*='text-dim']::after {
+    content: '';
+    position: absolute;
+    inset: -12px -6px;
+  }
+  .lp-cta.sm {
+    min-height: 44px;
+  }
+  .lp-textlink {
+    padding-block: 12px 4px;
+  }
+  .rs-proof {
+    min-height: 44px;
+  }
+  input[type='search'] {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .rank-player {
+    padding-block: 10px;
+    margin-block: -10px;
+  }
+}
+
+/* landing hero on phones: with the credits line gone, the live BTC mark needs air under the CTA row */
+@media (max-width: 767px) {
+  .lp-mark {
+    bottom: calc(52svh - 90px);
+  }
+}
+
+/* deposit: a scannable QR needs dark modules on a light field, whatever the theme */
+.deposit-qr {
+  width: 124px;
+  height: 124px;
+  padding: 6px;
+  background: #fff;
+}
+.deposit-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* the wordmark: traced art, sized by height so its proportions never drift */
+.logo svg {
+  display: block;
+  width: auto;
+  height: 28px;
+}
+.logo .logo-short {
+  display: none;
+}
+.lp-footer .logo svg {
+  height: 34px;
+}
+/* narrow bars drop ".fun": the short crop leaves no gap where the domain was */
+@media (max-width: 1023px) {
+  .topbar .logo .logo-full {
+    display: none;
+  }
+  .topbar .logo .logo-short {
+    display: block;
+    height: 24px;
   }
 }

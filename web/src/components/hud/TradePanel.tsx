@@ -49,6 +49,7 @@ export function TradePanel({
   const pos = me?.pos ?? null;
   const posPx = pos ? prices[MARKETS[pos.market]] : undefined;
   const real = REAL_TRADING && !actions.simulated;
+  const btcOnly = REAL_TRADING; // every live match trades BTC, and Practice mirrors it
   const notional = me ? notionalFor(Math.max(0, real ? me.equity : MARGIN + me.realized), me.leverage, size) * (real ? 0.95 : 1) : 0;
   const canTrade = live && !!me && !me.out && !pending;
   const marketPx = prices[MARKETS[market]];
@@ -117,28 +118,32 @@ export function TradePanel({
       if (k === 'q') go(true);
       else if (k === 'e') go(false);
       else if (k === ' ' || k === 'x') (e.preventDefault(), shut());
-      else if (['1', '2', '3'].includes(k) && (!real || k === '1')) setMarket(Number(k) - 1);
+      else if (['1', '2', '3'].includes(k) && (!btcOnly || k === '1')) setMarket(Number(k) - 1);
       else if (k === 'z') setSize(2500);
       else if (k === 'c') setSize(10_000);
       else if (k === 'v') setSize(5000);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, shut, setMarket, real]);
+  }, [go, shut, setMarket, btcOnly]);
 
   return (
     <div className="dock panel" ref={dock}>
       <PositionStrip me={me} px={posPx} real={real} />
-      <div className="dock-pick">
-        <div className="seg" aria-label={t('hud.market')}>
-          {MARKETS.map((m, i) => (
-            <button key={m} disabled={real && i !== 0} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
-              <span>
-                {m} <span className="seg-px num">{prices[m] ? fmtPx(prices[m]!) : '…'}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+      <div className={`dock-pick ${btcOnly ? 'one' : ''}`}>
+        {/* BTC only: no greyed-out ETH/MON, the chart header already names the market */}
+        {!btcOnly && (
+          <div className="seg" aria-label={t('hud.market')}>
+            {MARKETS.map((m, i) => (
+              <button key={m} className={market === i ? 'on' : ''} onClick={() => (sfx.click(), setMarket(i))}>
+                <span>
+                  {m} <span className="seg-px num">{prices[m] ? fmtPx(prices[m]!) : '…'}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {btcOnly && <span className="dock-label">{t('hud.size')}</span>}
         <div className="seg" aria-label={t('hud.sizeShare')} title={t('hud.sizeShare')}>
           {SIZES.map((sz, i) => (
             <button key={sz} className={size === sz ? 'on' : ''} onClick={() => (sfx.click(), setSize(sz))}>

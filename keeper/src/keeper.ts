@@ -52,6 +52,7 @@ async function tick() {
           await once(`liq:${m.id}:${p.addr}`,()=>tryWrite('keeper','liquidate',[id,p.addr]));
       }
       await once(`settle:${m.id}`, () => tryWrite('keeper','settle',[id]));
+      if (m.mode === Mode.ROYALE) await royaleCut(m, id, now);
       continue;
     }
     // 2. liquidations
@@ -71,16 +72,19 @@ async function tick() {
     // 3. decided early (one side wiped out)
     await once(`settle:${m.id}`, () => tryWrite('keeper', 'settle', [id]));
     // 4. royale rounds
-    if (m.mode === Mode.ROYALE) {
-      const { rounds, roundLen } = royaleRounds(m.max_players, m.duration);
-      const due = Math.min(rounds, Math.floor((now - m.start_at) / roundLen));
-      const match = await pub.readContract({ ...arena, functionName: 'getMatch', args: [id] });
-      if (match.round < due) await once(`elim:${m.id}:${match.round}`, () => tryWrite('keeper', 'eliminate', [id]));
-    }
+    if (m.mode === Mode.ROYALE) await royaleCut(m, id, now);
   }
   // 5. expire lobbies that never filled
   const stale = db.prepare('SELECT id FROM matches WHERE state = 0 AND created_at < ?').all(now - 300) as { id: number }[];
   for (const m of stale) await once(`cancel:${m.id}`, () => tryWrite('keeper', 'cancel', [BigInt(m.id)]));
+}
+
+/** Royale: once a round boundary passes, cut the lowest equity (the contract picks who). */
+async function royaleCut(m: { id: number; max_players: number; duration: number; start_at: number }, id: bigint, now: number) {
+  const { rounds, roundLen } = royaleRounds(m.max_players, m.duration);
+  const due = Math.min(rounds, Math.floor((now - m.start_at) / roundLen));
+  const match = await pub.readContract({ ...arena, functionName: 'getMatch', args: [id] });
+  if (match.round < due) await once(`elim:${m.id}:${match.round}`, () => tryWrite('keeper', 'eliminate', [id]));
 }
 
 export function startKeeper() {

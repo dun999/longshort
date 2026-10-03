@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react';
-import { REAL_TRADING, CLASSES, MARGIN, MODES, Mode, XP, classOf, explorerTx, fmtUsd, level, levelProgress, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, CLASSES, MARGIN, MODES, Mode, XP, classOf, explorerTx, fmtUsd, level, levelProgress, liqMove, type ClassId, STAKE } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { CLASS_COLOR, TEAM_COLOR, useScene } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -186,12 +186,16 @@ export function MatchFound({ m }: { m: MatchView }) {
 // ─── class select (unchanged flow) ──────────────────────────────────────────
 export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: number; onPick: (lev: number) => void; pending: boolean }) {
   const t = useT();
-  const cur = m.me?.leverage ?? 25;
-  const classes = (Object.keys(CLASSES) as ClassId[]).filter((id) => !REAL_TRADING || id === 'tank');
+  const cur = m.me?.leverage ?? CLASSES.tank.leverage;
+  const classes = Object.keys(CLASSES) as ClassId[];
+  // Squad: one leverage per team, picked by the team's first seated player (the contract enforces it)
+  const lead = m.mode === Mode.SQUAD && m.me ? m.players.find((p) => p.team === m.me!.team) : undefined;
+  const follower = !!lead && lead.addr !== m.me?.addr;
+  const pct = (lev: number) => `${(liqMove(lev) * 100).toFixed(liqMove(lev) < 0.1 ? 1 : 0)}%`;
   return (
     <motion.div {...fadeUp} className="pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-4 px-4">
       <div className="text-center">
-        <div className="panel-title">{t('mm.chooseClass', { n: Math.max(0, Math.ceil(left)) })}</div>
+        <div className="panel-title">{follower ? t('mm.leaderPicks', { name: lead!.name }) : t('mm.chooseClass', { n: Math.max(0, Math.ceil(left)) })}</div>
         <div className="font-display text-3xl font-bold tracking-[0.16em] uppercase">{t('mm.loadout')}</div>
       </div>
       <div className={`class-options pointer-events-auto grid w-full max-w-4xl gap-2 md:gap-3 ${classes.length === 1 ? 'single grid-cols-1' : 'grid-cols-3'}`}>
@@ -206,27 +210,27 @@ export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: 
               whileTap={{ scale: 0.97 }}
               onMouseEnter={sfx.hover}
               onClick={() => (sfx.lockIn(), onPick(c.leverage))}
-              disabled={pending}
+              disabled={pending || follower}
               className={`panel p-2.5 text-left transition-colors md:p-3 ${on ? 'bg-[var(--panel-hi)]!' : ''}`}
               style={{ borderColor: on ? col : undefined, boxShadow: on ? `inset 0 -3px 0 ${col}` : undefined }}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-                <span className="font-display text-base font-bold tracking-[0.12em] uppercase md:text-xl" style={{ color: col }}>
+                <span className="font-display text-sm font-bold tracking-[0.06em] uppercase md:text-xl md:tracking-[0.12em]" style={{ color: col }}>
                   {c.name}
                 </span>
-                <span className="num text-xl font-bold md:text-2xl">{c.leverage}x</span>
+                <span className="num text-lg font-bold md:text-2xl">{c.leverage}x</span>
               </div>
               <div className="mt-1 hidden text-[11px] tracking-[0.2em] text-muted uppercase md:block">{t(`role.${id}`)}</div>
-              <p className="mt-2 hidden text-sm text-muted md:block">{REAL_TRADING ? t('live.class') : t(`blurb.${id}`)}</p>
-              <div className="num mt-1 text-[11px] text-gold md:hidden">{REAL_TRADING ? t('live.isolated') : `liq −${(90 / c.leverage).toFixed(1)}%`}</div>
+              <p className="mt-2 hidden text-sm text-muted md:block">{t(`blurb.${id}`, { pct: pct(c.leverage) })}</p>
+              <div className="num mt-1 text-[11px] text-gold md:hidden">{t('mm.outAt', { pct: pct(c.leverage) })}</div>
               <div className="mt-3 hidden grid-cols-2 gap-2 text-[11px] md:grid">
                 <div>
                   <div className="text-dim">{t('mm.maxSize')}</div>
                   <div className="num">{fmtUsd(MARGIN * c.leverage * (REAL_TRADING ? 0.95 : 1))}</div>
                 </div>
                 <div>
-                  <div className="text-dim">{REAL_TRADING ? 'Perpl' : t('mm.liqFull')}</div>
-                  <div className="num text-gold">{REAL_TRADING ? 'BTC · 5x' : `−${(90 / c.leverage).toFixed(1)}% ${t('mm.move')}`}</div>
+                  <div className="text-dim">{t('mm.liqFull')}</div>
+                  <div className="num text-gold">{`−${pct(c.leverage)} ${t('mm.move')}`}</div>
                 </div>
               </div>
               {on && <div className="mt-2 font-display text-[10px] font-bold tracking-[0.24em] uppercase md:mt-3 md:text-xs md:tracking-[0.3em]" style={{ color: col }}>{t(pending ? 'mm.locking' : 'mm.locked')}</div>}
@@ -263,7 +267,7 @@ function VsCard({ p, side, i, color, big }: { p: PlayerView; side: 0 | 1; i: num
   );
 }
 
-export function VsScreen({ m, left }: { m: MatchView; left: number }) {
+export function VsScreen({ m, left, note }: { m: MatchView; left: number; note?: string }) {
   const t = useT();
   const royale = m.mode === Mode.ROYALE;
   const [a, b] = sides(m);
@@ -314,6 +318,7 @@ export function VsScreen({ m, left }: { m: MatchView; left: number }) {
               </motion.div>
             </AnimatePresence>
           </div>
+          {note && <div className="vs-note">{note}</div>}
         </div>
       </div>
     </motion.div>
@@ -463,7 +468,7 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
         {(won || compact) && <div className="rs-summary">
         {won && (
           <span className="rs-badge">
-            {t('rs.winner')}{result && result.payout > 0 && <b className="num">+{result.payout.toFixed(2)}</b>}
+            {t('rs.winner')}{result && result.payout > 0 && <b className="num">+{result.payout.toFixed(2)} {STAKE}</b>}
           </span>
         )}
         {compact && (
@@ -609,7 +614,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
     const color = royale ? '#a9b8d4' : TEAM_COLOR[tm];
     const label = royale ? (side ? `#${half + 1}–${standings.length}` : `#1–${half}`) : TEAM_NAME[tm];
     return (
-      <div className={`rs-side ${side ? 'r' : ''}`}>
+      <div className={`rs-side ${side ? 'r' : ''} ${!royale && list.length === 1 ? 'solo' : ''}`}>
         <motion.div className="rs-side-head" style={{ ['--c' as string]: color }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
           <span>
             {label}
@@ -676,7 +681,9 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
           ))}
         </div>
         <div className="rs-sub">
-          {rank > 0 ? t('rs.place', { rank: lang === 'en' ? ordinal(rank) : rank, n: m.players.length }) : standings[0] && outcome !== 'draw' ? t('rs.wins', { name: standings[0].name }) : MODES[m.mode].name}
+          {m.mode === Mode.SQUAD && outcome !== 'draw' && standings[0]
+            ? t('rs.wins', { name: TEAM_NAME[standings[0].team] })
+            : rank > 0 ? t('rs.place', { rank: lang === 'en' ? ordinal(rank) : rank, n: m.players.length }) : standings[0] && outcome !== 'draw' ? t('rs.wins', { name: standings[0].name }) : MODES[m.mode].name}
           {outcome === 'draw' && t('rs.refunded')}
         </div>
 
@@ -684,7 +691,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
         {REAL_TRADING && !practice && <TradingCapital id={m.id} accounts={m.accounts} onRecovered={m.refresh} />}
 
         {!royale && m.players.length > 1 && (
-          <motion.div className="rs-tug" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+          <motion.div className={`rs-tug ${a.length === 1 && b.length === 1 ? 'solo' : ''}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
             <div className="rs-tug-legend">
               <span style={{ color: TEAM_COLOR[teamOf(0)] }}>{(share * 100).toFixed(1)}%</span>
               <span>{t('rs.share')}</span>

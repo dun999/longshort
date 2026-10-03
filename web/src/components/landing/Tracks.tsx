@@ -1,18 +1,19 @@
-import { AgoraLogo, EnvioLogo, MeraLogo, MonadLogo } from './SponsorLogos';
+import { AgoraLogo, EnvioLogo, MeraLogo, MonadLogo, PerplLogo } from './SponsorLogos';
 
-/** Bounty tracks this build targets, and what each one does in the game. Monochrome marks on the violet band. */
+/** Everything Longshort is built on, and what each one does in the game. Monochrome marks on the violet band. */
 const TRACKS = [
   { name: 'Monad', Logo: MonadLogo, h: 22, what: 'Trades & settlement' },
-  { name: 'Envio', Logo: EnvioLogo, h: 19, what: 'Indexes every match' },
-  { name: 'Mera', Logo: MeraLogo, h: 34, what: 'Passkey sign-in' },
+  { name: 'Perpl', Logo: PerplLogo, h: 26, what: 'Prices & live trade execution' },
+  { name: 'Mera', Logo: MeraLogo, h: 34, what: 'Passkey accounts' },
   { name: 'Agora AUSD', Logo: AgoraLogo, h: 19, what: 'AUSD stakes & payouts' },
+  { name: 'Envio', Logo: EnvioLogo, h: 19, what: 'Indexes every match' },
 ];
 
 export function Tracks() {
   return (
-    <section className="lp-tracks" aria-label="Bounty tracks">
+    <section className="lp-tracks" aria-label="Built on">
       <div className="lp-tracks-label">
-        <i /> Bounty tracks
+        <i /> Built on
       </div>
       <div className="lp-tracks-rail">
         <div className="lp-tracks-move">

@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { CLASSES } from '@longshort/shared';
 
 /*
  * Hero key art: a dense candlestick chart that streams left forever. Canvas 2D (no WebGL): a
  * mean-reverting random walk with trend regimes and volatility bursts, new candle every PERIOD,
- * the live candle forming at the right edge, EMA, volume, and the crew's trades pinned on candles.
- * It is decoration, so it carries no price numbers; the page overlays the real Perpl mark instead.
+ * the live candle forming at the right edge, EMA, volume, and illustrative trades pinned on candles.
+ * It is decoration, so it carries no price numbers and no invented traders; the trades use the
+ * game's real leverage, and the page overlays the real Perpl mark instead.
  * Pauses offscreen and in background tabs; with reduced motion it draws one still frame.
  */
 
@@ -16,12 +18,7 @@ const PAD_R = 96; // room right of the live candle for its glow
 const UP = '#2fd08a';
 const DOWN = '#ff3d5a';
 const VIOLET = '#8f6bff';
-const CREW: [string, number][] = [
-  ['MOONI', 25],
-  ['SHORTY', 50],
-  ['BO', 10],
-  ['URSA', 25],
-];
+const LEV = CLASSES.tank.leverage; // the leverage a player actually gets
 
 interface Marker {
   side: 1 | -1; // long / short
@@ -98,13 +95,11 @@ class Market {
     this.sinceMark++;
     if (this.cascade > 0 && !this.cascadeMarked && this.sinceMark > 10 && Math.random() < 0.5) {
       this.cascadeMarked = true;
-      const [who, lev] = CREW[(Math.random() * CREW.length) | 0];
-      prev.mark = { side: this.cascadeDir > 0 ? -1 : 1, label: `${who} ${lev}x LIQUIDATED`, liq: true };
+      prev.mark = { side: this.cascadeDir > 0 ? -1 : 1, label: `${LEV}x LIQUIDATED`, liq: true };
       this.sinceMark = 0;
     } else if (this.sinceMark > 26 && Math.random() < 0.1) {
-      const [who, lev] = CREW[(Math.random() * CREW.length) | 0];
       const side: 1 | -1 = Math.random() < 0.5 + this.drift * 0.4 ? 1 : -1;
-      prev.mark = { side, label: `${who} ${side > 0 ? 'LONG' : 'SHORT'} ${lev}x` };
+      prev.mark = { side, label: `${side > 0 ? 'LONG' : 'SHORT'} ${LEV}x` };
       this.sinceMark = 0;
     }
     this.candles.push({ o: prev.c, h: prev.c, l: prev.c, c: prev.c, v: 0 });

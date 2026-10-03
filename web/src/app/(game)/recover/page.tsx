@@ -23,14 +23,14 @@ export default function RecoverAccount() {
     <div className="panel grid gap-3 p-5">
       <div className="panel-title">Existing accounts</div>
       <h1 className="font-display text-3xl font-bold uppercase">Recover your account</h1>
-      <p className="text-sm leading-relaxed text-muted">New Duels use Mera passkeys. If you previously played with a guest account or browser wallet, you can still view its balance, finish an active round, and return remaining trading capital.</p>
-      <p className="text-xs text-dim">Guest recovery needs the browser that already holds its key. Clearing that browser’s storage removes that old guest key. Passkey accounts recover with the passkey instead.</p>
+      <p className="text-sm leading-relaxed text-muted">Live matches use a Mera passkey, or a guest account kept in this browser. If you played with a browser wallet, you can still view its balance, finish an active round, and return remaining trading capital here.</p>
+      <p className="text-xs text-dim">A guest account lives only in the browser that holds its key, so export the key from the account menu to keep it. Passkey accounts recover with the passkey on any device.</p>
       <div className="flex flex-wrap gap-2">
-        <button className="gbtn ghost sm" disabled={connecting} onClick={() => void connectGuest({ legacy: true })}>Open existing guest</button>
+        <button className="gbtn ghost sm" disabled={connecting} onClick={() => void connectGuest()}>Open guest in this browser</button>
         <button className="gbtn ghost sm" disabled={connecting} onClick={() => void connectInjected({ legacy: true })}>Open existing wallet</button>
       </div>
       {error && <p role="alert" className="text-xs text-red">{error}</p>}
-      <Link href="/play" className="link text-xs" onClick={() => { if (kind !== 'passkey') disconnect(); }}>Use a passkey for new Duels →</Link>
+      <Link href="/play" className="link text-xs" onClick={() => { if (kind !== 'passkey') disconnect(); }}>Play with a passkey →</Link>
     </div>
     {address && <section className="panel grid gap-3 p-5">
       <a href={explorerAddr(address)} target="_blank" rel="noreferrer" className="num break-all text-xs text-muted underline">{address} ↗</a>

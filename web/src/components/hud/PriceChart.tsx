@@ -72,9 +72,12 @@ export function PriceChart({
   trades = [],
   players = [],
   real = false,
+  leverage,
 }: {
   market: MarketSymbol;
   real?: boolean;
+  /** your leverage, shown beside the market so it is never a surprise */
+  leverage?: number;
   pos?: Pos | null;
   realized?: number;
   trades?: TradeRow[];
@@ -248,6 +251,7 @@ export function PriceChart({
     <div className="pc">
       <div className="pc-head">
         <span className="pc-sym">{market}-PERP</span>
+        {leverage && <span className="pc-lev" title={t('hud.leverage')}>{leverage}x</span>}
         {shown && <span className={`pc-px num ${up ? 'up' : 'down'}`}>{fmtPx(shown.close)}</span>}
         {!hover && last && (
           <span className={`pc-chg num ${chg >= 0 ? 'up' : 'down'}`}>

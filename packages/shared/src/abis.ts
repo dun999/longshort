@@ -171,13 +171,13 @@ export const arenaAbi = [
     "name": "eliminate",
     "inputs": [
       {
-        "name": "",
+        "name": "id",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
     "outputs": [],
-    "stateMutability": "pure"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -1285,6 +1285,35 @@ export const arenaAbi = [
   },
   {
     "type": "function",
+    "name": "formatOf",
+    "inputs": [
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum PerplArena.Mode"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "maxPlayers",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "teamSize",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "duration",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "recover",
     "inputs": [
       {
@@ -1332,6 +1361,25 @@ export const arenaAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "validLeverage",
+    "inputs": [
+      {
+        "name": "leverage",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "event",
@@ -1482,6 +1530,11 @@ export const arenaAbi = [
   {
     "type": "error",
     "name": "NotFlat",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotLeader",
     "inputs": []
   }
 ] as const;
@@ -1701,13 +1754,13 @@ export const perplArenaAbi = [
     "name": "eliminate",
     "inputs": [
       {
-        "name": "",
+        "name": "id",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
     "outputs": [],
-    "stateMutability": "pure"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -1829,6 +1882,35 @@ export const perplArenaAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "formatOf",
+    "inputs": [
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum PerplArena.Mode"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "maxPlayers",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "teamSize",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "duration",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -2280,6 +2362,25 @@ export const perplArenaAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "validLeverage",
+    "inputs": [
+      {
+        "name": "leverage",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "event",
@@ -2811,6 +2912,11 @@ export const perplArenaAbi = [
   {
     "type": "error",
     "name": "NotFlat",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotLeader",
     "inputs": []
   },
   {

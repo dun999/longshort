@@ -36,7 +36,7 @@ export function Hint({ text }: { text: string }) {
         onPointerUp={(e) => e.pointerType !== 'mouse' && (pos ? setPos(null) : show())}
         onFocus={show}
         onBlur={() => setPos(null)}
-        className="relative grid h-[15px] w-[15px] shrink-0 cursor-help place-items-center rounded-full border border-[var(--line-hi)] text-[9px] font-bold text-muted after:absolute after:-inset-3 after:content-[''] hover:border-[var(--accent)] hover:text-[var(--text)]"
+        className="relative grid h-[15px] w-[15px] shrink-0 cursor-help place-items-center rounded-full border border-[var(--line-hi)] text-[9px] font-bold text-muted after:absolute after:-inset-[15px] after:content-[''] hover:border-[var(--accent)] hover:text-[var(--text)]"
       >
         ?
       </button>

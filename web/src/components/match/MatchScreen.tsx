@@ -27,7 +27,7 @@ function phaseOf(m: MatchView, now: number): Phase {
   if (m.state === MatchState.CLOSING) return 'settling';
   const toStart = m.startAt - now;
   if (toStart > 12) return 'found';
-  if (toStart > 4) return !REAL_TRADING && m.me && !m.me.out ? 'select' : 'vs';
+  if (toStart > 4) return m.me && !m.me.out ? 'select' : 'vs';
   if (toStart > 0) return 'vs';
   return now < m.endAt ? 'live' : 'settling';
 }

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import Link from 'next/link';
-import { MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
 import { useSocket, lastPx } from '@/lib/socket';
 import { useWallet } from '@/lib/wallet';
 import { useScene, TEAM_COLOR } from '@/lib/scene';
@@ -47,7 +47,7 @@ export default function Practice() {
   useEffect(() => {
     setSeats([
       { addr: address, name: address.startsWith('0x') && address.length > 10 ? shortAddr(address) : 'Guest', leverage: lastLeverage(), realized: 0, pos: null, out: false },
-      { addr: '0xbot', name: 'Sparring bot', leverage: 25, realized: 0, pos: null, out: false },
+      { addr: '0xbot', name: 'bot·Rex', leverage: REAL_TRADING ? lastLeverage() : 25, realized: 0, pos: null, out: false },
     ]);
     setFeed([]);
     setTrades([]);
@@ -61,7 +61,8 @@ export default function Practice() {
     return () => clearInterval(t);
   }, []);
 
-  const pricesReady = connected && MARKETS.every((m) => Number.isFinite(prices[m]) && prices[m]! > 0);
+  // live matches trade BTC only, so Practice needs (and trades) only BTC as well
+  const pricesReady = connected && (REAL_TRADING ? [MARKETS[0]] : MARKETS).every((m) => Number.isFinite(prices[m]) && prices[m]! > 0);
   const roundNow = pausedAt.current ?? now;
   const roundStart = startAt ?? now + COUNTDOWN;
   const endAt = roundStart + DURATION;
@@ -125,9 +126,9 @@ export default function Practice() {
     if (!live) return;
     const t = roundNow - roundStart;
     const steps: [number, () => void][] = [
-      [4, () => doOpen(1, 1, true, 10_000)],
+      [4, () => doOpen(1, REAL_TRADING ? 0 : 1, true, 10_000)],
       [22, () => doClose(1)],
-      [27, () => doOpen(1, 2, false, 7_500)],
+      [27, () => doOpen(1, REAL_TRADING ? 0 : 2, false, 7_500)],
       [41, () => doOpen(1, 0, Math.random() < 0.5, 5_000)],
       [55, () => doClose(1)],
     ];
@@ -215,11 +216,8 @@ export default function Practice() {
   );
   return (
     <div className="relative">
-      {!live && !done && (
-        <div className="pointer-events-none fixed top-[72px] left-1/2 z-40 -translate-x-1/2 border border-gold/40 bg-[var(--panel-solid)] px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gold uppercase">{t('mm.practiceBanner')}</div>
-      )}
       <AnimatePresence mode="wait">
-        {!live && !done && <VsScreen key="vs" m={m} left={roundStart - roundNow} />}
+        {!live && !done && <VsScreen key="vs" m={m} left={roundStart - roundNow} note={t('mm.practiceBanner')} />}
         {(live || (done && !m.results)) && (
           <motion.div key="hud" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <Hud m={m} now={now} actions={actions} live={live} />

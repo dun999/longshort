@@ -1,18 +1,32 @@
 'use client';
 import Link from 'next/link';
 import { sfx } from '@/lib/sfx';
+import { FULL_VIEWBOX, LOGO_COLORS, LOGO_FUN, LOGO_MARK, LOGO_TRANSFORM, LOGO_WORD, MARK_VIEWBOX, NO_DOMAIN_VIEWBOX } from './brandPaths';
 
-/** The wordmark. Its own module: the gate page shows it without loading the app around it. */
+const shapes = (list: typeof LOGO_MARK) => list.map((s, i) => <path key={i} fill={LOGO_COLORS[s.tone]} d={s.d} />);
+
+/** The mark on its own, for icon-sized spots. */
+export function LogoMark({ className, title = 'longshort.fun' }: { className?: string; title?: string }) {
+  return (
+    <svg viewBox={MARK_VIEWBOX} className={className} role="img" aria-label={title}>
+      <g transform={LOGO_TRANSFORM}>{shapes(LOGO_MARK)}</g>
+    </svg>
+  );
+}
+
+/**
+ * The wordmark. Its own module: the gate page shows it without loading the app around it. Two crops of the same
+ * art, with and without ".fun", so a narrow bar can drop the domain without leaving a gap (see .logo-short).
+ */
 export function Logo() {
   return (
-    <Link href="/" aria-label="longshort.fun home" className="logo font-display flex items-center gap-2 text-lg font-bold tracking-[0.12em] uppercase" onMouseEnter={sfx.hover}>
-      <span className="logo-mark relative grid h-8 w-8 shrink-0 place-items-center" style={{ clipPath: 'polygon(50% 0,100% 50%,50% 100%,0 50%)', background: 'var(--accent)' }}>
-        <span className="h-3 w-3 bg-[var(--bg)]" style={{ clipPath: 'polygon(50% 0,100% 50%,50% 100%,0 50%)' }} />
-      </span>
-      <span className="logo-wordmark">
-        long<span className="text-violet">short</span>
-        <span className="logo-domain text-dim">.fun</span>
-      </span>
+    <Link href="/" aria-label="longshort.fun home" className="logo flex items-center" onMouseEnter={sfx.hover}>
+      <svg viewBox={FULL_VIEWBOX} className="logo-full" aria-hidden>
+        <g transform={LOGO_TRANSFORM}>{shapes(LOGO_MARK)}{shapes(LOGO_WORD)}{shapes(LOGO_FUN)}</g>
+      </svg>
+      <svg viewBox={NO_DOMAIN_VIEWBOX} className="logo-short" aria-hidden>
+        <g transform={LOGO_TRANSFORM}>{shapes(LOGO_MARK)}{shapes(LOGO_WORD)}</g>
+      </svg>
     </Link>
   );
 }

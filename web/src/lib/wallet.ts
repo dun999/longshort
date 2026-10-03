@@ -66,6 +66,8 @@ interface WalletState {
   error?: string;
   mon: bigint;
   usd: bigint;
+  /** false until the first balance read lands, so "0.00" is never shown for a balance that is still loading */
+  balanceReady: boolean;
   allowance: bigint;
   sessionMon: bigint;
   main?: WalletClient;
@@ -75,6 +77,8 @@ interface WalletState {
   /** Passkey accounts: keys are derived on unlock and wiped on lock. */
   locked: boolean;
   claimOpen: boolean;
+  /** The Deposit AUSD dialog (address, QR code, live balance). */
+  depositOpen: boolean;
   claimBusy: boolean;
   claim?: { status: string; amount: string; before?: string; after?: string; balance: string; tx?: Hash; eligible?: boolean };
   claimError?: string;
@@ -85,7 +89,9 @@ interface WalletState {
   ensureUnlocked: (opts?: { verify?: boolean }) => Promise<void>;
   authorizeEntry: () => Promise<void>;
   lock: () => void;
-  connectGuest: (opts?: { legacy?: boolean }) => Promise<void>;
+  connectGuest: () => Promise<void>;
+  /** Guest only: the private key, for the player to keep a copy. Passkey accounts have nothing to export. */
+  exportGuestKey: () => string | undefined;
   disconnect: () => void;
   restore: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -140,10 +146,12 @@ export const useWallet = create<WalletState>((set, get) => ({
   connecting: false,
   mon: 0n,
   usd: 0n,
+  balanceReady: false,
   allowance: 0n,
   sessionMon: 0n,
   locked: false,
   claimOpen: false,
+  depositOpen: false,
   claimBusy: false,
 
   async connectPasskey(opts = {}) {
@@ -180,7 +188,7 @@ export const useWallet = create<WalletState>((set, get) => ({
   },
 
   async authorizeEntry() {
-    if (REAL_TRADING && get().kind !== 'passkey') throw new Error('New Duels use a passkey account. Existing accounts can still finish rounds and recover capital.');
+    if (REAL_TRADING && get().kind === 'injected') throw new Error('Live matches use a passkey or guest account. A browser wallet can still finish rounds and recover capital.');
     if (get().kind !== 'passkey') return;
     await get().ensureUnlocked();
     if (mera.consumeEntryApproval()) return;
@@ -216,8 +224,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     }
   },
 
-  async connectGuest(opts = {}) {
-    if (REAL_TRADING && (!opts.legacy || !store.get(LS.guest))) { set({ error: 'No existing guest account found in this browser. New accounts use passkeys.' }); return; }
+  async connectGuest() {
     set({ connecting: true, error: undefined });
     try {
       const account = localAccount(LS.guest);
@@ -226,9 +233,8 @@ export const useWallet = create<WalletState>((set, get) => ({
       set({ address: account.address, kind: 'guest', main: client, trader: client, sessionAddress: undefined, locked: false, claimOpen: false });
       store.set(LS.kind, 'guest');
       await get().refresh();
-      if (!REAL_TRADING) {
-        if (needsFunds()) await get().faucet();
-      }
+      if (REAL_TRADING) await get().checkClaim();
+      else if (needsFunds()) await get().faucet();
     } catch (e) {
       set({ error: friendly(e) });
     } finally {
@@ -236,17 +242,22 @@ export const useWallet = create<WalletState>((set, get) => ({
     }
   },
 
+  exportGuestKey() {
+    return get().kind === 'guest' ? store.get(LS.guest) ?? undefined : undefined;
+  },
+
   disconnect() {
     const address = get().address;
     if (address) saveToken(address, undefined);
     mera.lock();
     store.set(LS.kind, null);
-    set({ address: undefined, kind: undefined, main: undefined, trader: undefined, sessionAddress: undefined, locked: false, usd: 0n, mon: 0n, allowance: 0n, claim: undefined, claimOpen: false, claimError: undefined });
+    set({ address: undefined, kind: undefined, main: undefined, trader: undefined, sessionAddress: undefined, locked: false, usd: 0n, mon: 0n, allowance: 0n, claim: undefined, claimOpen: false, claimError: undefined, balanceReady: false });
   },
 
   async restore() {
     const kind = store.get(LS.kind) as Kind | null;
-    if (kind === 'guest') return get().connectGuest({ legacy: true });
+    // a guest marker without its key must not silently become a new, empty account
+    if (kind === 'guest') return store.get(LS.guest) ? get().connectGuest() : store.set(LS.kind, null);
     if (kind === 'passkey') {
       // no silent passkey prompts: show the (public) owner address, unlock on the next action
       const addr = store.get(LS.passkeyAddr) as `0x${string}` | null;
@@ -271,7 +282,7 @@ export const useWallet = create<WalletState>((set, get) => ({
       publicClient.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'allowance', args: [address, ADDR.arena] }),
       sessionAddress ? publicClient.getBalance({ address: sessionAddress }) : Promise.resolve(0n),
     ]);
-    if (get().address === address) set({ mon, usd, allowance, sessionMon });
+    if (get().address === address) set({ mon, usd, allowance, sessionMon, balanceReady: true });
   },
 
   async checkClaim() {
@@ -290,7 +301,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     const { address } = get();
     if (!address) return;
     if (REAL_TRADING) {
-      if (get().kind !== 'passkey') throw new Error('Welcome AUSD is claimed from a passkey account. Existing accounts can recover their trading capital.');
+      if (get().kind === 'injected') throw new Error('Welcome AUSD goes to passkey and guest accounts. A browser wallet can recover its trading capital.');
       if (get().claimBusy) return;
       set({ claimBusy: true, claimError: undefined, claimOpen: true });
       try {
