@@ -1495,7 +1495,7 @@ button.notch-pill:hover {
     --ink: #0a0a0d;
     --ink-2: #121217;
     --bone: #efe9dc;
-    --paper: #ebe6db;
+    --indigo: #1b0d45; /* Monad's deep purple-blue, darkened to sit under bone type */
     --violet: #7c5cff;
     --red: #ff3d5a;
     --green: #2fd08a;
@@ -1819,7 +1819,6 @@ button.notch-pill:hover {
     }
   }
   .lp-mode {
-    --tint: rgba(124, 92, 255, 0.09);
     display: flex;
     flex-direction: column;
     text-align: left;
@@ -1830,12 +1829,6 @@ button.notch-pill:hover {
     cursor: pointer;
     transition: box-shadow 0.2s;
   }
-  .lp-mode:nth-child(2) {
-    --tint: rgba(111, 143, 208, 0.08);
-  }
-  .lp-mode:nth-child(3) {
-    --tint: rgba(255, 200, 87, 0.06);
-  }
   .lp-mode:hover {
     box-shadow: inset 0 0 0 1px var(--violet);
   }
@@ -1843,7 +1836,7 @@ button.notch-pill:hover {
     position: relative;
     aspect-ratio: 4 / 3;
     overflow: hidden;
-    background: linear-gradient(180deg, var(--tint), transparent 38%), #0e0e12;
+    background: #0e0e12;
   }
   .lp-mode-body {
     padding: 18px 20px 18px;
@@ -1886,51 +1879,50 @@ button.notch-pill:hover {
     transform: translateX(4px);
   }
 
-  /* how a match plays: the light section, cut on both edges */
-  .lp-flow {
+  /* sections: black and Monad indigo alternate down the page; violet stays the accent band and the closing
+     block. Every boundary is a cut rising to the right, parallel to the tilted "Built on" band: a cut section
+     slides 5vw up under the one before it, so its slanted edge opens onto that section's colour. */
+  .lp-cut {
     position: relative;
-    padding: calc(56px + 5vw) 0 calc(56px + 5vw);
-    z-index: 1;
-    background: var(--paper);
-    color: var(--ink);
-    clip-path: polygon(0 5vw, 100% 0, 100% calc(100% - 5vw), 0 100%);
-  }
-  /* sections separate by tone across a slanted cut, never by a rule: hero ink, violet band, raised modes,
-     paper flow, ink Monad, raised FAQ, violet closing. Every cut rises to the right. */
-  .lp-tone {
-    position: relative;
-    background: var(--ink-2);
-    clip-path: polygon(0 5vw, 100% 0, 100% 100%, 0 100%);
+    margin-top: -5vw;
     padding-top: calc(5vw + 64px);
+    padding-bottom: calc(5vw + 72px);
+    background: var(--ink);
+    clip-path: polygon(0 5vw, 100% 0, 100% 100%, 0 100%);
   }
   @media (min-width: 768px) {
-    .lp-tone {
-      padding-top: calc(5vw + 80px);
+    .lp-cut {
+      padding-top: calc(5vw + 88px);
+      padding-bottom: calc(5vw + 96px);
     }
   }
+  .lp-indigo {
+    background: var(--indigo);
+  }
   /* modes: tucked under the tilted band, cut along its slope */
-  #modes.lp-tone {
+  #modes.lp-cut {
     margin-top: -2vw;
     clip-path: polygon(0 2.8vw, 100% 0, 100% 100%, 0 100%);
-    padding-bottom: calc(5vw + 72px);
   }
-  .lp-tone .lp-mode {
+  .lp-indigo .lp-mode {
     background: var(--ink);
   }
-  /* the flow's cut opens onto the raised modes, not onto the page */
-  .lp-tone + .lp-flow {
-    margin-top: -5vw;
+  .lp-indigo .lp-head p,
+  .lp-indigo .lp-numbers p {
+    color: #b7b0d4;
   }
-  .lp-flow .lp-head p {
-    color: #55525c;
+  .lp-indigo .lp-numbers > div {
+    border-color: rgba(255, 255, 255, 0.14);
   }
-  .lp-flow .lp-mono {
-    color: #6d6a73;
+  .lp-indigo .lp-live {
+    color: #958cbb;
   }
+
+  /* how a match plays */
   .lpf-grid {
     display: grid;
     gap: 0;
-    border-top: 2px solid var(--ink);
+    border-top: 2px solid rgba(239, 233, 220, 0.85);
   }
   @media (min-width: 900px) {
     .lpf-grid {
@@ -1942,12 +1934,12 @@ button.notch-pill:hover {
     flex-direction: column;
     gap: 6px;
     padding: 22px 20px 28px;
-    border-bottom: 1px solid rgba(10, 10, 13, 0.12);
+    border-bottom: 1px solid var(--hair);
   }
   @media (min-width: 900px) {
     .lpf-step {
       border-bottom: 0;
-      border-right: 1px solid rgba(10, 10, 13, 0.12);
+      border-right: 1px solid var(--hair);
     }
     .lpf-step:last-child {
       border-right: 0;
@@ -1956,7 +1948,7 @@ button.notch-pill:hover {
   .lpf-step p {
     font-size: 15px;
     line-height: 1.5;
-    color: #45424c;
+    color: #a5a2ae;
   }
   /* phones: each beat is one compact row, the vignette beside its text */
   @media (max-width: 899px) {
@@ -1993,7 +1985,7 @@ button.notch-pill:hover {
     place-items: center;
     height: 150px;
     margin-bottom: 14px;
-    background: var(--ink);
+    background: var(--indigo);
     color: var(--bone);
     overflow: hidden;
     clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
@@ -2729,9 +2721,6 @@ button.notch-pill:hover {
   }
 
   /* closing + footer */
-  #faq.lp-tone {
-    padding-bottom: calc(5vw + 72px);
-  }
   .lp-closing {
     position: relative;
     z-index: 2;

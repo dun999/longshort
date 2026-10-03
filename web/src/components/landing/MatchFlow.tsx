@@ -63,7 +63,7 @@ const STEPS = [
 
 export function MatchFlow() {
   return (
-    <section id="how" className="lp-flow">
+    <section id="how" className="lp-flow lp-cut">
       <div className="lp-wrap">
         <div className="lp-head">
           <h2 className="lp-h2">From queue to payout</h2>

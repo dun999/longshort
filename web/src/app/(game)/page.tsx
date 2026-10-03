@@ -134,7 +134,7 @@ export default function Landing() {
       <Tracks />
 
       {/* ─── modes ─── */}
-      <section id="modes" className="lp-section lp-tone">
+      <section id="modes" className="lp-section lp-cut lp-indigo">
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Pick your fight</h2>
@@ -179,7 +179,7 @@ export default function Landing() {
       <MatchFlow />
 
       {/* ─── numbers ─── */}
-      <section className="lp-section">
+      <section className="lp-section lp-cut lp-indigo">
         <div className="lp-wrap">
           <div className="lp-head">
             <h2 className="lp-h2">Why it runs on Monad</h2>
@@ -259,7 +259,7 @@ export default function Landing() {
 function Faq() {
   const [open, setOpen] = useState<number | null>(null);
   return (
-    <section id="faq" className="lp-section lp-tone">
+    <section id="faq" className="lp-section lp-cut">
       <div className="lp-wrap grid gap-8 lg:grid-cols-[1fr_1.6fr] lg:gap-10">
         <div className="lg:sticky lg:top-28 lg:self-start">
           {/* The heading is what scrolls into view. The words start below its clip edge, so they can't be the
