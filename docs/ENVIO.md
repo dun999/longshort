@@ -6,11 +6,11 @@ The keeper handles live matchmaking, social state, price delivery, and transacti
 
 ## Indexed contracts and events
 
-[config.yaml](../indexer/config.yaml) selects chain **10143**, starts at block **67,316,319**, and configures three contracts:
+[config.yaml](../indexer/config.yaml) selects chain **10143**, starts at block **67,943,161** (the v2 arena's deployment), and configures three contracts:
 
 | Contract | Events used by Longshort |
 | --- | --- |
-| `PerplArena` at `0xbD4F69440C3c5cb84769d74c595E33ca6044a414` | Match creation/join/leave/start, class changes, opens/closes, liquidations, settlement/cancellation, trading-account creation, closing, final balances, and collateral returns |
+| `PerplArena` at `0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A` | Match creation/join/leave/start, leverage changes, opens/closes, liquidations, settlement/cancellation, trading-account creation, closing, final balances, and collateral returns |
 | Perpl at `0x1964C32f0bE608E7D29302AFF5E61268E72080cc` | `OrderRequestV2` and `TakerOrderFilledV2` |
 | AUSD at `0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC` | `Transfer` |
 
@@ -58,7 +58,7 @@ query MatchHistory($id: String!) {
 }
 ```
 
-For duel #2 in the active arena, `$id` is `0xbd4f69440c3c5cb84769d74c595e33ca6044a414-2`.
+For match #2 in the active arena, `$id` is `0x5efae3185739539e28fedca99118c6d4ec9b2c1a-2`.
 
 ## Run the indexer
 

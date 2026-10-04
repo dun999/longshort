@@ -1,6 +1,6 @@
 # How Longshort uses Agora AUSD
 
-Longshort uses Agora's AUSD as the wallet balance, duel entry stake, Perpl trading collateral, and prize asset. The live application runs on **Monad testnet (chain 10143)**. Its real-trading flow executes BTC orders on Perpl using testnet tokens; Practice runs in the browser without moving AUSD.
+Longshort uses Agora's AUSD as the wallet balance, entry stake, Perpl trading collateral, and prize asset. The live application runs on **Monad testnet (chain 10143)**. Its real-trading flow executes BTC orders on Perpl using testnet tokens; Practice runs in the browser without moving AUSD.
 
 ## Deployment
 
@@ -10,22 +10,22 @@ The selected deployment is recorded in [addresses.json](../packages/shared/src/a
 | --- | --- |
 | AUSD token | [`0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC`](https://testnet.monadscan.com/address/0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC) |
 | Token precision | 6 decimals; `1 AUSD = 1,000,000` token units |
-| PerplArena | [`0xbD4F69440C3c5cb84769d74c595E33ca6044a414`](https://testnet.monadscan.com/address/0xbD4F69440C3c5cb84769d74c595E33ca6044a414) |
+| PerplArena | [`0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A`](https://testnet.monadscan.com/address/0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A) |
 | Perpl exchange | [`0x1964C32f0bE608E7D29302AFF5E61268E72080cc`](https://testnet.monadscan.com/address/0x1964C32f0bE608E7D29302AFF5E61268E72080cc) |
-| Supported live round | Two-player BTC Duel, 60 seconds, 5× leverage |
+| Live rounds | Duel 1v1 · 60 s, Squad 2v2 · 120 s, Royale 8 players · 180 s; BTC at 5×, 10× or 15× |
 | Entry choices | 5, 20, or 50 AUSD per player |
 | Trading budget | 100 AUSD per player, separate from the entry |
 
 ## The AUSD flow
 
 1. **Sign in and fund.** A [Mera passkey account](MERA.md) owns the AUSD. The wallet reads `balanceOf` and displays the balance in the header and account menu. The explicit Claim AUSD flow requests a 200 AUSD testnet transfer from Longshort's provisioned funding wallet. This is an ERC-20 transfer, not a mint or an Agora API integration.
-2. **Approve and join.** The owner approves the arena and calls `createMatch` or `joinMatch`. The browser checks that the wallet can cover both the entry and the 100 AUSD trading budget. A 5 AUSD duel therefore requires 105 AUSD per player.
+2. **Approve and join.** The owner approves the arena and calls `createMatch` or `joinMatch`. The browser checks that the wallet can cover both the entry and the 100 AUSD trading budget. A 5 AUSD entry therefore requires 105 AUSD per player.
 3. **Separate prize and collateral.** `PerplArena` holds the entry in prize escrow and creates a dedicated `MatchTradingAccount` clone for the player's trading budget. That account deposits its 100 AUSD into Perpl; its beneficiary is the player's owner address.
 4. **Execute real trades.** The registered match key requests Long, Short, or Close through the arena. Perpl fills change the account's actual collateral balance. Protocol fees, funding, and trading losses affect this budget; entry escrow does not collateralize the position.
-5. **Close and score.** At the bell, the arena enters `CLOSING` and attempts to flatten both accounts. Partial or deferred closes can be retried. A round reaches `SETTLED` only when both accounts are flat and have no locked balance or remaining positions.
-6. **Pay and return capital.** The higher final Perpl balance wins the entry pot after a 2.5% rake. Equal balances refund both entries without a rake. Each player's remaining collateral is separately returned to their owner address, regardless of who won. A recovery path can retry collateral withdrawal after settlement or cancellation.
+5. **Close and score.** At the bell, the arena enters `CLOSING` and attempts to flatten every account. Partial or deferred closes can be retried. A round reaches `SETTLED` only when every account is flat and have no locked balance or remaining positions.
+6. **Pay and return capital.** The bigger final Perpl balance wins the entry pot after a 2.5% rake (a team's summed balance in Squad; Royale pays the top three 60/30/10). Equal balances refund every entry without a rake. Each player's remaining collateral is separately returned to their owner address, regardless of who won. A recovery path can retry collateral withdrawal after settlement or cancellation.
 
-For two 5 AUSD entries, the pot is 10 AUSD, the rake is 0.25 AUSD, and the winner's prize is 9.75 AUSD. That prize is separate from returned trading collateral. Trading losses can reduce the 100 AUSD budget, so the entry alone is not the player's total exposure.
+In a Duel with two 5 AUSD entries, the pot is 10 AUSD, the rake is 0.25 AUSD, and the winner's prize is 9.75 AUSD. That prize is separate from returned trading collateral. Trading losses can reduce the 100 AUSD budget, so the entry alone is not the player's total exposure.
 
 ## Funding reliability and deployment checks
 
@@ -37,7 +37,7 @@ The application uses standard ERC-20 reads, approvals, and transfers. It does no
 
 ## Recorded testnet evidence
 
-The repository's previously recorded duel #2 demonstrates the AUSD path through real Perpl fills:
+A Duel recorded on the first arena (v1, [`0xbD4F…a414`](https://testnet.monadscan.com/address/0xbD4F69440C3c5cb84769d74c595E33ca6044a414)) shows the AUSD path through real Perpl fills. A 15× match on the live v2 arena is in the [README](../README.md#a-recorded-match).
 
 | Action | Transaction |
 | --- | --- |

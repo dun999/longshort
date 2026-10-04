@@ -1,6 +1,6 @@
 # How Longshort uses Mera
 
-Longshort uses [Mera by Category Labs](https://github.com/category-labs/mera) as its account layer for new live Duels. Players create or sign in with a passkey; the application derives separate owner and match-trading keys. A live round accepts repeated trades without another passkey prompt. A separate PRF namespace encrypts the player's private thesis and reflection beside the public match report.
+Longshort uses [Mera by Category Labs](https://github.com/category-labs/mera) as its account layer for live rounds. Players create or sign in with a passkey; the application derives separate owner and match-trading keys. A live round accepts repeated trades without another passkey prompt. A separate PRF namespace encrypts the player's private thesis and reflection beside the public match report.
 
 The integration uses `@category-labs/mera`, its viem adapter, and HKDF-SHA256. It is implemented in [mera.ts](../web/src/lib/mera.ts), with account state in [wallet.ts](../web/src/lib/wallet.ts).
 
@@ -34,17 +34,17 @@ When the join succeeds, Longshort also caches the match-to-label mapping locally
 
 Owner and trade-root derivation remain unchanged from the original integration, preserving existing account addresses. Legacy match labels are uploaded when an unlocked player opens an active round or first uses its validated signer. An old label that was lost before it was uploaded cannot be reconstructed from the session address alone.
 
-The deployed [PerplArena](../contracts/src/PerplArena.sol) accepts the owner or registered session for that player's authorized round actions. Execution remains constrained by the arena and [MatchTradingAccount](../contracts/src/MatchTradingAccount.sol): the current live configuration is BTC Duel with fixed 5× leverage and isolated trading capital. Returned collateral always goes to the account's owner beneficiary.
+The deployed [PerplArena](../contracts/src/PerplArena.sol) accepts the owner or registered session for that player's authorized round actions. Execution remains constrained by the arena and [MatchTradingAccount](../contracts/src/MatchTradingAccount.sol): the current live configuration is BTC at 5×, 10× or 15× across Duel, Squad and Royale, with isolated trading capital. Returned collateral always goes to the account's owner beneficiary.
 
 Mera supplies the signer. Gas sponsorship is a separate Longshort integration: [relay.ts](../web/src/lib/relay.ts) signs the relay payload, [RelayDelegate.sol](../contracts/src/RelayDelegate.sol) validates it, and the keeper relayer pays transaction gas through EIP-7702. In the passkey flow, the owner can approve/join and the match key can trade without maintaining a player MON balance when the configured relay is available.
 
-The live sign-in dialog offers Mera creation and returning-passkey sign-in, including when credential metadata is absent. Existing browser-wallet/guest accounts retain [a separate recovery page](https://longshort.fun/recover) to view balances, finish rounds and recover capital. It preserves their original accounts and never generates a replacement guest secret; these accounts cannot enter new live Duels or claim welcome AUSD. Unauthenticated Practice remains available with simulated positions.
+The live sign-in dialog offers Mera creation and returning-passkey sign-in, including when credential metadata is absent. Devices without passkey support can **Try as a guest**: a wallet kept in that browser, with its key exportable from the account menu, which signs and is sponsored the same way. Existing browser-wallet accounts keep [a separate recovery page](https://longshort.fun/recover) to view balances, finish rounds and recover capital; they cannot enter new live rounds. Unauthenticated Practice remains available with simulated positions.
 
 ## Paid-entry consent and round sessions
 
 A passkey verification permits one paid-entry attempt within two minutes. This lets a newly signed-in player enter immediately without another prompt. A later entry, an expired entry approval, or a locked keyring requires fresh passkey verification. Selecting a different passkey during an unlock stops the action instead of silently spending from another account.
 
-Token approvals are limited to that entry plus its separate trading budget, including replacement of an existing unlimited approval. A live 5 AUSD duel approves 105 AUSD; the entry transaction spends that amount. Claiming test tokens does not consume the paid-entry approval.
+Token approvals are limited to that entry plus its separate trading budget, including replacement of an existing unlimited approval. A 5 AUSD entry approves 105 AUSD; the entry transaction spends that amount. Claiming test tokens does not consume the paid-entry approval.
 
 Round controls use the registered match signing session without repeated ceremonies. Its authority comes from the arena's owner/session binding and round rules, rather than an allowlist implemented by the Mera signing primitive. A session cannot move the owner's stake, redirect returned collateral, or authorize an entry for its owner. The application ends a settled round's signing session after its gas-sweep attempt. The contract rejects trading outside the round's permitted state.
 

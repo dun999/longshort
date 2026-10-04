@@ -1,133 +1,189 @@
 # longshort.fun
 
-**PvP BTC trading battles on Monad.** Players commit AUSD entry stakes and separate trading budgets, execute real BTC positions on Perpl, and compete for the entry pot: 1v1 Duels, 2v2 Squads and 8-player Royales. At settlement the bigger final trading balance wins (a team's summed balance in Squad; Royale pays the top three); every player receives their remaining trading collateral separately.
+**PvP Bitcoin trading battles on Monad.** Pick a fighter and a leverage, then outtrade a rival before the bell. Every Long, Short and Close is a real order on [Perpl](https://perpl.xyz)'s onchain order book. Players sign in with a passkey, hold no MON, never sign up on Perpl and never see a wallet pop-up.
 
-Built for [Monad Metropolis](https://hackathon.monad.xyz/).
+![The longshort.fun landing page: the headline "Outtrade them." over a live BTC chart](docs/media/landing.jpg)
 
-| | |
+- **Live app:** [longshort.fun](https://longshort.fun), a private preview during judging. The access code is in our submission.
+- **Network:** Monad testnet, chain 10143. Test AUSD only; nothing here has monetary value.
+- **Formats:** Duel 1v1 · 60 s, Squad 2v2 · 120 s, Royale 8 players · 180 s, all on BTC-PERP at 5×, 10× or 15×.
+- **Contracts:** PerplArena [`0x5Efae318…`](https://testnet.monadscan.com/address/0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A) · RelayDelegate [`0xcd68DAB8…`](https://testnet.monadscan.com/address/0xcd68DAB8dFFC21C39B671a90D86D7A6E2d693513) · AUSD [`0xa9012a05…`](https://testnet.monadscan.com/address/0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC) · Perpl [`0x1964C32f…`](https://testnet.monadscan.com/address/0x1964C32f0bE608E7D29302AFF5E61268E72080cc)
+- **Built for:** [Monad Metropolis](https://monad.xyz/metropolis)
+
+**Contents:** [The game](#the-game) · [Try it](#try-it-in-three-minutes) · [Real trades on Perpl](#real-perpl-trades-without-a-perpl-account) · [Gasless with EIP-7702](#no-gas-no-pop-ups-eip-7702-sponsorship) · [Who pays which fee](#who-pays-which-fee) · [Passkeys](#passkey-accounts-with-mera) · [Why Monad](#why-monad) · [Settlement and trust](#settlement-and-trust) · [A recorded match](#a-recorded-match) · [Architecture](#architecture) · [Limitations](#limitations) · [Run it](#verify-and-run-locally)
+
+## The game
+
+- **Three formats, one rule.** The bigger trading balance at the bell takes the pot. In a **Duel** that is one rival over 60 seconds. In a **Squad** two teams of two add up their balances over 120 seconds, and the leader's leverage applies to the whole team. In a **Royale** eight players trade for 180 seconds while the lowest balance is cut every 30 seconds; the top three are paid 60/30/10.
+- **Two separate amounts.** Each player puts in an entry (5, 20 or 50 AUSD) that forms the pot, plus a 100 AUSD trading budget that trades on Perpl and comes back after the round, whatever is left of it.
+- **Leverage is the risk choice; the character is the look.** Leverage is 5×, 10× or 15× (15× is Perpl's BTC maximum), labelled low, balanced and high risk. Six low-poly characters (Gladiator, Sniper, Pathfinder, Pirate, Pigeon and Keone) are cosmetic: any character plays at any leverage, in the 3D arena and on the share card.
+- **A report after every round** links each transaction, and an optional private journal keeps your thesis beside it, encrypted with a key derived from your passkey.
+- **Practice** is free and needs no account: live BTC prices, simulated positions in the browser, against a bot.
+
+<p>
+  <img src="docs/media/lobby.jpg" width="49%" alt="The 3D lobby: the character picker and leverage card on the left, two empty seats in front of a stone arena gate, the live BTC board above" />
+  <img src="docs/media/pick-your-fight.jpg" width="49%" alt="The six characters in their idle poses above the Duel, Squad and Royale cards" />
+</p>
+
+## Try it in three minutes
+
+1. Open [longshort.fun](https://longshort.fun) and enter the access code from our submission.
+2. Press **Play testnet** and create a passkey (Face ID, Touch ID or a device PIN) through Mera. If the device has no passkey support, choose **Try as a guest**: a wallet kept in that browser, with its key exportable from the account menu.
+3. Press **Claim 200 AUSD** to receive test AUSD for entries and trading.
+4. Pick **Duel**, a 5 AUSD entry, a character and a leverage. Playing alone? Turn on **Match with bots** in Settings; bot opponents are labelled.
+5. After the 15-second countdown, trade with **Long**, **Short** and **Close** at 25%, 50% or 100% size. No prompt appears: each click is a sponsored onchain transaction, and the **Ping** meter shows its measured confirmation time.
+6. At the bell, open positions are flattened on Perpl, the pot is paid and your remaining trading capital returns to your account. The report links every transaction.
+
+## Real Perpl trades without a Perpl account
+
+A player never visits Perpl, signs up or deposits. The arena opens a Perpl account for each player, for one match, and closes it out afterwards.
+
+1. **Join.** `PerplArena.joinMatch` pulls the entry and the 100 AUSD budget from the player in one transfer, then deploys a `MatchTradingAccount` for that player and match as an [EIP-1167](https://eips.ethereum.org/EIPS/eip-1167) minimal-proxy clone. The clone receives the budget and calls Perpl's `createAccount(100 AUSD)`. The result is a fresh Perpl account owned by the contract, whose only beneficiary is the player.
+2. **Trade.** Long or Short calls `PerplArena.open`, which calls the clone, which calls Perpl's `execOrder`. The order size is the trading balance × leverage × chosen size × 95% (headroom for fees) ÷ the mark price. The order is immediate-or-cancel and limited to the mark ±1%; an opening order is also fill-or-kill. In the same transaction the clone checks that Perpl filled every lot, because Perpl can reject an order inside a successful transaction.
+3. **Close and flip.** A close is reduce-only and immediate-or-cancel, so a retry can never flip the position or leave a resting order. Flipping from long to short closes and reopens in one transaction.
+4. **Liquidation** is Perpl's own; the arena records that the position is gone and the player is out.
+
+The clone has no general `call`, no operator withdrawal and no deposit path. Only the arena can trade it, and collateral can only leave to the player.
+
+## No gas, no pop-ups: EIP-7702 sponsorship
+
+Passkey and guest accounts are ordinary secp256k1 EOAs holding 0 MON. Each one delegates its code to [`RelayDelegate`](contracts/src/RelayDelegate.sol) with [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702), and the keeper's relayer pays the gas.
+
+1. **The browser signs twice, silently.** It signs an EIP-712 `Execute(target, data, nonce, deadline)` whose verifying contract is the account itself. On the account's first sponsored call it also signs an EIP-7702 authorization pointing its code at `RelayDelegate`.
+2. **The relayer submits.** The keeper verifies both signatures, simulates the call and sends a transaction to the player's own address calling `execute(...)`. That is a type `0x04` transaction carrying the authorization when the account is not yet delegated, and an ordinary transaction afterwards. The relayer pays the MON.
+3. **The account runs the delegate.** `RelayDelegate` checks the deadline and the allowlist, requires the signature to recover to the account itself, and increments a nonce stored on the account. Then it calls the arena, so the arena sees the player as `msg.sender`.
+
+The delegate forwards only arena gameplay (`createMatch`, `joinMatch`, `leave`, `open`, `close`, `setClass`, `recover`) and an AUSD `approve` whose spender is the arena. The sponsor cannot move a player's AUSD or MON.
+
+**Monad-specific handling in the relayer** ([relay.ts](keeper/src/relay.ts)):
+
+- **Gas is billed on the gas limit, including for reverts.** The relayer simulates every call, sends it with a 20% buffer and refuses anything above 2,000,000 gas. It rate-limits each account (90 calls per 10 minutes) and each IP (360 per 10 minutes) so a failing loop cannot drain the sponsor.
+- **Reserve balance.** Monad reverts any transaction that would take a delegated EOA below 10 MON. `RelayDelegate` never moves MON, so delegated player accounts work at a balance of 0. The sponsor sends constantly and cannot use Monad's emptying exception, so the relayer keeps 10 MON plus the worst-case cost of in-flight transactions in reserve.
+- **Durable submission.** The signed transaction and its hash are written to SQLite before the first broadcast. A restart rebroadcasts the same bytes instead of spending a second nonce.
+
+### Who pays which fee
+
+| Fee | Paid by | How |
+| --- | --- | --- |
+| Network gas (MON) | the longshort relayer | EIP-7702 relay above. Players hold no MON. |
+| Perpl trading fees | the player's 100 AUSD trading budget | Perpl's own fees on each fill. The arena charges no trading fee (`feeBps = 0`) and reports what each fill cost. |
+| Arena rake | the prize pot | 2.5% of the entries. Ties refund every entry with no rake. |
+
+## Passkey accounts with Mera
+
+[Mera](https://github.com/category-labs/mera) by Category Labs turns a passkey into signing keys without a smart-account contract or a custody service ([details](docs/MERA.md)).
+
+- **One passkey, separate keys.** The passkey's PRF output goes through HKDF to derive an **owner** key and a trade root, and from the trade root one **match key** per match. The keys live only in memory as Mera signing sessions and are cleared on lock, after 30 idle minutes, or when the page closes.
+- **One prompt per entry.** The owner holds AUSD, approves exactly the entry plus the trading budget, joins, and registers that match's key as the player's `session`. During the round the match key signs every trade without another prompt. A session key cannot move the stake or redirect collateral.
+- **Recovery without stored secrets.** The match key's public derivation label is saved before entry and checked against the session registered onchain, so a new browser with the same passkey recovers an open round.
+
+## Why Monad
+
+- **Speed that a 60-second game needs.** Monad produces a block every 300 ms and reaches finality in about 600 ms. A Duel spans roughly 200 blocks, so every Long, Short and Close can be its own transaction and still confirm while the price matters.
+- **EIP-7702 on a fast L1.** Type `0x04` transactions let a plain EOA run a small, allowlisted delegate contract, so passkey accounts trade gaslessly without deploying a smart wallet per player.
+- **A fully onchain perpetuals order book on the same chain.** Perpl matches and settles on Monad, so a Solidity contract can open, verify, close and settle real positions atomically, contract to contract, with no off-chain broker or API keys.
+- **Standard EVM tooling, with Monad's rules respected.** The contracts use Solidity 0.8.28, Foundry and OpenZeppelin (`Clones`, `SafeERC20`, `ReentrancyGuard`), viem runs in the browser and the keeper, and Envio indexes history. The relayer applies Monad's gas-limit billing and reserve-balance rules described above.
+
+## Settlement and trust
+
+- **Settling is permissionless.** At the bell anyone can call `settle`; the keeper does it on time. The arena enters `CLOSING`, flattens every account (one stuck account cannot block the others, and closes are retried), and reaches `SETTLED` only when every account is flat. It ranks players by their final Perpl balances read onchain, pays the pot from escrow and returns each player's remaining collateral to that player.
+- **Royale cuts are permissionless too.** `eliminate` can be called by anyone at each 30-second boundary.
+- **If the keeper disappears**, a stuck round can still be settled, cancelled after its timeout, or recovered by the player, and collateral only ever goes to its owner. The contract owner's `emergencyCancel` works only before trading starts and only refunds.
+- **What the keeper does:** matchmaking, parties, the live price stream, labelled bots and gas sponsorship. It cannot invent fills or results: scoring reads Perpl balances onchain.
+
+## A recorded match
+
+Match #2 on the live arena: a passkey player at 15× against a keeper bot at 10×.
+
+| Step | Transaction |
 | --- | --- |
-| Live application | [longshort.fun](https://longshort.fun) |
-| Network | Monad testnet, chain 10143 |
-| Live modes | Duel 1v1 · 60 s, Squad 2v2 · 120 s, Royale 8 players · 180 s (lowest equity cut every 30 s), all BTC |
-| Leverage | Tank 5×, Scout 10×, Sniper 15× (Perpl's BTC limit is 15×); a Squad team plays at its leader's pick |
-| Entry | 5, 20, or 50 AUSD per player |
-| Trading capital | 100 AUSD per player, separate from the entry |
-| Active arena | [`0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A`](https://testnet.monadscan.com/address/0x5Efae3185739539E28FedcA99118C6D4EC9B2C1A) (v2; the Duel-only v1 was `0xbD4F69440C3c5cb84769d74c595E33ca6044a414`) |
-| AUSD | [`0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC`](https://testnet.monadscan.com/address/0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC) |
+| Entry, sponsored | [`0xf95bd783…`](https://testnet.monadscan.com/tx/0xf95bd783c053083f5c9af7d0ef4f6990aeb96c7575bdd9333eb68096000032d6) |
+| First trade: a brand-new match key delegates through EIP-7702 and opens a 15× BTC long in the same type `0x04` transaction | [`0x25140735…`](https://testnet.monadscan.com/tx/0x25140735bd614af7b2ab0248b106f9fe8fa60e422368c797f4b3c34ee15bb775) |
+| Settlement: positions flattened, pot paid, collateral returned | [`0xdbfe23af…`](https://testnet.monadscan.com/tx/0xdbfe23af0abcea7181103e41bcdeba034bfa101ab680ca2fa0722f606b0f3ea1) |
 
-The deployed website uses testnet contracts and tokens. Production deployment of the website does not switch the application to Monad mainnet.
+The long filled 0.0084 BTC (712.15 AUSD notional) at 84,779.3, with a Perpl fee of 0.245691 AUSD. The passkey player won the 9.75 AUSD prize and received 99.505259 AUSD of trading capital back; the bot received 99.120832 AUSD.
 
-## Integration documentation
+## Architecture
 
-The `docs/` directory explains the integrations:
+```text
+browser: Next.js, viem, Mera passkeys, three.js arena
+  │  EIP-712 + EIP-7702 signatures (owner key, per-match key)
+  ▼
+keeper: matchmaking, live prices, bots, relayer, SQLite
+  │  sponsored transactions, settlement calls
+  ▼
+Monad testnet
+  ├─ RelayDelegate: delegate code for player EOAs (allowlisted arena calls)
+  ├─ PerplArena: entry escrow, rounds, Royale cuts, ranking, payouts
+  ├─ MatchTradingAccount: one clone per player and match, owns a Perpl account
+  ├─ Perpl: BTC-PERP orders, fills, liquidations, collateral
+  └─ AUSD: entries, trading budgets, prizes, returned collateral
+       │  events
+       ▼
+Envio HyperIndex → GraphQL → profiles, ranks, stats, match reports
+```
 
-- [Agora AUSD](docs/AGORAUSD.md): wallet funding, entry escrow, real Perpl collateral, prizes, returned capital, and recorded transaction evidence.
-- [Envio](docs/ENVIO.md): contract events, GraphQL entities, fills, results, rankings, statistics, and keeper fallback.
-- [Mera](docs/MERA.md): the live passkey account layer, stateless recovery, scoped signing sessions, and the separate encrypted journal namespace.
+### Prize math
 
-## Try it
+The pot is every entry added together, minus the 2.5% rake. A 5 AUSD entry needs 105 AUSD in the wallet: 5 for the pot and 100 for trading.
 
-1. Open [longshort.fun](https://longshort.fun) and enter the shared access code. Pages, shared results, APIs and live connections require a valid code session.
-2. Create or sign in with a passkey through Mera. No passkey on the device (for example a judge's test machine)? Use **Try as a guest** under the passkey options: a wallet kept in that browser whose key can be exported from the account menu. Browser-wallet accounts keep a separate recovery page.
-3. Use **Claim AUSD** to request the testnet funding transfer (200 AUSD per eligible wallet), or **Deposit AUSD** from the account menu to send your own testnet AUSD to the account address.
-4. Choose **Duel**, **Squad** or **Royale**, an entry and a class (5×, 10× or 15×). The lobby shows the separate 100 AUSD trading budget and total required balance. If alone, turn on **Match with bots** in **Settings** before joining; bot opponents are labelled.
-5. After the 15-second countdown, trade BTC with **Long**, **Short**, and **Close**. Perpl executes the orders onchain using the player's isolated trading account.
-6. At the bell, positions are flattened, the entry prize is distributed, and remaining collateral returns to each owner. The report shows actual ledger/receipts and an optional private journal. Open the journal with an explicit passkey verification; only ciphertext is saved.
-
-The account menu's **Demo evidence** page records actual navigation-to-confirmation time, control activations, ceremonies, and public receipts. Measurements are not an achieved performance claim until the browser test is run.
-
-**Practice** needs no account or AUSD. It uses live BTC prices with simulated positions in the browser, at the same leverage classes. It waits for usable prices and pauses when the feed becomes unavailable.
-
-## Prize and trading capital
-
-Each live player supplies an entry plus a 100 AUSD Perpl budget. These amounts have separate purposes: entry stakes form the prize pot; the trading budgets collateralize real positions and can decrease through losses, fees, and funding.
-
-A 5 AUSD entry requires 105 AUSD per player. The pot is every entry added together, minus a 2.5% rake:
-
-| Mode | Winner | 5 AUSD entry pays |
+| Mode | Winner | Pays at 5 AUSD entry |
 | --- | --- | --- |
 | Duel | bigger final balance | 9.75 AUSD |
 | Squad | bigger summed team balance, split equally | 9.75 AUSD to each winner |
 | Royale | survivors by final balance, then later cuts rank higher; top three paid 60/30/10 | 23.40 / 11.70 / 3.90 AUSD |
 
-Equal final balances (or team totals) refund every entry without a rake. Returned trading collateral belongs to each player and is independent of the prize. The full disclosure is on the site's Rules & Risks page.
+The full disclosure is on the site's Rules & Risks page.
 
-The arena enters `CLOSING` at settlement and retries incomplete exchange closes. It reaches `SETTLED` after every account is flat. Collateral return and recovery always target the account's owner beneficiary.
+### Built with
 
-The legacy `ArenaCore` implementation remains available for local virtual-margin regression tests. The live AUSD deployment exposes Duel, Squad, Royale and Practice. A live 15× Duel against a keeper bot, with real Perpl fills and a reconciled ledger, is recorded by `keeper/scripts/arena-v2-smoke.ts`.
+| | Used for | Notes |
+| --- | --- | --- |
+| [Perpl](https://perpl.xyz) | Every live trade, fill, liquidation and final balance | Above, and [MatchTradingAccount.sol](contracts/src/MatchTradingAccount.sol) |
+| [Agora AUSD](https://www.agora.finance) | Wallet balance, entries, trading collateral, prizes | [docs/AGORAUSD.md](docs/AGORAUSD.md) |
+| [Mera](https://github.com/category-labs/mera) | Passkey accounts and per-match signing sessions | [docs/MERA.md](docs/MERA.md) |
+| [Envio](https://envio.dev) | Match history, fills, rankings and statistics | [docs/ENVIO.md](docs/ENVIO.md) |
 
-## Architecture
+## Limitations
 
-```text
-browser (Next.js, viem, Mera)
-  │ owner signatures + per-match trading signatures
-  ▼
-keeper (HTTP, WebSocket, SQLite, relay)
-  │ sponsored submissions and settlement retries
-  ▼
-Monad testnet
-  ├─ PerplArena: entry escrow, round authorization, scoring, prizes
-  ├─ MatchTradingAccount: one player's isolated AUSD Perpl account
-  ├─ Perpl: actual BTC orders and collateral accounting
-  └─ AUSD: funding, escrow, payout, and collateral-return transfers
-       │ contract events
-       ▼
-Envio HyperIndex → GraphQL → profiles, ranks, stats, match reports
-```
+- **Testnet only.** It runs on Monad testnet with test AUSD and Perpl's testnet market. Prices and liquidity can differ from mainnet BTC.
+- **Taker orders on a real book.** Orders cross the book within ±1% of the mark. If Perpl's testnet book cannot fill an opening order completely, the order is rejected and the player can try again; the round carries on.
+- **One market, one position.** BTC-PERP only, one position per player at a time, sized at 25%, 50% or 100% of the trading balance times leverage. Leverage tops out at Perpl's BTC limit of 15×.
+- **A central coordinator.** The keeper runs matchmaking, the price stream, bots and gas sponsorship. If it is offline no new rounds start and sponsored trades stop, although settlement and recovery stay permissionless.
+- **Sponsored gas has limits.** Rate limits and a per-call gas cap apply, and relayed actions pause if the sponsor wallet runs low.
+- **Passkeys need PRF support.** Without it, the guest wallet keeps its key in browser storage, which is weaker than a passkey. Passkeys are not verified onchain (Monad's P-256 precompile is not used): Mera derives the keys in the browser, and there is no social recovery if a passkey is lost.
+- **Royale needs eight players.** Empty seats fill with labelled bots only when **Match with bots** is on.
+- **Practice is a simulation** in the browser on live prices, not an onchain round.
+- **Private preview.** During judging every page, shared result and API needs the access code.
 
-| Path | Responsibility |
-| --- | --- |
-| `contracts/` | `PerplArena`, `MatchTradingAccount`, EIP-7702 `RelayDelegate`, and legacy/local contracts and tests |
-| `keeper/` | Authenticated matchmaking, parties/invites, price delivery, bots, durable AUSD claims, relay, settlement, and SQLite event projections |
-| `indexer/` | Envio event handlers and schema for the active arena, Perpl fills, and AUSD collateral returns |
-| `web/` | Next.js UI, persistent 3D scene, responsive trading controls, chart, accounts, results, and English/Indonesian copy |
-| `packages/shared/` | Active deployment addresses, ABIs, chains, relay types, and shared game constants |
-| `_legacy/` | Original prototype |
-
-Mera derives the owner and each match key from passkey PRF output. Passkey-derived keys stay in memory; the owner holds AUSD, while the registered match key signs round actions. Public derivation hints are saved durably before entry and verified against the onchain session during recovery, so browser storage is an optional cache. The keyring locks after inactivity or page unload and stays pinned during a round. Verification permits one entry attempt within two minutes; later entries ask again, and token approval is bounded to entry plus trading budget.
-
-For passkey accounts, the configured EIP-7702 delegate and keeper relayer sponsor gas. The delegate restricts destinations and methods, verifies signed payloads, and advances its nonce. Existing browser-wallet accounts can still recover through their wallet's own gas flow.
-
-The private journal evaluates a separate, versioned PRF salt through Mera, then derives a non-extractable AES-256-GCM key. Each save uses a fresh nonce and authenticates its deployment, owner, match and namespace. Plaintext/keys remain in memory; durable ciphertext uses revision checks to prevent silent concurrent overwrites.
-
-Envio indexes onchain history independently of the keeper's live API. Historical pages prefer GraphQL when configured and can fall back to keeper reads. Contracts determine execution and payouts; neither the keeper database nor the indexer can invent an onchain fill.
-
-## Verify it
+## Verify and run locally
 
 ```bash
-npm -w keeper test
-npm -w web test
+npm -w keeper test        # 51 tests: matchmaking, relay, claims, recovery, access gate
+npm -w web test           # 28 tests: Mera keys, live accounts, journal, Envio reports, access gate
+npm run contracts:test    # 73 Foundry tests; 3 Perpl fork tests also run when PERPL_FORK_RPC is set
 npm -w keeper run typecheck
-npm run contracts:test
 node_modules/.bin/tsc --noEmit -p web/tsconfig.json
-NEXT_DIST_DIR=.next-prod npm -w web run build
 ```
 
-The contract suite includes local regression tests. Keeper tests use fixtures rather than deployed signing keys.
-
-## Run locally
-
-Use Node 22+, npm, and Foundry. For the local virtual-margin profile:
+Local development uses Node 22+, npm and Foundry, with a local chain and the virtual-margin profile:
 
 ```bash
 npm install
 npm run use:local
-npm run dev:chain
-# In a second terminal:
-npm run contracts:build
-npm run deploy:local
+npm run dev:chain          # terminal 1
+npm run contracts:build && npm run deploy:local
 cp keeper/.env.example keeper/.env
-npm run keeper
-# In a third terminal:
-npm run web
+npm run keeper             # terminal 2, http://localhost:8787
+npm run web                # terminal 3, http://localhost:3000
 ```
 
-The web app runs at `http://localhost:3000`; the keeper API runs at `http://localhost:8787`.
+The example environment files set `GATE_DEV_BYPASS=1`, which opens the access gate locally and is ignored in production. The live deployment is recorded in [addresses.json](packages/shared/src/addresses.json). Secrets and signing keys stay in ignored environment files.
 
-The active AUSD/Perpl deployment is recorded in [addresses.json](packages/shared/src/addresses.json) and [addresses.testnet-perpl.json](packages/shared/src/addresses.testnet-perpl.json). Testnet configuration needs the matching RPC, keeper funding/relay settings, and browser API URL. Environment files and signing keys are excluded from Git. Selecting a different profile changes the app's contract bindings; use the matching keeper configuration.
-
-The keeper accepts `RPC_BACKUP_URL` for ordered provider failover across reads, bot/settlement/relay transactions and AUSD funding. `PERPL_RPC_BACKUP_URL` overrides the price client's backup; on Monad testnet it defaults to `RPC_BACKUP_URL`. A primary timeout, HTTP error or rate limit advances to the backup without background ranking probes; contract reverts still surface to the caller. Envio keeps HyperSync primary and accepts `ENVIO_RPC_BACKUP_URL` as a second RPC fallback after `ENVIO_RPC_URL`. Keep provider URLs with credentials in ignored environment files, outside the public web bundle.
-
-Website releases use [scripts/deploy.sh](scripts/deploy.sh). It builds artifacts before activation, refuses to restart the keeper with active rounds, saves a consistent SQLite backup and previous code, and activates/health-checks the keeper before the web. `scripts/deploy.sh web` releases only the web bundle. Contract deployment commands create new onchain deployments; they are separate from a website release.
-
-The access gate is mandatory in production and blocks access when its configuration is missing. Local development must explicitly set `GATE_DEV_BYPASS=1` in both web and keeper environments; the example environment files include it. This opt-out is ignored in production.
+| Path | What it holds |
+| --- | --- |
+| `contracts/` | `PerplArena`, `MatchTradingAccount`, `RelayDelegate`, the legacy `ArenaCore` and Foundry tests |
+| `keeper/` | Matchmaking, parties, price delivery, bots, AUSD claims, relayer, settlement, SQLite |
+| `indexer/` | Envio handlers and schema for the arena, Perpl fills and AUSD transfers |
+| `web/` | Next.js app, the three.js arena, trading HUD, accounts, reports; `web/art/cast` builds the characters in Blender |
+| `packages/shared/` | Deployment addresses, ABIs, relay rules, game constants, the character list |
