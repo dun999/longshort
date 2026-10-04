@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.resolve(process.cwd(), '..'),
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  // the share card reads its fonts from disk at runtime
-  outputFileTracingIncludes: { '/s/[code]/card': ['./src/assets/fonts/*.ttf'] },
+  // the share card reads its fonts and the class figures from disk at runtime
+  outputFileTracingIncludes: { '/s/[code]/card': ['./src/assets/fonts/*.ttf', './src/assets/cast/*.png'] },
 };
 
 export default nextConfig;

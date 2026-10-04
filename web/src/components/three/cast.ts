@@ -26,7 +26,7 @@ function accent(color: string) {
 }
 
 /** A private copy of a class's character + foothold, with its materials set for this player's colour. */
-export function useCast(cls: ClassId, color: string, clipName: CastClip = 'idle', speed = 1) {
+export function useCast(cls: ClassId, color: string, clipName: CastClip = 'idle', speed = 1, at?: number) {
   const gltf = useGLTF(CAST_URL(cls));
   const scene = useMemo(() => {
     const s = cloneSkinned(gltf.scene) as THREE.Group;
@@ -46,12 +46,22 @@ export function useCast(cls: ClassId, color: string, clipName: CastClip = 'idle'
     const clip = gltf.animations.find((a) => a.name === clipName) ?? gltf.animations.find((a) => a.name === 'idle');
     if (!clip) return;
     const next = mixer.clipAction(clip);
+    if (at !== undefined) {
+      // a held frame (stills for 2D cards): full weight at once, no crossfade
+      mixer.stopAllAction();
+      next.reset().play();
+      next.time = at;
+      next.paused = true;
+      mixer.update(0);
+      current.current = next;
+      return;
+    }
     next.reset().setEffectiveTimeScale(speed).fadeIn(0.35).play();
     // start each copy at a different point of its loop so a row of the same class doesn't breathe in unison
     if (!current.current) next.time = Math.random() * clip.duration;
     current.current?.fadeOut(0.35);
     current.current = next;
-  }, [clipName, gltf.animations, mixer, speed]);
+  }, [clipName, gltf.animations, mixer, speed, at]);
   useEffect(() => () => void mixer.stopAllAction(), [mixer]);
   useFrame((_, dt) => mixer.update(Math.min(dt, 0.1)));
   return scene;
