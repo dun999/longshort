@@ -434,11 +434,17 @@ function onMessage(c: Client, msg: any) {
 
 export function startApi() {
   const server = createServer((req, res) => void handle(req, res));
-  const wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ req }, done) => {
+  const wss = new WebSocketServer({ noServer: true, verifyClient: ({ req }, done) => {
     const access = gateAccess(req.headers.cookie);
     const originAllowed = !req.headers.origin || gateConfig().bypass || req.headers.origin === gateOrigin('http://localhost');
     done(access.allowed && originAllowed, access.allowed ? 403 : access.status, 'Access code required');
   } });
+  // Only /ws upgrades. Anything else is refused with 403: Caddy's forward_auth copies a client's Upgrade header onto
+  // its /gate check, so a GraphQL subscription attempt lands here (ws on its own would answer 400).
+  server.on('upgrade', (req, socket, head) => {
+    if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws') return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  });
   wss.on('connection', (ws, request) => {
     const c: Client = { ws, request };
     watchGateSocket(ws, request);
