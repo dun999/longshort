@@ -1,13 +1,15 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { API_URL } from './config';
+import { handleGateResponse } from './gate-client';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string) { super(message); }
 }
 
 export async function api<T = any>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(API_URL + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+  const res = await fetch(API_URL + path, { cache: 'no-store', ...(body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}) });
+  handleGateResponse(res);
   const json = await res.json();
   if (!res.ok || json?.error) throw new ApiError(json?.error || `Request failed (${res.status})`, res.status, json?.code);
   return json;

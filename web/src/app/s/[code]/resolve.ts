@@ -1,19 +1,20 @@
 import { MARGIN, MatchState, Mode, shortAddr } from '@longshort/shared';
 import { awards, compute } from '@/lib/matchStats';
 import { parseCode, type CardData } from '@/lib/shareLink';
-import { GATE_COOKIE, gatePassword, gateToken } from '@/lib/gate';
+import { GATE_COOKIE } from '@/lib/gate';
+import { requireGate } from '@/lib/gate-server';
 
 const KEEPER = process.env.KEEPER_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
 
 /** The card behind a share code: ranked results come from the keeper's record, never from the link. */
 export async function resolveCard(code: string): Promise<CardData | null> {
+  const { token } = await requireGate(`/s/${encodeURIComponent(code)}`);
   const parsed = parseCode(code);
   if (!parsed) return null;
   if (parsed.kind === 'practice') return parsed.card;
   // no-store: a lookup made a moment before the keeper records the settlement must not stick
-  // in private mode the keeper wants the same cookie a signed-in teammate's browser sends
-  const pw = gatePassword();
-  const headers = pw ? { cookie: `${GATE_COOKIE}=${gateToken(pw)}` } : undefined;
+  // Forward the verified visitor session; never mint credentials for a public share request.
+  const headers = token ? { cookie: `${GATE_COOKIE}=${token}` } : undefined;
   const res = await fetch(`${KEEPER}/match/${parsed.id}`, { cache: 'no-store', headers }).catch(() => null);
   const data = res?.ok ? await res.json().catch(() => null) : null;
   if (!data?.match || data.match.state !== MatchState.SETTLED) return null;

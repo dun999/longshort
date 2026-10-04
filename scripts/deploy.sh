@@ -14,6 +14,10 @@ what=${1:-all}
 release="$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$ROOT" rev-parse --short HEAD)"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+proxy_sha=$(sha256sum "$ROOT/deploy/longshort.caddy" | cut -d ' ' -f 1)
+
+echo '▸ checking access-gate configuration before building'
+"${SSH[@]}" "$HOST" "NODE_OPTIONS=--no-warnings node --input-type=module - preflight '$release' '$what' '$proxy_sha'" < "$ROOT/scripts/release-server.mjs"
 
 if [[ $what == all || $what == web ]]; then
   echo '▸ building web'
@@ -47,6 +51,7 @@ NODE
 echo '▸ checking idle rounds and backing up keeper database'
 "${SSH[@]}" "$HOST" "NODE_OPTIONS=--no-warnings node --input-type=module - prepare '$release' '$what'" < "$ROOT/scripts/release-server.mjs"
 rsync -az -e "$SSH_RSYNC" "$tmp/manifest.json" "$HOST:/opt/longshort/releases/$release/manifest.json"
+rsync -az -e "$SSH_RSYNC" "$ROOT/scripts/check-gate.mjs" "$HOST:/opt/longshort/releases/$release/check-gate.mjs"
 if [[ $what == all || $what == keeper ]]; then
   rsync -az -e "$SSH_RSYNC" "$tmp/keeper.mjs" "$HOST:/opt/longshort/releases/$release/keeper.mjs"
   "${SSH[@]}" "$HOST" "NODE_OPTIONS=--no-warnings node --input-type=module - keeper '$release' '$what'" < "$ROOT/scripts/release-server.mjs"
@@ -56,4 +61,4 @@ if [[ $what == all || $what == web ]]; then
   "${SSH[@]}" "$HOST" "NODE_OPTIONS=--no-warnings node --input-type=module - web '$release' '$what'" < "$ROOT/scripts/release-server.mjs"
 fi
 echo "▸ release $release deployed"
-curl -fsS https://longshort.fun/api/health
+# Detailed health is loopback-only; public access is exercised by check-gate.mjs during activation.

@@ -6,10 +6,11 @@ import { MODES, STAKE, fmtUsd, CHARACTER_INFO, characterOf, type CharacterId } f
 import { sigil } from '@/lib/sigil';
 import { OUTCOME_WORD, signedPct, type CardData } from '@/lib/shareLink';
 import { resolveCard } from '../resolve';
+import { GATE_CACHE, gateAccess } from '@/lib/gate';
 
 /**
- * The result card as a PNG, rendered on the server so a shared link unfurls with it on X, Telegram,
- * WhatsApp etc. without the player downloading anything. `?f=story` is the 9:16 version the share
+ * The result card as a PNG, rendered on the server for authenticated viewing and export.
+ * `?f=story` is the 9:16 version the share
  * sheet hands to Instagram through the native share sheet.
  */
 export const runtime = 'nodejs';
@@ -177,6 +178,8 @@ function Story({ c, fig }: { c: CardData; fig: Figure }) {
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
+  const access = gateAccess(req.headers.get('cookie'));
+  if (!access.allowed) return Response.json({ error: 'Access code required', code: access.code }, { status: access.status, headers: { 'cache-control': GATE_CACHE, 'x-longshort-gate': access.code } });
   const { code } = await params;
   const c = await resolveCard(code);
   if (!c) return new Response('Not found', { status: 404 });
@@ -185,7 +188,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
   return new ImageResponse(story ? <Story c={c} fig={fig} /> : <Landscape c={c} fig={fig} />, {
     ...(story ? { width: 1080, height: 1920 } : { width: 1200, height: 630 }),
     fonts: await loadFonts(),
-    // a settled result never changes; practice links carry their whole card
-    headers: { 'cache-control': 'public, max-age=86400, s-maxage=31536000, immutable' },
+    // Cards are private even when their result is immutable.
+    headers: { 'cache-control': GATE_CACHE },
   });
 }

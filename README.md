@@ -27,7 +27,7 @@ The `docs/` directory explains the integrations:
 
 ## Try it
 
-1. Open [longshort.fun](https://longshort.fun); the live demo is public.
+1. Open [longshort.fun](https://longshort.fun) and enter the shared access code. Pages, shared results, APIs and live connections require a valid code session.
 2. Create or sign in with a passkey through Mera. No passkey on the device (for example a judge's test machine)? Use **Try as a guest** under the passkey options: a wallet kept in that browser whose key can be exported from the account menu. Browser-wallet accounts keep a separate recovery page.
 3. Use **Claim AUSD** to request the testnet funding transfer (200 AUSD per eligible wallet), or **Deposit AUSD** from the account menu to send your own testnet AUSD to the account address.
 4. Choose **Duel**, **Squad** or **Royale**, an entry and a class (5×, 10× or 15×). The lobby shows the separate 100 AUSD trading budget and total required balance. If alone, turn on **Match with bots** in **Settings** before joining; bot opponents are labelled.
@@ -129,3 +129,5 @@ The active AUSD/Perpl deployment is recorded in [addresses.json](packages/shared
 The keeper accepts `RPC_BACKUP_URL` for ordered provider failover across reads, bot/settlement/relay transactions and AUSD funding. `PERPL_RPC_BACKUP_URL` overrides the price client's backup; on Monad testnet it defaults to `RPC_BACKUP_URL`. A primary timeout, HTTP error or rate limit advances to the backup without background ranking probes; contract reverts still surface to the caller. Envio keeps HyperSync primary and accepts `ENVIO_RPC_BACKUP_URL` as a second RPC fallback after `ENVIO_RPC_URL`. Keep provider URLs with credentials in ignored environment files, outside the public web bundle.
 
 Website releases use [scripts/deploy.sh](scripts/deploy.sh). It builds artifacts before activation, refuses to restart the keeper with active rounds, saves a consistent SQLite backup and previous code, and activates/health-checks the keeper before the web. `scripts/deploy.sh web` releases only the web bundle. Contract deployment commands create new onchain deployments; they are separate from a website release.
+
+The access gate is mandatory in production and blocks access when its configuration is missing. See [Access gate setup and checks](docs/ACCESS-GATE.md) for the shared server secrets, Caddy configuration and first deployment. Local development must explicitly set `GATE_DEV_BYPASS=1` in both web and keeper environments; the example environment files include it. This opt-out is ignored in production.

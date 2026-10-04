@@ -7,7 +7,8 @@ import { OUTCOME_WORD, shareText, signedPct } from '@/lib/shareLink';
 import { privateMode } from '@/lib/gate';
 import { resolveCard } from './resolve';
 
-/** The public page behind a shared result: its tags make X, Telegram, WhatsApp… unfurl the card. */
+/** Shared results require the same access session as the game. */
+export const dynamic = 'force-dynamic';
 
 type Props = { params: Promise<{ code: string }> };
 

@@ -1,0 +1,47 @@
+# Import this file from /etc/caddy/Caddyfile, replacing the existing longshort.fun site blocks.
+# The web and keeper systemd units must both load /etc/longshort/web.env.
+longshort.fun {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Robots-Tag "noindex, nofollow"
+    }
+    # Never trust a client-supplied IP or Next.js internal routing header.
+    request_header X-Gate-Client-IP {remote_host}
+    request_header -X-Middleware-Subrequest
+
+    @public path /gate /gate/enter /_next/static/* /favicon.ico /icon-192.png /icon-512.png /manifest.webmanifest
+    handle @public {
+        reverse_proxy 127.0.0.1:3100
+    }
+    handle_path /api/* {
+        header >Cache-Control "private, no-store, max-age=0"
+        reverse_proxy 127.0.0.1:8787
+    }
+    handle /v1/graphql {
+        # The app uses HTTP GraphQL and the keeper WebSocket for live updates.
+        # Hasura subscriptions cannot revalidate our cookie after a successful upgrade.
+        @subscription header Upgrade *
+        respond @subscription "GraphQL subscriptions are disabled" 403
+        header >Cache-Control "private, no-store, max-age=0"
+        forward_auth 127.0.0.1:8787 {
+            uri /gate
+        }
+        request_header -X-Hasura-Admin-Secret
+        request_header -X-Hasura-Access-Key
+        request_header -X-Hasura-Role
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle {
+        header >Cache-Control "private, no-store, max-age=0"
+        forward_auth 127.0.0.1:8787 {
+            uri /gate/page
+        }
+        reverse_proxy 127.0.0.1:3100
+    }
+}
+
+www.longshort.fun {
+    redir https://longshort.fun{uri} permanent
+}

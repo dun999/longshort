@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const [phase, release, what] = process.argv.slice(2);
+const [phase, release, what, proxySha] = process.argv.slice(2);
 if (!/^\d{8}T\d{6}Z-[0-9a-f]{7,40}$/.test(release ?? '') || !['all', 'web', 'keeper'].includes(what)) throw new Error('Invalid release');
 const root = '/opt/longshort';
 const dir = `${root}/releases/${release}`;
@@ -14,6 +14,60 @@ const config = Object.fromEntries(readFileSync(`${root}/keeper/.env.testnet`, 'u
   return match ? [[match[1], match[2].replace(/^"(.*)"$/, '$1')]] : [];
 }));
 const dbPath = resolve(`${root}/keeper`, config.DB_PATH || 'longshort.db');
+function privilegedRead(path) {
+  const result = spawnSync('sudo', ['cat', path], { encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`Cannot read ${path}`);
+  return result.stdout;
+}
+function gateSettings() {
+  const settings = Object.fromEntries(privilegedRead('/etc/longshort/web.env').split('\n').flatMap((line) => {
+    const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    return match ? [[match[1], match[2].replace(/^"(.*)"$/, '$1')]] : [];
+  }));
+  if (!settings.GATE_PASSWORD?.trim() || settings.GATE_PASSWORD.length > 256 || (settings.GATE_SESSION_SECRET?.length ?? 0) < 32
+    || settings.NODE_ENV !== 'production' || settings.GATE_DEV_BYPASS === '1') {
+    throw new Error('Production gate configuration is incomplete. Run scripts/private-mode.sh configure; no release was activated.');
+  }
+  return settings;
+}
+function gatePreflight() {
+  gateSettings();
+  const caddy = privilegedRead('/etc/caddy/Caddyfile');
+  if (!/^\s*import\s+\/etc\/caddy\/longshort\.caddy\s*$/m.test(caddy)
+    || createHash('sha256').update(privilegedRead('/etc/caddy/longshort.caddy')).digest('hex') !== proxySha) {
+    throw new Error('Install and import deploy/longshort.caddy before deploying. See docs/ACCESS-GATE.md.');
+  }
+  const valid = spawnSync('sudo', ['caddy', 'validate', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile'], { encoding: 'utf8' });
+  if (valid.status !== 0) throw new Error('Caddy configuration validation failed; no release was activated.');
+  for (const service of ['longshort-web', 'longshort-keeper']) {
+    const unit = spawnSync('systemctl', ['cat', service], { encoding: 'utf8' });
+    if (unit.status !== 0 || !/^\s*EnvironmentFile=-?\/etc\/longshort\/web\.env\s*$/m.test(unit.stdout)) {
+      throw new Error(`${service} must load /etc/longshort/web.env. See docs/ACCESS-GATE.md.`);
+    }
+  }
+  const sockets = spawnSync('ss', ['-H', '-ltn'], { encoding: 'utf8' });
+  if (sockets.status !== 0) throw new Error('Cannot inspect backend listeners.');
+  for (const line of sockets.stdout.trim().split('\n')) {
+    const address = line.trim().split(/\s+/)[3] ?? '';
+    if (/:8080$/.test(address) && !['127.0.0.1:8080', '[::1]:8080'].includes(address)) {
+      throw new Error('Envio GraphQL port 8080 must bind only to loopback before deployment.');
+    }
+  }
+}
+async function verifyGate() {
+  const sockets = spawnSync('ss', ['-H', '-ltn'], { encoding: 'utf8' });
+  if (sockets.status !== 0) throw new Error('Cannot inspect backend listeners.');
+  for (const line of sockets.stdout.trim().split('\n')) {
+    const address = line.trim().split(/\s+/)[3] ?? '';
+    if (/:(3100|8787|8080)$/.test(address) && !/^(127\.0\.0\.1|\[::1\]):/.test(address)) {
+      throw new Error('Web, keeper and GraphQL must listen only on loopback.');
+    }
+  }
+  const { checkGate } = await import(`${dir}/check-gate.mjs`);
+  const reload = spawnSync('sudo', ['systemctl', 'reload', 'caddy'], { encoding: 'utf8' });
+  if (reload.status !== 0) throw new Error('Caddy reload failed.');
+  await checkGate('https://longshort.fun', gateSettings().GATE_PASSWORD);
+}
 function quiet() {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
@@ -31,13 +85,19 @@ async function health() {
     try {
       const result = await fetch(`http://127.0.0.1:${config.PORT || 8787}/health`, { signal: AbortSignal.timeout(2000) });
       const body = await result.json();
-      if (body.ok && body.chainId === manifest.chainId && body.arena?.toLowerCase() === manifest.arena.toLowerCase() && body.recoveryMetadata === 1 && body.privateJournal === 1) return;
+      if (body.ok && body.chainId === manifest.chainId && body.arena?.toLowerCase() === manifest.arena.toLowerCase() && body.recoveryMetadata === 1 && body.privateJournal === 1
+        && body.gate?.version === 2 && body.gate.required && body.gate.configured) return;
     } catch { /* Startup may still be validating chain bindings. */ }
     await new Promise((done) => setTimeout(done, 1000));
   }
   throw new Error('Keeper health did not confirm the new API and deployment.');
 }
-if (phase === 'prepare') {
+if (phase === 'preflight') {
+  gatePreflight();
+  quiet();
+  console.log('Gate configuration and proxy checks passed.');
+} else if (phase === 'prepare') {
+  gateSettings();
   quiet();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(dbPath);
@@ -52,7 +112,7 @@ if (phase === 'prepare') {
   if (createHash('sha256').update(readFileSync(`${dir}/keeper.mjs`)).digest('hex') !== manifest.keeperSha256) throw new Error('Keeper artifact checksum differs.');
   copyFileSync(`${dir}/keeper.mjs`, `${root}/keeper/dist/keeper.mjs.next`);
   renameSync(`${root}/keeper/dist/keeper.mjs.next`, `${root}/keeper/dist/keeper.mjs`);
-  try { restart('longshort-keeper'); await health(); console.log('Keeper activated and healthy.'); }
+  try { restart('longshort-keeper'); await health(); if (what === 'keeper') await verifyGate(); console.log('Keeper activated and healthy.'); }
   catch (error) { copyFileSync(`${dir}/keeper.previous.mjs`, `${root}/keeper/dist/keeper.mjs`); restart('longshort-keeper'); throw error; }
 } else if (phase === 'web') {
   quiet();
@@ -75,6 +135,7 @@ if (phase === 'prepare') {
       await new Promise((done) => setTimeout(done, 1000));
     }
     if (!serving) throw new Error('Web did not answer through the public proxy.');
+    await verifyGate();
     console.log('Web activated. Previous web is retained for rollback.');
   } catch (error) { unlinkSync(`${root}/web`); renameSync(previous, `${root}/web`); restart('longshort-web'); throw error; }
 } else throw new Error('Invalid release phase');

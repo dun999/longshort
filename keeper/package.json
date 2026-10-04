@@ -7,7 +7,7 @@
     "start": "NODE_OPTIONS=--no-warnings tsx src/main.ts",
     "dev": "NODE_OPTIONS=--no-warnings tsx watch src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "NODE_ENV=test TEST_CHAIN_PROFILE=local NODE_OPTIONS=--no-warnings node --import tsx --test test/*.test.ts"
+    "test": "NODE_ENV=test GATE_DEV_BYPASS=1 TEST_CHAIN_PROFILE=local NODE_OPTIONS=--no-warnings node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@longshort/shared": "*",

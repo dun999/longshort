@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "test": "NODE_ENV=test TEST_CHAIN_PROFILE=local NODE_OPTIONS=--no-warnings node --import tsx --test test/*.test.ts",
+    "test": "NODE_ENV=test GATE_DEV_BYPASS=1 TEST_CHAIN_PROFILE=local NODE_OPTIONS=--no-warnings node --import tsx --test test/*.test.ts",
     "lint": "eslint"
   },
   "dependencies": {

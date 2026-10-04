@@ -1,40 +1,28 @@
 #!/usr/bin/env bash
-# Private preview switch for longshort.fun. One variable, GATE_PASSWORD in /etc/longshort/web.env,
-# gates the pages (web middleware), the keeper API + WebSocket and the Envio GraphQL (Caddy
-# forward_auth → keeper /gate). The keeper reads the same file through a systemd drop-in.
-# Nothing in the code changes either way.
-#   scripts/private-mode.sh status   is the site private?
-#   scripts/private-mode.sh off      go public: remove the access code, restart web + keeper
-#   scripts/private-mode.sh on       set a new access code (prompted, never echoed), restart
-# Restarting the keeper interrupts a running match: switch between matches.
+# Stage shared access-gate settings. A subsequent guarded deployment activates them.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 [[ -f $ROOT/.env.deploy ]] && source "$ROOT/.env.deploy"
-HOST=${DEPLOY_HOST:?set DEPLOY_HOST=user@host (or put it in .env.deploy)}
-KEY=${DEPLOY_KEY:?set DEPLOY_KEY=/path/to/ssh/key (or put it in .env.deploy)}
-SSH="ssh -o BatchMode=yes -o IdentitiesOnly=yes -i $KEY $HOST"
-RESTART='sudo systemctl restart longshort-web longshort-keeper && sleep 3 && systemctl is-active longshort-web longshort-keeper'
+HOST=${DEPLOY_HOST:?set DEPLOY_HOST=user@host}
+KEY=${DEPLOY_KEY:?set DEPLOY_KEY=/path/to/ssh/key}
+SSH=(ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$KEY" "$HOST")
 
 case ${1:-status} in
   status)
-    $SSH 'sudo grep -q "^GATE_PASSWORD=." /etc/longshort/web.env && echo "private: access code required" || echo "public: no access code"'
+    "${SSH[@]}" 'sudo sh -c '\''if grep -q "^GATE_PASSWORD=." /etc/longshort/web.env && grep -Eq "^GATE_SESSION_SECRET=.{32,}$" /etc/longshort/web.env; then echo "Gate secrets configured (activation is verified during deployment)."; else echo "Gate configuration incomplete; deployment will be refused."; fi'\'''
+    ;;
+  configure|on)
+    read -rsp "New access code (8–256 letters, digits, dots, underscores or hyphens): " pw
+    echo
+    [[ ${#pw} -ge 8 && ${#pw} -le 256 && $pw =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'Invalid access code format.' >&2; exit 1; }
+    # Password travels only on stdin. A new signing secret also revokes existing sessions.
+    printf 'GATE_PASSWORD=%s\n' "$pw" | "${SSH[@]}" 'sudo sh -c '\''set -eu; t=$(mktemp); trap "rm -f $t" EXIT; chmod 600 "$t"; sed -E "/^(GATE_PASSWORD|GATE_SESSION_SECRET|GATE_DEV_BYPASS|GATE_TRUST_PROXY|GATE_ORIGIN|NODE_ENV|HOST|HOSTNAME)=/d" /etc/longshort/web.env > "$t"; printf "\n" >> "$t"; cat >> "$t"; secret=$(openssl rand -hex 32); printf "GATE_SESSION_SECRET=%s\n" "$secret" >> "$t"; printf "%s\n" "GATE_DEV_BYPASS=0" "GATE_TRUST_PROXY=1" "GATE_ORIGIN=https://longshort.fun" "NODE_ENV=production" "HOST=127.0.0.1" "HOSTNAME=127.0.0.1" >> "$t"; install -m 600 -o root -g root "$t" /etc/longshort/web.env'\'''
+    unset pw
+    echo 'Gate settings staged. Install deploy/longshort.caddy as documented, then run scripts/deploy.sh all between matches.'
     ;;
   off)
-    read -rp "Make longshort.fun public for everyone? [y/N] " yes
-    [[ $yes == y || $yes == Y ]] || exit 1
-    $SSH "sudo sed -i '/^GATE_PASSWORD=/d' /etc/longshort/web.env && $RESTART"
-    echo "▸ public"
-    ;;
-  on)
-    read -rsp "New access code: " pw
-    echo
-    [[ -n $pw && $pw != *$'\n'* ]] || { echo "empty code" >&2; exit 1; }
-    # the code travels on stdin, never on a command line
-    printf 'GATE_PASSWORD=%s\n' "$pw" | $SSH "sudo sh -c 't=\$(mktemp); grep -v ^GATE_PASSWORD= /etc/longshort/web.env > \$t; cat >> \$t; install -m 600 -o root -g root \$t /etc/longshort/web.env; rm -f \$t' && $RESTART"
-    echo "▸ private: teammates sign in again with the new code"
-    ;;
-  *)
-    echo "usage: $0 status|on|off" >&2
+    echo 'Production access cannot be disabled. GATE_DEV_BYPASS=1 is available only in local development.' >&2
     exit 1
     ;;
+  *) echo "usage: $0 status|configure" >&2; exit 1 ;;
 esac

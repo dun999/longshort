@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { MARKETS, type MarketSymbol } from '@longshort/shared';
 import { WS_URL } from './config';
 import { api } from './api';
+import { checkGate, returnToGate } from './gate-client';
 
 export interface Tick { t: number; px: number }
 export interface ChainEvent { name: string; matchId: number; tx: string; block: number; ts: number; args: Record<string, any> }
@@ -102,8 +103,10 @@ function connect() {
     useSocket.setState({ connected: true });
     if (me) useSocket.getState().hello(me);
   };
-  ws.onclose = () => {
+  ws.onclose = async (event) => {
     useSocket.setState({ connected: false, verified: false });
+    if (event.code === 4001) return returnToGate();
+    if (!(await checkGate())) return;
     setTimeout(connect, 1500);
   };
   ws.onmessage = (ev) => {

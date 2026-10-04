@@ -6,7 +6,7 @@ import { ADDR, REAL_TRADING, erc20Abi, relayLive } from '@longshort/shared';
 import { MARKETS, isCharacter } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
-import { gateAllows } from './gate';
+import { GATE_CACHE, gateAccess, gateAllows, gateConfig, gateOrigin, safeNext, watchGateSocket } from './gate';
 import { GAS, keeper, log, pub } from './chain';
 import { history, onTick } from './prices';
 import { onChainEvent } from './indexer';
@@ -35,10 +35,12 @@ function playersOf(matchId: number) {
   });
 }
 
-route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING, accountLayer:'mera', recoveryMetadata:1, privateJournal:1 }));
+route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING, accountLayer:'mera', recoveryMetadata:1, privateJournal:1,
+  gate: { version: 2, required: !gateConfig().bypass, configured: gateConfig().ready } }));
 route('GET', '/faucet/:addr', (_r, [addr]) => ausdClaims().status(addr));
 // Caddy's forward_auth asks this before serving the Envio GraphQL; handle() has already checked the gate
-route('GET', '/gate', () => ({ ok: true }));
+route('GET', '/gate', (req) => ({ ok: true, expiresAt: gateAccess(req.headers.cookie).expiresAt }));
+route('GET', '/gate/page', () => ({ ok: true }));
 
 route('POST', '/lobby-options', async (_r, _p, body) => {
   const result = await configureLobby(body);
@@ -234,13 +236,25 @@ async function readBody(req: IncomingMessage) {
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
+  res.setHeader('cache-control', GATE_CACHE);
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-headers', 'content-type');
   if (req.method === 'OPTIONS') return void res.end();
   const path = new URL(req.url!, 'http://x').pathname;
-  if (path !== '/health' && !gateAllows(req)) {
-    res.statusCode = 401;
-    return void res.end('{"error":"private preview"}');
+  // Deployment probes may read health directly on loopback; a request through Caddy must authenticate.
+  const localHealth = path === '/health' && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '') && !req.headers['x-forwarded-for'];
+  const access = gateAccess(req.headers.cookie);
+  if (!localHealth && !access.allowed) {
+    res.setHeader('x-longshort-gate', access.code);
+    if (path === '/gate/page' && ['GET', 'HEAD'].includes(req.headers['x-forwarded-method'] as string ?? 'GET')) {
+      const next = safeNext(req.headers['x-forwarded-uri'] as string);
+      res.statusCode = 307;
+      res.setHeader('location', `/gate?next=${encodeURIComponent(next)}`);
+      return void res.end();
+    }
+    res.statusCode = access.status;
+    res.setHeader('content-type', 'application/json');
+    return void res.end(JSON.stringify({ error: 'Access code required', code: access.code }));
   }
   for (const [method, re, h] of routes) {
     const m = path.match(re);
@@ -260,16 +274,22 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 }
 
 // ─── WebSocket: presence, parties, live events ─────────────────────────────
-interface Client { ws: WebSocket; addr?: string; name?: string; partyId?: string }
+interface Client { ws: WebSocket; request: IncomingMessage; addr?: string; name?: string; partyId?: string }
 interface Member { addr: string; name?: string; ready: boolean; leverage: number; character?: string }
 interface Party { id: string; leader: string; members: Member[]; mode: number; entry: number; chat: { from: string; text: string; at: number }[] }
 
 const clients = new Set<Client>();
 const parties = new Map<string, Party>();
-const send = (c: Client, msg: object) => c.ws.readyState === 1 && c.ws.send(JSON.stringify(msg));
+const send = (c: Client, msg: object) => {
+  if (!gateAllows(c.request)) return c.ws.close(4001, 'Access code required');
+  if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg));
+};
 const broadcast = (msg: object) => {
   const s = JSON.stringify(msg);
-  for (const c of clients) if (c.ws.readyState === 1) c.ws.send(s);
+  for (const c of clients) {
+    if (!gateAllows(c.request)) c.ws.close(4001, 'Access code required');
+    else if (c.ws.readyState === 1) c.ws.send(s);
+  }
 };
 const clientsOf = (addr: string) => [...clients].filter((c) => c.addr === addr);
 const online = () => [...new Set([...clients].flatMap((c) => (c.addr ? [c.addr] : [])))];
@@ -414,12 +434,18 @@ function onMessage(c: Client, msg: any) {
 
 export function startApi() {
   const server = createServer((req, res) => void handle(req, res));
-  const wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ req }: { req: IncomingMessage }) => gateAllows(req) });
-  wss.on('connection', (ws) => {
-    const c: Client = { ws };
+  const wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ req }, done) => {
+    const access = gateAccess(req.headers.cookie);
+    const originAllowed = !req.headers.origin || gateConfig().bypass || req.headers.origin === gateOrigin('http://localhost');
+    done(access.allowed && originAllowed, access.allowed ? 403 : access.status, 'Access code required');
+  } });
+  wss.on('connection', (ws, request) => {
+    const c: Client = { ws, request };
+    watchGateSocket(ws, request);
     clients.add(c);
     send(c, { t: 'presence', online: online() });
     ws.on('message', (raw) => {
+      if (!gateAllows(request)) return ws.close(4001, 'Access code required');
       try {
         onMessage(c, JSON.parse(String(raw)));
       } catch {}
@@ -435,6 +461,8 @@ export function startApi() {
     if (e.name === 'PlayerJoined') for (const f of followersOf(e.matchId, String(e.args.player).toLowerCase())) follow(f.addr, e.matchId, f.team);
   });
   onTick((market, tick) => broadcast({ t: 'tick', market, tick }));
-  server.listen(env.port, env.host ?? '::', () => log('api', `http://${env.host ?? 'localhost'}:${env.port}  ws://${env.host ?? 'localhost'}:${env.port}/ws`));
+  const host = env.host ?? '127.0.0.1';
+  if (process.env.NODE_ENV === 'production' && !['127.0.0.1', '::1'].includes(host)) throw new Error('Production keeper must listen on loopback behind Caddy');
+  server.listen(env.port, host, () => log('api', `http://${host}:${env.port}  ws://${host}:${env.port}/ws`));
   return server;
 }

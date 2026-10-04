@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ADDR } from '@longshort/shared';
 import { api } from './api';
+import { handleGateResponse } from './gate-client';
 
 export const ENVIO_URL = process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? '';
 export const envioEnabled = () => !!ENVIO_URL;
@@ -19,7 +20,8 @@ const n18 = (v: unknown) => (v === null || v === undefined ? null : Number(v) / 
 const nStake = (v: unknown) => Number(v ?? 0) / STAKE_DP;
 
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(ENVIO_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+  const res = await fetch(ENVIO_URL, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+  if (handleGateResponse(res)) throw new Error('Access code required');
   const json = await res.json();
   if (json.errors) throw new Error(json.errors[0]?.message ?? 'Envio query failed');
   return json.data as T;

@@ -8,8 +8,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const saira = Saira({ subsets: ['latin'], axes: ['wdth'], style: ['normal', 'italic'], variable: '--font-saira' });
 const jet = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jet' });
 
-// Neutral on purpose: the gate and shared-result pages sit on this layout alone and are reachable
-// without the access code. The game's own layout, (game)/layout.tsx, says what longshort is.
+// The public gate uses this neutral layout. Game and shared-result routes enforce their sessions.
 export const metadata: Metadata = { title: 'longshort.fun', manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'longshort',statusBarStyle:'black-translucent'},icons:{icon:'/icon-192.png',apple:'/icon-192.png'} };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 

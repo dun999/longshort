@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { Logo } from '@/components/Logo';
-import { safeNext } from '@/lib/gate';
+import { gateConfig, safeNext } from '@/lib/gate';
+import { GateForm } from './GateForm';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'longshort.fun · private preview', robots: { index: false, follow: false } };
 
@@ -21,19 +24,7 @@ export default async function Gate({ searchParams }: { searchParams: Promise<{ n
           <span>trade</span>
           <span className="outline">them.</span>
         </h1>
-        <form className="gate-form" method="post" action="/gate/enter">
-          <input type="hidden" name="next" value={safeNext(next)} />
-          <label htmlFor="gate-pw" className="gate-label">
-            Access code
-          </label>
-          <div className="gate-row">
-            <input id="gate-pw" name="password" type="password" autoComplete="current-password" autoFocus required className={`gate-input ${e ? 'bad' : ''}`} placeholder="Enter the code you were given" />
-            <button type="submit" className="btn-play gate-btn">
-              Enter
-            </button>
-          </div>
-          {e && <p className="gate-msg bad">That code is not right. Try again.</p>}
-        </form>
+        <GateForm next={safeNext(next)} error={!!e} available={gateConfig().ready} />
       </div>
 
     </main>
