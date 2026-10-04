@@ -6,10 +6,11 @@ import * as THREE from 'three';
 import { useScene } from '@/lib/scene';
 import { LOGO_COLORS, LOGO_MARK, MARK_VIEWBOX } from '../brandPaths';
 import { Tribune } from './Tribune';
+import { Gate } from './Gate';
 
 /*
  * The arena: an octagonal glass stage ringed by chasing LEDs, an empty octagonal tribune (Tribune.tsx),
- * four unlit light towers, and an overhead LED ring.
+ * four unlit light towers, an overhead LED ring, and the players' gate (Gate.tsx) in the tribune's open side.
  * Everything that glows is unlit/additive (no extra real lights, no shadow maps), so it stays cheap;
  * the scene's `intensity` (match energy) speeds up the chase and the sweep.
  */
@@ -253,7 +254,7 @@ function Towers() {
   );
 }
 
-// ─── overhead LED ring + back portal ───────────────────────────────────────
+// ─── overhead LED ring ──────────────────────────────────────────────────────
 function Overhead() {
   const ring = useRef<THREE.Mesh>(null);
   useFrame((_, dt) => {
@@ -273,30 +274,6 @@ function Overhead() {
   );
 }
 
-function Portal() {
-  const ref = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
-    if (!ref.current) return;
-    ref.current.children.forEach((c, i) => (c.rotation.z += dt * (i ? -0.5 : 0.35) * energy()));
-  });
-  return (
-    <group ref={ref} position={[0, 2.2, -17]}>
-      <mesh>
-        <torusGeometry args={[4, 0.07, 16, 120]} />
-        <meshBasicMaterial color={VIOLET} toneMapped={false} />
-      </mesh>
-      <mesh>
-        <torusGeometry args={[4.6, 0.03, 8, 120, Math.PI * 1.4]} />
-        <meshBasicMaterial color="#ff3d5a" toneMapped={false} transparent opacity={0.7} />
-      </mesh>
-      <mesh>
-        <circleGeometry args={[3.9, 64]} />
-        <meshBasicMaterial color="#0d0b18" transparent opacity={0.8} />
-      </mesh>
-    </group>
-  );
-}
-
 export function Arena() {
   return (
     <group>
@@ -305,7 +282,7 @@ export function Arena() {
       <Tribune />
       <Towers />
       <Overhead />
-      <Portal />
+      <Gate />
     </group>
   );
 }

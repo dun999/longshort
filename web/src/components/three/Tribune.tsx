@@ -9,7 +9,7 @@ import { useScene } from '@/lib/scene';
  * The tribune: an octagonal grandstand that follows the stage's eight sides. Seven straight blocks of
  * stepped concrete with empty seats (one instanced mesh), radial aisles with step lights, a ribbon board on
  * the front wall, a back wall on pillars and a cantilevered roof with a lit edge. The back side is left open:
- * that's the players' gate, where the portal stands. Seats in each block carry a chevron, up (long) and down
+ * that's the players' gate (Gate.tsx). Seats in each block carry a chevron, up (long) and down
  * (short) in turn. Flat-shaded and unlit-cheap: no extra lights, no shadows.
  */
 
