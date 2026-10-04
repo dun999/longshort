@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'motion/react';
 import { ColorType, LineSeries, LineStyle, createChart, type UTCTimestamp } from 'lightweight-charts';
-import { CLASSES, MARGIN, MARKETS, MODES, Mode, REAL_TRADING, STAKE, classOf, explorerTx, fmtPx, fmtUsd, shortAddr } from '@longshort/shared';
+import { MARGIN, MARKETS, MODES, Mode, REAL_TRADING, STAKE, explorerTx, fmtPx, fmtUsd, shortAddr, CHARACTER_INFO, characterOf } from '@longshort/shared';
 import { EnvioBadge, envioMatch, useIndexed } from '@/lib/envio';
 import { useWallet } from '@/lib/wallet';
 import { useScene, TEAM_COLOR } from '@/lib/scene';
@@ -154,7 +154,7 @@ export function Report({ id }: { id: number }) {
                 </div>
                 <div className="text-[10px] tracking-wider text-dim uppercase">
                   {mode !== Mode.ROYALE && <span style={{ color: TEAM_COLOR[s.team] }}>{s.team ? 'Bravo' : 'Alpha'} · </span>}
-                  {CLASSES[classOf(s.leverage)].name} {s.leverage}x{s.out ? ` · ${s.out}` : ''}
+                  {CHARACTER_INFO[characterOf(s.addr, s.character)].name} · {s.leverage}x{s.out ? ` · ${s.out}` : ''}
                 </div>
               </div>
               <div className="num text-right text-[12px]">

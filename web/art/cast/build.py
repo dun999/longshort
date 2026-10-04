@@ -1,6 +1,6 @@
 """
 Builds the arena cast and exports one GLB per class into web/public/models/.
-Run: blender -b --factory-startup --python web/art/cast/build.py [-- scout tank sniper]
+Run: blender -b --factory-startup --python web/art/cast/build.py [-- gladiator sniper ...]
 """
 import os
 import sys
@@ -10,7 +10,8 @@ import bpy
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.dont_write_bytecode = True  # no __pycache__ next to the sources
 sys.path.insert(0, HERE)
-for m in [m for m in list(sys.modules) if m in ('lib', 'parts', 'scout', 'tank', 'sniper', 'footholds', 'anims')]:
+CAST = ['gladiator', 'sniper', 'pathfinder', 'pirate', 'pigeon', 'keone']
+for m in [m for m in list(sys.modules) if m in ('lib', 'parts', 'footholds', 'anims', *CAST)]:
     del sys.modules[m]
 
 import anims  # noqa: E402
@@ -20,7 +21,7 @@ OUT = os.path.normpath(os.path.join(HERE, '..', '..', 'public', 'models'))
 os.makedirs(OUT, exist_ok=True)
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-names = argv or ['scout', 'tank', 'sniper']
+names = argv or [n for n in CAST if os.path.exists(os.path.join(HERE, f'{n}.py'))]
 
 
 def clear():
@@ -46,7 +47,8 @@ def export(name, objs):
 for n in names:
     clear()
     mod = __import__(n)
-    arm, body = mod.build()
+    arm, body, *rest = mod.build()
+    props = rest[0] if rest else []
     anims.make(n, arm)
     base = footholds.make(n)
-    export(n, [arm, body, base])
+    export(n, [arm, body, base, *props])

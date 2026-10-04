@@ -1,10 +1,13 @@
 'use client';
 import { create } from 'zustand';
-import { CLASSES } from '@longshort/shared';
+import { CLASSES, type CharacterId } from '@longshort/shared';
 
 export type Shot = 'title' | 'lobby' | 'queue' | 'select' | 'vs' | 'arena' | 'result' | 'podium' | 'backdrop';
 export interface Slot {
+  /** who this is (address): a figure follows its player when seats are reshuffled */
+  id?: string;
   name?: string;
+  character?: CharacterId;
   color: string;
   leverage?: number;
   team?: number;

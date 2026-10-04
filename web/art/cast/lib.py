@@ -199,6 +199,12 @@ class Kit:
         faces.append(list(reversed(range(n))))
         return verts, faces
 
+    def scale(self, f):
+        """Scale everything added so far about the origin (feet stay on the ground)."""
+        for v in self.bm.verts:
+            v.co *= f
+        return self
+
     # ─── finish ─────────────────────────────────────────────────────────────
 
     def build(self, arm_obj=None, materials=None):
@@ -331,6 +337,17 @@ def aim(arm, bone, direction, roll=0.0):
         turn(arm, bone, axis, math.degrees(ang))
     if roll:
         turn(arm, bone, pb.tail - pb.head, roll)
+
+
+def place(arm, bone, loc, ydir, xhint=(1, 0, 0)):
+    """Put a pose bone's head at a character-space point with its length along ydir (props set down)."""
+    y = V(ydir).normalized()
+    x = (V(xhint) - y * V(xhint).dot(y)).normalized()
+    z = x.cross(y)
+    M = Matrix((x, y, z)).transposed().to_4x4()
+    M.translation = V(loc)
+    arm.pose.bones[bone].matrix = M
+    bpy.context.view_layer.update()
 
 
 def clip(arm, name, keys, fps=30):

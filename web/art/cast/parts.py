@@ -114,3 +114,67 @@ def torso_weights(J):
         (J['upper'][2], 'Spine1'),
         (J['neck'][2] - 0.02, 'Spine2'),
     ])
+
+
+# ─── shared face + outfit pieces for the newer cast ─────────────────────────
+
+def head(k, z0, z1, skin, w=0.104, d=0.11, y=-0.005, jaw=0.92, bone='Head'):
+    """Boxy faceted head between z0 (chin) and z1 (crown). Returns the front-face y."""
+    k.add(*k.loft([(V((0, y, z0)), w * jaw * 0.94, d * 0.95), (V((0, y, z0 + (z1 - z0) * 0.32)), w * 1.06, d * 1.06), (V((0, y, z1)), w, d)], n=8, sq=4.5), skin, bone)
+    return y - d * 1.06
+
+
+def eyes(k, z, front, eye, brow, x=0.046, size=(0.038, 0.021), brow_z=0.03, bone='Head', skip=None):
+    for sx in (1, -1):
+        if skip == sx:
+            continue
+        k.add(*k.box((sx * x, front - 0.002, z), (size[0], 0.012, size[1]), chamfer=0.003), eye, bone)
+        k.add(*k.box((sx * x * 1.05, front - 0.004, z + brow_z), (size[0] * 1.35, 0.012, 0.014), chamfer=0.003), brow, bone)
+
+
+def nose(k, z, front, skin, bone='Head', size=1.0):
+    k.add(*k.box((0, front - 0.012 * size, z), (0.03 * size, 0.03 * size, 0.05 * size), chamfer=0.006, taper=(0.6, 0.5)), skin, bone)
+
+
+def sneaker(k, ankle, toe, upper, sole, bone, stripe=None):
+    """Low trainer: a rounded upper on a thick pale sole, optional side stripe (player colour)."""
+    boot(k, ankle, toe, upper, sole, bone, length=0.28, width=0.112, height=0.085, taper=(0.86, 0.72))
+    a, t = V(ankle), V(toe)
+    f = V((t.x - a.x, t.y - a.y, 0)).normalized()
+    xs = f.cross(V((0, 0, 1))).normalized()
+    c = V((a.x, a.y, 0)) + f * (0.28 * 0.26)
+    k.add(*k.box(c + V((0, 0, 0.018)), (0.124, 0.296, 0.036), chamfer=0.012, M=basis(xs, f, V((0, 0, 1)))), sole, bone)
+    if stripe:
+        for side in (1, -1):
+            k.add(*k.box(c + xs * side * 0.057 + V((0, 0, 0.062)), (0.006, 0.13, 0.022), chamfer=0.002, M=basis(xs, f, V((0, 0, 1)))), '#ffffff', bone, mat='Accent')
+
+
+def tee(k, J, color, tw, hem=0.86, sleeve=None, waist=0.17, chest=0.19, depth=0.125):
+    """T-shirt torso (loft) with short sleeves; sleeve colour defaults to the shirt."""
+    k.add(*k.loft([
+        (V((0, 0.0, hem)), waist * 1.05, depth * 1.02),
+        (V((0, 0.0, 1.02)), waist, depth * 0.94),
+        (V((0, -0.004, 1.2)), chest * 0.96, depth),
+        (V((0, 0.0, 1.34)), chest, depth * 1.02),
+        (V((0, 0.0, 1.43)), chest * 0.88, depth * 0.92),
+        (V((0, 0.0, 1.48)), 0.075, 0.068),
+    ], n=10, sq=3.2), color, 'Spine', weights=tw, jitter=0.003)
+    for s in 'LR':
+        sh, el = V(J['shoulder' + s]), V(J['elbow' + s])
+        k.add(*k.dome(sh, 0.074, 0.078, 0.055, n=8, rings=3), sleeve or color, 'Arm' + s)
+        limb(k, sh, sh.lerp(el, 0.45), (0.068, 0.07), (0.064, 0.066), sleeve or color, 'Arm' + s, jitter=0.002)
+
+
+def bare_arms(k, J, skin, upper=0.055, fore=0.048):
+    for s in 'LR':
+        sh, el, wr = (V(J[n + s]) for n in ('shoulder', 'elbow', 'wrist'))
+        limb(k, sh.lerp(el, 0.3), el, (upper, upper * 1.03), (upper * 0.88, upper * 0.9), skin, 'Arm' + s)
+        limb(k, el, wr, (fore, fore * 1.03), (fore * 0.8, fore * 0.82), skin, 'ForeArm' + s, mid=(0.3, fore * 1.05, fore * 1.07))
+
+
+def legs(k, J, color, knee_r=0.075, hip_r=0.1, ankle_r=0.06, cuff_z=0.12):
+    for s in 'LR':
+        ank, knee, hip = V(J['ankle' + s]), V(J['knee' + s]), V(J['hip' + s])
+        limb(k, ank + V((0, 0, cuff_z - ank.z)), knee, (ankle_r, ankle_r * 1.05), (knee_r, knee_r * 1.05), color, 'Leg' + s, mid=(0.5, knee_r * 1.02, knee_r * 1.07), jitter=0.003)
+        limb(k, knee, hip, (knee_r * 1.04, knee_r * 1.1), (hip_r, hip_r * 1.05), color, 'UpLeg' + s, mid=(0.5, hip_r * 0.95, hip_r), jitter=0.003)
+    k.add(*k.loft([(V((0, 0, 0.84)), 0.17, 0.115), (V((0, 0, 1.0)), 0.165, 0.112)], n=8, sq=3), color, 'Hips')

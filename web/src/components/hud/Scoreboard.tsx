@@ -1,6 +1,6 @@
 'use client';
 import { motion, LayoutGroup } from 'motion/react';
-import { CLASSES, MARKETS, Mode, classOf, fmtUsd, royaleRounds } from '@longshort/shared';
+import { MARKETS, Mode, fmtUsd, royaleRounds, CHARACTER_INFO } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { TEAM_COLOR } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -24,7 +24,7 @@ function PlayerRow({ p, rank, danger }: { p: PlayerView; rank?: number; danger?:
           {p.isMe && <span className="text-[9px] tracking-wider text-violet uppercase">{t('hud.you')}</span>}
         </div>
         <div className="text-[10px] tracking-wider text-dim uppercase">
-          {CLASSES[classOf(p.leverage)].name} {p.leverage}x ·{' '}
+          {CHARACTER_INFO[p.character].name} · {p.leverage}x ·{' '}
           {p.out ? (
             <span className="text-red">{t('hud.out')}</span>
           ) : p.pos ? (

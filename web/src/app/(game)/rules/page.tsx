@@ -57,16 +57,16 @@ export default function Rules() {
           A <b>{RAKE_BPS / 100}% rake</b> is taken from decided pots. The trading fee is <b>{FEE_BPS} bp per side</b> on notional, and it reduces your equity.
         </p>
       </Section>
-      <Section t="Classes = leverage">
+      <Section t="Leverage">
         {(Object.keys(CLASSES) as ClassId[]).map((id) => (
           <p key={id}>
             <b>
-              {CLASSES[id].name} · {CLASSES[id].leverage}x
+              {CLASSES[id].leverage}x · {CLASSES[id].role}
             </b>{' '}
-            ({CLASSES[id].role}) At full size you are liquidated once equity falls to 10% of starting margin, which is a ~{(liqMove(CLASSES[id].leverage) * 100).toFixed(1)}% adverse move.
+            At full size you are liquidated once equity falls to 10% of starting margin, which is a ~{(liqMove(CLASSES[id].leverage) * 100).toFixed(1)}% adverse move.
           </p>
         ))}
-        <p>You can switch class while the lobby fills and during the pre-match countdown. It&apos;s fixed once the bell rings.</p>
+        <p>You can switch leverage while the lobby fills and during the pre-match countdown. It&apos;s fixed once the bell rings. Your character is separate and purely cosmetic: any character plays at any leverage.</p>
       </Section>
       <Section t="Pricing & execution">
         <p>
@@ -148,19 +148,19 @@ function LiveRules() {
       <p><b>You can lose your entry and some or all of the trading balance.</b> No other funds in your wallet back the trading account. Testnet AUSD has no monetary value, and nothing here is financial advice.</p>
     </Section>
 
-    <Section t="Leverage classes">
+    <Section t="Leverage and risk">
       <p>Leverage multiplies your position: the same balance controls a bigger bet, so wins <b>and</b> losses grow, and a smaller BTC move against you knocks you out. Perpl closes a BTC position once its equity falls to {Math.round(PERPL_BTC_MAINT * 100)}% of the position size, and caps BTC at 15x.</p>
       <div className="scroll-thin overflow-x-auto">
         <table className="num w-full min-w-[460px] text-left text-xs">
-          <thead className="text-dim"><tr>{['Class', 'Leverage', 'Full-size position', 'Knocked out by a move of about', 'Perpl fees per full-size round trip'].map((h) => <th key={h} className="p-2 font-semibold">{h}</th>)}</tr></thead>
+          <thead className="text-dim"><tr>{['Leverage', 'Risk', 'Full-size position', 'Knocked out by a move of about', 'Perpl fees per full-size round trip'].map((h) => <th key={h} className="p-2 font-semibold">{h}</th>)}</tr></thead>
           <tbody>{classes.map((id) => {
             const lev = CLASSES[id].leverage;
-            return <tr key={id} className="border-t border-line"><td className="p-2 font-sans font-semibold text-white">{CLASSES[id].name}</td><td className="p-2">{lev}x</td><td className="p-2">{money(size(lev))}</td><td className="p-2 text-gold">{pctOf(lev)}</td><td className="p-2">≈ {money(size(lev) * FEE_BPS * 2 / 10_000)}</td></tr>;
+            return <tr key={id} className="border-t border-line"><td className="p-2 font-semibold text-white">{lev}x</td><td className="p-2 font-sans">{CLASSES[id].role}</td><td className="p-2">{money(size(lev))}</td><td className="p-2 text-gold">{pctOf(lev)}</td><td className="p-2">≈ {money(size(lev) * FEE_BPS * 2 / 10_000)}</td></tr>;
           })}</tbody>
         </table>
       </div>
       <p>Figures assume your whole balance (100% size) and ignore funding and the bid-ask spread. Smaller sizes (25% or 50%) cut the position and push the knock-out point further away.</p>
-      <p><b>Who picks:</b> in Duel and Royale, every player picks their own class. In Squad, each team plays at one leverage, picked by its <b>team leader</b>: the first player seated on that team, which is the party leader when you queue with a friend. The other teammate&apos;s pick follows it. Classes can change while the lobby fills and during the 15 second countdown, and lock at the bell.</p>
+      <p><b>Who picks:</b> in Duel and Royale, every player picks their own leverage. In Squad, each team plays at one leverage, picked by its <b>team leader</b>: the first player seated on that team, which is the party leader when you queue with a friend. The other teammate&apos;s pick follows it. Leverage can change while the lobby fills and during the 15 second countdown, and lock at the bell.</p>
     </Section>
 
     <Section t="Modes and payouts">

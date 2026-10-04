@@ -33,6 +33,7 @@ export async function resolveCard(code: string): Promise<CardData | null> {
     name: p.name ?? shortAddr(p.addr),
     addr: p.addr,
     leverage: p.leverage,
+    character: p.character ?? undefined,
     mode,
     rival: rival ? (rival.name ?? shortAddr(rival.addr)) : undefined,
     place: standings.indexOf(p) + 1,

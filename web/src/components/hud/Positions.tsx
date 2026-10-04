@@ -1,5 +1,5 @@
 'use client';
-import { REAL_TRADING, CLASSES, MARKETS, classOf, fmtPx, fmtUsd, liqPrice, upnl, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, MARKETS, fmtPx, fmtUsd, liqPrice, upnl, type MarketSymbol, CHARACTER_INFO } from '@longshort/shared';
 import type { MatchView } from '@/lib/match';
 import { TEAM_COLOR } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -41,7 +41,7 @@ export function Positions({ m }: { m: MatchView }) {
                   {p.bot && <span className="ml-1 text-[9px] text-dim uppercase">{t('hud.bot')}</span>}
                 </td>
                 <td className="px-2 py-1 text-muted">
-                  {CLASSES[classOf(p.leverage)].name} {p.leverage}x
+                  {CHARACTER_INFO[p.character].name} · {p.leverage}x
                 </td>
                 {p.pos ? (
                   <>

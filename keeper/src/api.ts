@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isAddress, parseEther, parseUnits, verifyMessage } from 'viem';
 import { ADDR, REAL_TRADING, erc20Abi, relayLive } from '@longshort/shared';
-import { MARKETS } from '@longshort/shared';
+import { MARKETS, isCharacter } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
 import { gateAllows } from './gate';
@@ -26,11 +26,12 @@ const routes: [string, RegExp, Handler][] = [];
 const route = (method: string, path: string, h: Handler) =>
   routes.push([method, new RegExp('^' + path.replace(/:\w+/g, '([^/]+)') + '$'), h]);
 
-const nameOf = (addr: string) => (db.prepare('SELECT name, bot FROM profiles WHERE addr = ?').get(addr) as { name: string | null; bot: number } | undefined);
+// profiles.avatar holds the player's character pick (cosmetic, any character at any leverage)
+const nameOf = (addr: string) => (db.prepare('SELECT name, bot, avatar FROM profiles WHERE addr = ?').get(addr) as { name: string | null; bot: number; avatar: string | null } | undefined);
 function playersOf(matchId: number) {
   return (db.prepare('SELECT * FROM players WHERE match_id = ? ORDER BY rowid').all(matchId) as any[]).map((p) => {
     const n = nameOf(p.addr);
-    return { ...p, name: n?.name ?? null, bot: !!n?.bot };
+    return { ...p, name: n?.name ?? null, bot: !!n?.bot, character: n?.avatar ?? null };
   });
 }
 
@@ -260,7 +261,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 
 // ─── WebSocket: presence, parties, live events ─────────────────────────────
 interface Client { ws: WebSocket; addr?: string; name?: string; partyId?: string }
-interface Member { addr: string; name?: string; ready: boolean; leverage: number }
+interface Member { addr: string; name?: string; ready: boolean; leverage: number; character?: string }
 interface Party { id: string; leader: string; members: Member[]; mode: number; entry: number; chat: { from: string; text: string; at: number }[] }
 
 const clients = new Set<Client>();
@@ -329,7 +330,7 @@ function onMessage(c: Client, msg: any) {
     case 'party:create': {
       if (!me) return;
       leaveParty(me);
-      const p: Party = { id: randomUUID().slice(0, 8), leader: me, members: [{ addr: me, name: c.name, ready: false, leverage: 25 }], mode: 1, entry: 5, chat: [] };
+      const p: Party = { id: randomUUID().slice(0, 8), leader: me, members: [{ addr: me, name: c.name, ready: false, leverage: 25, character: nameOf(me)?.avatar ?? undefined }], mode: 1, entry: 5, chat: [] };
       parties.set(p.id, p);
       pushParty(p);
       return;
@@ -345,7 +346,7 @@ function onMessage(c: Client, msg: any) {
       if (me && p?.members.some((m) => m.addr === me)) return pushParty(p);
       if (!me || !p || p.members.length >= (REAL_TRADING ? 2 : 3)) return send(c, { t: 'toast', text: 'Party is full or gone' });
       leaveParty(me);
-      p.members.push({ addr: me, name: c.name, ready: false, leverage: 25 });
+      p.members.push({ addr: me, name: c.name, ready: false, leverage: 25, character: nameOf(me)?.avatar ?? undefined });
       p.chat.push({ from: 'system', text: `${c.name ?? me.slice(0, 6)} joined the party`, at: Date.now() });
       pushParty(p);
       return;
@@ -385,6 +386,19 @@ function onMessage(c: Client, msg: any) {
       m.ready = !!msg.ready;
       if (msg.leverage) m.leverage = Number(msg.leverage);
       pushParty(p);
+      return;
+    }
+    case 'character': {
+      // cosmetic pick, saved on the profile so every view of this player (lobby, arena, share card) shows it
+      if (!me || !isCharacter(msg.id)) return;
+      ensureProfile(me);
+      db.prepare('UPDATE profiles SET avatar = ? WHERE addr = ?').run(msg.id, me);
+      const p = partyOf(me);
+      const m = p?.members.find((x) => x.addr === me);
+      if (p && m) {
+        m.character = msg.id;
+        pushParty(p);
+      }
       return;
     }
     case 'party:chat': {

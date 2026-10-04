@@ -4,10 +4,11 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { REAL_TRADING, TRADING_BUDGET, CLASSES, ENTRY_TIERS, MODES, Mode, classOf, liqMove, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, TRADING_BUDGET, CHARACTERS, CHARACTER_INFO, CLASSES, ENTRY_TIERS, MODES, Mode, characterOf, classOf, liqMove, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
 import { Hint, PanelHeader } from '../ui/Hint';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
+import { useCharacter } from '@/lib/character';
 import { useApi } from '@/lib/api';
 import { useScene, CLASS_COLOR, type Slot } from '@/lib/scene';
 import { cancelMatchmaking, lastLeverage, partyPlay, quickPlay, rememberLeverage } from '@/lib/actions';
@@ -306,13 +307,16 @@ export function Lobby() {
   }, [mode, entry, party?.id, leader, send]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 3D lobby: pedestals for me + party + invite slots ──────────────────
-  const slotsKey = JSON.stringify([effMode, lev, party?.members, me]);
+  const myCharacter = useCharacter((c) => c.id);
+  const slotsKey = JSON.stringify([effMode, lev, party?.members, me, myCharacter]);
   useEffect(() => {
     const members = party?.members ?? (me ? [{ addr: me, name: undefined, ready: false, leverage: lev }] : []);
     const mine = members.find((m) => m.addr === me);
     const others = members.filter((m) => m.addr !== me);
-    const toSlot = (m: { addr: string; name?: string; leverage: number }, isMe: boolean): Slot => ({
+    const toSlot = (m: { addr: string; name?: string; leverage: number; character?: string }, isMe: boolean): Slot => ({
+      id: m.addr,
       name: isMe ? 'YOU' : (m.name ?? shortAddr(m.addr)),
+      character: characterOf(m.addr, isMe ? myCharacter : m.character),
       leverage: isMe ? lev : m.leverage,
       color: CLASS_COLOR[isMe ? lev : m.leverage],
       me: isMe,
@@ -321,7 +325,7 @@ export function Lobby() {
     const slots: Slot[] = others.map((m) => toSlot(m, false));
     if (me) slots.splice(Math.floor(slots.length / 2), 0, toSlot(mine ?? { addr: me, leverage: lev }, true));
     else slots.push({ empty: true, color: '#626873', name: t('lb.slotSignIn') });
-    if (effMode === 'practice') slots.push({ name: 'bot·Rex', leverage: lev, color: '#626873' });
+    if (effMode === 'practice') slots.push({ id: 'bot·Rex', name: 'bot·Rex', character: characterOf('bot·Rex'), leverage: lev, color: '#626873' });
     while (slots.length < cap && effMode !== 'practice') slots.push({ empty: true, color: '#626873', name: t(effMode === Mode.DUEL ? 'lb.slotRival' : 'lb.slotInvite') });
     useScene.getState().set({ shot: queuedAt ? 'queue' : 'lobby', slots, intensity: 0.25 });
   }, [slotsKey, queuedAt, t]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -391,7 +395,10 @@ export function Lobby() {
         <SocialDrawer me={me} online={online} />
       </div>
       <div className="lobby-footer">
-      <Loadout lev={lev} mode={effMode} follower={inParty && !leader && effMode === Mode.SQUAD} onClass={pickClass} />
+      <div className="lobby-left pointer-events-none absolute bottom-3 left-3 flex w-[270px] flex-col gap-2">
+        <CharacterCard me={me} />
+        <Loadout lev={lev} mode={effMode} follower={inParty && !leader && effMode === Mode.SQUAD} onClass={pickClass} />
+      </div>
 
       {/* the one primary action */}
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
@@ -470,12 +477,39 @@ export function Lobby() {
   );
 }
 
-/** Bottom-left loadout: your class is your leverage, a real parameter in the contract (and in every Perpl order). */
+/** Character pick: looks only. Any character plays at any leverage; the choice is saved to the profile. */
+function CharacterCard({ me }: { me?: string }) {
+  const t = useT();
+  const mine = useCharacter((c) => c.id);
+  const pick = useCharacter((c) => c.pick);
+  const current = characterOf(me, mine);
+  return (
+    <motion.div data-tour="character" initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="lobby-character panel pointer-events-auto grid gap-1.5 p-2 sm:p-3">
+      <div className="hidden sm:block">
+        <PanelHeader title={t('lb.character')} sub={t('lb.characterSub')} hint="Your character is how you look in the arena and on your share card. It changes nothing in the round: leverage is chosen separately, below." />
+      </div>
+      <div className="char-grid" role="radiogroup" aria-label={t('lb.character')}>
+        {CHARACTERS.map((id) => (
+          <button key={id} role="radio" aria-checked={id === current} aria-label={CHARACTER_INFO[id].name} title={CHARACTER_INFO[id].name} className={`char-tile ${id === current ? 'on' : ''}`} onMouseEnter={sfx.hover} onClick={() => (sfx.click(), pick(id))}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- 15 KB static avatar, no optimisation needed */}
+            <img src={`/cast/${id}.webp`} alt="" width={96} height={96} draggable={false} />
+          </button>
+        ))}
+      </div>
+      <div className="flex min-w-0 items-baseline gap-2 text-[11px]">
+        <b className="shrink-0 font-display tracking-[0.12em] uppercase">{CHARACTER_INFO[current].name}</b>
+        <span className="truncate text-dim">{CHARACTER_INFO[current].line}</span>
+      </div>
+    </motion.div>
+  );
+}
+
+/** Leverage, a real parameter in the contract (and in every Perpl order); risk is spelled out next to it. */
 function Loadout({ lev, mode, follower, onClass }: { lev: number; mode: LobbyMode; follower: boolean; onClass: (l: number) => void }) {
   const t = useT();
   const id = classOf(lev);
   return (
-    <motion.div data-tour="class" initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="lobby-loadout panel pointer-events-auto absolute bottom-3 left-3 grid w-[270px] gap-2.5 p-2 sm:p-3">
+    <motion.div data-tour="class" initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="lobby-loadout panel pointer-events-auto grid gap-2.5 p-2 sm:p-3">
       <div>
         <div className="hidden sm:block">
           <PanelHeader title={t('lb.class')} sub={t('lb.leverage')} hint="Leverage multiplies both your wins and your losses. Higher leverage opens a bigger position from the same balance, so a smaller BTC move against you knocks you out. You can switch until the round starts. In Squad, each team's leader sets one leverage for the whole team." />
@@ -486,8 +520,9 @@ function Loadout({ lev, mode, follower, onClass }: { lev: number; mode: LobbyMod
             const on = lev === k.leverage;
             return (
               <button key={id} disabled={follower} onMouseEnter={sfx.hover} onClick={() => onClass(k.leverage)} className={`px-1! text-[12px]! ${on ? 'on' : ''}`}>
-                <span>
-                  {k.name} {k.leverage}x
+                <span className="leading-tight">
+                  <b className="num block">{k.leverage}x</b>
+                  <small className="block text-[9px] tracking-[0.08em] opacity-70">{t(`role.${id}`)}</small>
                 </span>
               </button>
             );
@@ -576,7 +611,7 @@ function PartyPanel({ me }: { me?: string }) {
           <span className={`party-name ${m.addr === me ? 'text-violet' : ''}`}>{m.name ?? shortAddr(m.addr)}</span>
           {party.leader === m.addr && <span className="party-leader text-[12px] text-gold">{t('pt.leader')}</span>}
           <span className="party-class text-[12px] text-dim">
-            {CLASSES[classOf(m.leverage)].name} {m.leverage}x
+            {CHARACTER_INFO[characterOf(m.addr, m.character)].name} · {m.leverage}x
           </span>
           {party.leader === me && m.addr !== me && (
             <button

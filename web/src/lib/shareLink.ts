@@ -1,4 +1,4 @@
-import { MODES, Mode } from '@longshort/shared';
+import { MODES, Mode, isCharacter } from '@longshort/shared';
 
 /**
  * A shareable result. Ranked results are looked up from the keeper by match id + address, so a link
@@ -13,6 +13,7 @@ export interface CardData {
   name: string;
   addr: string;
   leverage: number;
+  character?: string;
   mode: Mode;
   rival?: string; // duel only
   place?: number;
@@ -28,7 +29,7 @@ const unb64 = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.rep
 export const rankedCode = (id: number, addr: string) => `${id}-${addr.toLowerCase().replace(/^0x/, '').slice(0, 8)}`;
 
 export function practiceCode(c: CardData) {
-  const j = { o: c.outcome, r: +c.roi.toFixed(2), e: +c.equity.toFixed(2), n: c.name, a: c.addr, l: c.leverage, m: c.mode, v: c.rival, w: c.award };
+  const j = { o: c.outcome, r: +c.roi.toFixed(2), e: +c.equity.toFixed(2), n: c.name, a: c.addr, l: c.leverage, c: c.character, m: c.mode, v: c.rival, w: c.award };
   return `p${b64(JSON.stringify(j))}`;
 }
 
@@ -56,6 +57,7 @@ export function parseCode(code: string): ParsedCode | null {
         name: str(j.n) || 'Player',
         addr: str(j.a, 42) || '0x',
         leverage: [10, 25, 50].includes(j.l) ? j.l : 25,
+        character: isCharacter(j.c) ? j.c : undefined,
         mode,
         rival: str(j.v),
         award: str(j.w),

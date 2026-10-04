@@ -1,4 +1,4 @@
-"""Scout — the Pathfinder: a desert runner. Deep hood over a scarfed face (the scarf takes the player's
+"""Pathfinder: a desert runner. Deep hood over a scarfed face (the scarf takes the player's
 colour), goggles up on the hood, a pointed shoulder poncho, wrapped forearms and shins, twin daggers
 held in reverse grip, weight on the back foot."""
 from lib import Kit, V
@@ -20,7 +20,7 @@ C = dict(
 
 
 def build():
-    k = Kit('ScoutBody')
+    k = Kit('PathfinderBody')
     tw = torso_weights(J)
 
     # ── legs ──
@@ -106,6 +106,6 @@ def build():
         (V((0, 0.01, 1.3)), 0.312, 0.205),
     ], n=12, sq=2.3), C['cloak'], 'Spine2', jitter=0.006, deform=hem)
 
-    arm = rig('Scout', J)
+    arm = rig('Pathfinder', J)
     body = k.build(arm)
     return arm, body

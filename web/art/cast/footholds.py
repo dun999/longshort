@@ -1,6 +1,5 @@
 """Per-class footholds. Each is built with its top surface at z = 0 and its base at z = -H (the game lifts
-the group by H). Tank: a stone plinth with a bronze band. Sniper: a cut jungle stump on its roots, moss and
-ferns. Scout: a layered sandstone outcrop with a cairn and a pennant in the player's colour."""
+the group by H). One function per character, named after it."""
 import math
 import random
 from lib import Kit, V
@@ -22,7 +21,7 @@ def _poly(k, z0, z1, r0, r1, n, color, seed, wob=0.06, sq=2.0, jitter=0.01, bone
     k.add(verts, faces, color, bone, jitter=jitter, seed=seed)
 
 
-def tank(k):
+def gladiator(k):
     stone, dark, hi, bronze = '#86817a', '#625e58', '#a29c92', '#a47b3c'
     rnd = random.Random(2)
     # eight chunky drum blocks with gaps, a darker plinth course below
@@ -78,7 +77,7 @@ def sniper(k):
         k.add(*k.dome((x, y, -H + h), r, r, r * 0.6, n=8, rings=2), '#b5532e', 'Base')
 
 
-def scout(k):
+def pathfinder(k):
     sand, rust, pale, dark = '#c39a62', '#a6683e', '#d9bb8b', '#7c5232'
     rnd = random.Random(9)
     _poly(k, -H, -0.2, 0.74, 0.7, 9, rust, 1, wob=0.1, jitter=0.012)
@@ -107,7 +106,71 @@ def scout(k):
             k.add(*k.loft([(base, 0.008, 0.002), (tip, 0.001, 0.001)], n=3, sq=2, side=V((1, 0, 0))), '#c9b26a' if j % 2 else '#a8914f', 'Base', seed=60 + i * 3 + j)
 
 
+def pirate(k):
+    """A round of ship's deck: planks on a dark drum, rope coil, a barrel and an iron cleat."""
+    plank = ['#8a5d36', '#7b522f', '#93653b']
+    _poly(k, -H, -0.06, 0.72, 0.7, 16, '#3f2a1a', 1, wob=0.0, jitter=0.004)
+    r = 0.7
+    for i in range(7):
+        x = -r + (i + 0.5) * (2 * r / 7)
+        half = math.sqrt(max(0.0, r * r - x * x)) - 0.02
+        k.add(*k.box((x, 0, -0.03), (2 * r / 7 - 0.02, 2 * half, 0.06), chamfer=0.008), plank[i % 3], 'Base', jitter=0.004, seed=i)
+        for y in (-half * 0.6, half * 0.6):
+            k.add(*k.box((x, y, 0.001), (0.015, 0.015, 0.004)), '#2a2420', 'Base')
+    rnd = random.Random(4)
+    for i in range(12):  # rope coil
+        a = 2 * math.pi * i / 12
+        for j, rr in enumerate((0.13, 0.09)):
+            k.add(*k.box((0.42 + math.cos(a) * rr, 0.3 + math.sin(a) * rr, 0.025 + j * 0.035), (0.06, 0.04, 0.04), chamfer=0.012, M=basis(V((-math.sin(a), math.cos(a), 0)), V((math.cos(a), math.sin(a), 0)), Z)), '#c4a46a', 'Base')
+    k.add(*k.disc((-0.46, 0.28, 0.15), 0.135, 0.3, n=10), '#7a5530', 'Base')
+    for z in (0.05, 0.25):
+        k.add(*k.disc((-0.46, 0.28, z), 0.14, 0.03, n=10), '#3a3836', 'Base')
+    k.add(*k.box((0.0, 0.5, 0.04), (0.18, 0.05, 0.05), chamfer=0.012), '#3a3836', 'Base')
+    k.add(*k.box((0.0, 0.5, 0.0), (0.06, 0.06, 0.08), chamfer=0.01), '#3a3836', 'Base')
+    del rnd
+
+
+def pigeon(k):
+    """A round of city cobbles with a drain grate, a dropped cup and a scrap of newspaper."""
+    greys = ['#6f7178', '#7c7e85', '#65676e', '#85878e']
+    _poly(k, -H, -0.05, 0.72, 0.7, 16, '#3c3d42', 1, wob=0.0, jitter=0.004)
+    rnd = random.Random(6)
+    step = 0.15
+    for i in range(-5, 6):
+        for j in range(-5, 6):
+            x, y = i * step + (step / 2 if j % 2 else 0), j * step * 0.9
+            if math.hypot(x, y) > 0.62:
+                continue
+            k.add(*k.box((x, y, -0.03), (step - 0.022, step * 0.9 - 0.022, 0.06 + rnd.uniform(-0.008, 0.008)), chamfer=0.016), greys[(i * 7 + j * 3) % 4], 'Base', jitter=0.004, seed=i * 11 + j)
+    k.add(*k.disc((0.32, -0.28, 0.004), 0.12, 0.012, n=12), '#2e2f33', 'Base')
+    for d in (-0.06, -0.02, 0.02, 0.06):
+        k.add(*k.box((0.32 + d, -0.28, 0.012), (0.012, 0.18, 0.008)), '#4a4b50', 'Base')
+    k.add(*k.disc((-0.42, 0.3, 0.06), 0.045, 0.12, n=10, M=frame(V((1, 0.2, 0.05)), Z), r_top=0.035), '#e8e2d6', 'Base')
+    k.add(*k.box((-0.2, 0.42, 0.006), (0.22, 0.16, 0.012), chamfer=0.004, M=frame(Z, V((1, 0.4, 0)))), '#d8d3c8', 'Base', jitter=0.01)
+    for d in (-0.04, 0.0, 0.04):
+        k.add(*k.box((-0.2 + d, 0.42, 0.014), (0.01, 0.12, 0.002), M=frame(Z, V((1, 0.4, 0)))), '#5a5a5e', 'Base')
+
+
+def keone(k):
+    """A platform of blocks: a 4x4 grid of purple cubes at slightly different heights, lit seams."""
+    tones = ['#3a2f6a', '#4a3a8c', '#2f2758', '#5a46b0']
+    _poly(k, -H, -0.08, 0.7, 0.68, 16, '#1e1a33', 1, wob=0.0, jitter=0.0)
+    rnd = random.Random(8)
+    step = 0.3
+    for i in range(4):
+        for j in range(4):
+            x, y = (i - 1.5) * step, (j - 1.5) * step
+            if math.hypot(x, y) > 0.6:
+                continue
+            top = rnd.choice((0.0, 0.0, -0.02, 0.02))
+            k.add(*k.box((x, y, (top - 0.1) / 2 - 0.01), (step - 0.025, step - 0.025, 0.1 + top), chamfer=0.012), tones[(i + j * 3) % 4], 'Base', jitter=0.0)
+            k.add(*k.box((x, y, top - 0.009), (step - 0.12, step - 0.12, 0.004)), '#9d8cff', 'Base')
+    for a in range(16):
+        ang = a * math.pi / 8
+        k.add(*k.box((math.cos(ang) * 0.69, math.sin(ang) * 0.69, -0.2), (0.012, 0.18, 0.03), M=basis(V((math.cos(ang), math.sin(ang), 0)), V((-math.sin(ang), math.cos(ang), 0)), Z)), '#7a63f5', 'Base')
+
+
 def make(name):
     k = Kit(name.capitalize() + 'Base')
-    {'tank': tank, 'sniper': sniper, 'scout': scout}[name](k)
+    globals()[name](k)
     return k.build()

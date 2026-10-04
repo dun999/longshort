@@ -33,7 +33,9 @@ function phaseOf(m: MatchView, now: number): Phase {
 }
 
 const slotOf = (p: MatchView['players'][number], teams: boolean, maxPnl: number): Slot => ({
+  id: p.addr,
   name: p.name,
+  character: p.character,
   leverage: p.leverage,
   color: teams ? TEAM_COLOR[p.team] : CLASS_COLOR[p.leverage],
   team: teams ? p.team : undefined,

@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ImageResponse } from 'next/og';
-import { CLASSES, MODES, STAKE, classOf, fmtUsd, type ClassId } from '@longshort/shared';
+import { MODES, STAKE, fmtUsd, CHARACTER_INFO, characterOf, type CharacterId } from '@longshort/shared';
 import { sigil } from '@/lib/sigil';
 import { OUTCOME_WORD, signedPct, type CardData } from '@/lib/shareLink';
 import { resolveCard } from '../resolve';
@@ -30,13 +30,13 @@ const loadFonts = () =>
     ).map(async ([name, file, weight]) => ({ name, data: await readFile(path.join(FONTS, file)), weight })),
   ));
 
-/** The player's class figure, posed for the outcome (rendered from the arena models, see web/art/cast). */
+/** The player's character, posed for the outcome (rendered from the arena models, see web/art/cast). */
 const CAST = path.join(process.cwd(), 'src/assets/cast');
 const POSE: Record<CardData['outcome'], 'win' | 'out' | 'idle'> = { win: 'win', loss: 'out', draw: 'idle', over: 'idle' };
 type Figure = { src: string; w: number; h: number };
 const figures = new Map<string, Promise<Figure>>();
-const figure = (cls: ClassId, pose: string) => {
-  const k = `${cls}-${pose}`;
+const figure = (id: CharacterId, pose: string) => {
+  const k = `${id}-${pose}`;
   if (!figures.has(k))
     figures.set(
       k,
@@ -101,7 +101,7 @@ function Brand({ c, big }: { c: CardData; big?: boolean }) {
   );
 }
 
-const detail = (c: CardData) => `${CLASSES[classOf(c.leverage)].name} · ${c.leverage}x${c.rival ? `  ·  vs ${c.rival}` : c.place && c.of ? `  ·  ${c.place} of ${c.of}` : ''}`.toUpperCase();
+const detail = (c: CardData) => `${CHARACTER_INFO[characterOf(c.addr, c.character)].name} · ${c.leverage}x${c.rival ? `  ·  vs ${c.rival}` : c.place && c.of ? `  ·  ${c.place} of ${c.of}` : ''}`.toUpperCase();
 const money = (c: CardData) => `${fmtUsd(c.equity)} final equity${c.payout > 0 ? ` · +${c.payout.toFixed(2)} ${STAKE} won` : ''}`;
 const roiTone = (c: CardData) => (c.roi > 0.005 ? C.up : c.roi < -0.005 ? C.down : C.text);
 
@@ -181,7 +181,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
   const c = await resolveCard(code);
   if (!c) return new Response('Not found', { status: 404 });
   const story = new URL(req.url).searchParams.get('f') === 'story';
-  const fig = await figure(classOf(c.leverage), POSE[c.outcome]);
+  const fig = await figure(characterOf(c.addr, c.character), POSE[c.outcome]);
   return new ImageResponse(story ? <Story c={c} fig={fig} /> : <Landscape c={c} fig={fig} />, {
     ...(story ? { width: 1080, height: 1920 } : { width: 1200, height: 630 }),
     fonts: await loadFonts(),

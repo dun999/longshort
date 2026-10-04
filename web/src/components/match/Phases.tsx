@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react';
-import { REAL_TRADING, CLASSES, MARGIN, MODES, Mode, XP, classOf, explorerTx, fmtUsd, level, levelProgress, liqMove, type ClassId, STAKE } from '@longshort/shared';
+import { REAL_TRADING, CLASSES, MARGIN, MODES, Mode, XP, explorerTx, fmtUsd, level, levelProgress, liqMove, type ClassId, STAKE, CHARACTER_INFO } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { CLASS_COLOR, TEAM_COLOR, useScene } from '@/lib/scene';
 import { PlayerMark } from '../PlayerMark';
@@ -42,7 +42,7 @@ function Seat({ p, color, i }: { p?: PlayerView; color: string; i: number }) {
                 {p.isMe ? 'You' : p.name} {p.bot && <span className="text-[9px] text-dim">BOT</span>}
               </div>
               <div className="text-[10px] tracking-[0.18em] uppercase" style={{ color: CLASS_COLOR[p.leverage] }}>
-                {CLASSES[classOf(p.leverage)].name} · {p.leverage}x
+                {CHARACTER_INFO[p.character].name} · {p.leverage}x
               </div>
             </div>
           </motion.div>
@@ -215,12 +215,11 @@ export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: 
               style={{ borderColor: on ? col : undefined, boxShadow: on ? `inset 0 -3px 0 ${col}` : undefined }}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-                <span className="font-display text-sm font-bold tracking-[0.06em] uppercase md:text-xl md:tracking-[0.12em]" style={{ color: col }}>
-                  {c.name}
+                <span className="num text-xl font-bold md:text-3xl" style={{ color: col }}>
+                  {c.leverage}x
                 </span>
-                <span className="num text-lg font-bold md:text-2xl">{c.leverage}x</span>
+                <span className="text-[10px] tracking-[0.12em] text-muted uppercase md:text-[11px] md:tracking-[0.2em]">{t(`role.${id}`)}</span>
               </div>
-              <div className="mt-1 hidden text-[11px] tracking-[0.2em] text-muted uppercase md:block">{t(`role.${id}`)}</div>
               <p className="mt-2 hidden text-sm text-muted md:block">{t(`blurb.${id}`, { pct: pct(c.leverage) })}</p>
               <div className="num mt-1 text-[11px] text-gold md:hidden">{t('mm.outAt', { pct: pct(c.leverage) })}</div>
               <div className="mt-3 hidden grid-cols-2 gap-2 text-[11px] md:grid">
@@ -245,7 +244,6 @@ export function ClassSelect({ m, left, onPick, pending }: { m: MatchView; left: 
 // ─── VS: panels slam in, lightning seam, 3-2-1-FIGHT ────────────────────────
 function VsCard({ p, side, i, color, big }: { p: PlayerView; side: 0 | 1; i: number; color: string; big?: boolean }) {
   const t = useT();
-  const c = CLASSES[classOf(p.leverage)];
   return (
     <motion.div
       initial={{ x: side ? 320 : -320, opacity: 0 }}
@@ -260,7 +258,7 @@ function VsCard({ p, side, i, color, big }: { p: PlayerView; side: 0 | 1; i: num
           {p.isMe ? 'You' : p.name} {p.bot && <span className="text-[10px] text-dim">BOT</span>}
         </div>
         <div className="text-[11px] tracking-[0.2em] uppercase" style={{ color: CLASS_COLOR[p.leverage] }}>
-          {c.name} · {p.leverage}x
+          {CHARACTER_INFO[p.character].name} · {p.leverage}x
         </div>
       </div>
     </motion.div>
@@ -462,7 +460,7 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
             {p.bot && <span className="rs-tag">Bot</span>}
           </div>
           <div className="rs-class" style={{ color: CLASS_COLOR[p.leverage] }}>
-            {CLASSES[classOf(p.leverage)].name} · {p.leverage}x
+            {CHARACTER_INFO[p.character].name} · {p.leverage}x
           </div>
         </div>
         {(won || compact) && <div className="rs-summary">
@@ -655,6 +653,7 @@ export function Result({ m, onAgain, busy }: { m: MatchView; onAgain: () => void
       name: who.name,
       addr: who.addr,
       leverage: who.leverage,
+      character: who.character,
       mode: m.mode,
       rival: rival?.name,
       place: rankOf(who),

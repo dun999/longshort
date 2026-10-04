@@ -20,6 +20,7 @@ export interface Stats {
   bot: boolean;
   team: number;
   leverage: number;
+  character?: string;
   result: string | null;
   payout: number;
   finalEquity: number;
@@ -54,6 +55,7 @@ export function compute(match: any, players: any[], trades: Row[], fills: {addr:
       bot: !!p.bot,
       team: p.team,
       leverage: p.leverage,
+      character: p.character,
       result: p.result,
       payout: p.payout ?? 0,
       finalEquity: p.final_equity ?? MARGIN,

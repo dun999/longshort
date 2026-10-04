@@ -6,7 +6,7 @@ import { api } from './api';
 
 export interface Tick { t: number; px: number }
 export interface ChainEvent { name: string; matchId: number; tx: string; block: number; ts: number; args: Record<string, any> }
-export interface PartyMember { addr: string; name?: string; ready: boolean; leverage: number }
+export interface PartyMember { addr: string; name?: string; ready: boolean; leverage: number; character?: string }
 export interface Party { id: string; leader: string; members: PartyMember[]; mode: number; entry: number; chat: { from: string; text: string; at: number }[] }
 export interface Invite { partyId: string; from: string; fromName?: string }
 export interface RematchInvite { sourceId: number; matchId: number; from: string; team: number }

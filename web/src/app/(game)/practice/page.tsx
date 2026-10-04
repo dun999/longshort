@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import Link from 'next/link';
-import { REAL_TRADING, MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
+import { characterOf, REAL_TRADING, MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
 import { useSocket, lastPx } from '@/lib/socket';
 import { useWallet } from '@/lib/wallet';
 import { useScene, TEAM_COLOR } from '@/lib/scene';
 import { lastLeverage } from '@/lib/actions';
+import { useCharacter } from '@/lib/character';
 import type { FeedItem, MatchView, PlayerView, TradeRow } from '@/lib/match';
 import { Hud } from '@/components/hud/Hud';
 import type { HudActions } from '@/components/hud/TradePanel';
@@ -154,10 +155,11 @@ export default function Practice() {
     }
   }, [done, run, doClose]);
 
+  const myCharacter = useCharacter((c) => c.id);
   const players: PlayerView[] = seats.map((s, i) => {
     const px = s.pos ? prices[MARKETS[s.pos.market]] : undefined;
     const equity = s.out ? 0 : equityOf(s.realized, s.pos, px);
-    return { addr: s.addr, name: s.name, bot: i === 1, team: i, leverage: s.leverage, out: s.out, outRank: 0, realized: s.realized, pos: s.pos, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
+    return { addr: s.addr, name: s.name, bot: i === 1, character: characterOf(s.addr, i === 0 ? myCharacter : undefined), team: i, leverage: s.leverage, out: s.out, outRank: 0, realized: s.realized, pos: s.pos, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
   });
   const [a, b] = players;
   const win = done && a && b ? (a.equity > b.equity ? 'win' : a.equity < b.equity ? 'loss' : 'draw') : undefined;
@@ -198,7 +200,7 @@ export default function Practice() {
 
   useEffect(() => {
     const phase = done ? 'result' : live ? 'arena' : !pricesReady ? 'backdrop' : 'vs';
-    const slots = players.map((p) => ({ name: p.name, leverage: p.leverage, color: phase === 'result' ? (p.equity >= Math.max(...players.map((x) => x.equity)) ? '#c9a24a' : '#44474f') : TEAM_COLOR[p.team], team: p.team, me: p.isMe, out: p.out }));
+    const slots = players.map((p) => ({ id: p.addr, name: p.name, character: p.character, leverage: p.leverage, color: phase === 'result' ? (p.equity >= Math.max(...players.map((x) => x.equity)) ? '#c9a24a' : '#44474f') : TEAM_COLOR[p.team], team: p.team, me: p.isMe, out: p.out }));
     useScene.getState().set({ shot: phase, slots });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, live, pricesReady, seats.length]);

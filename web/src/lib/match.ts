@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatUnits } from 'viem';
-import { REAL_TRADING, MARGIN, MARKETS, Mode, MatchState, equityOf, shortAddr, type MarketSymbol, type Pos } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MARKETS, Mode, MatchState, characterOf, equityOf, shortAddr, type CharacterId, type MarketSymbol, type Pos } from '@longshort/shared';
 import { arena, publicClient } from './clients';
 import { api } from './api';
 import { onChainEvent, useSocket, lastPx } from './socket';
@@ -11,6 +11,7 @@ export interface PlayerView {
   addr: string;
   name: string;
   bot: boolean;
+  character: CharacterId;
   team: number;
   leverage: number;
   out: boolean;
@@ -80,7 +81,7 @@ export function useMatch(id: number): MatchView {
   const me = useWallet((s) => s.address?.toLowerCase());
   const ticks = useSocket((s) => s.prices);
   const [raw, setRaw] = useState<{ m: any; ps: readonly any[] } | null>(null);
-  const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean }>; match?: any; players?: any[]; trades?: TradeRow[]; accounts?:MatchView['accounts'];fills?:MatchView['fills'] }>({ names: {} });
+  const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean; character?: string | null }>; match?: any; players?: any[]; trades?: TradeRow[]; accounts?:MatchView['accounts'];fills?:MatchView['fills'] }>({ names: {} });
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const seen = useRef(new Set<string>());
   const nameRef = useRef(meta.names);
@@ -97,7 +98,7 @@ export function useMatch(id: number): MatchView {
   const loadMeta = useCallback(async () => {
     const r = await api<any>(`/match/${id}`).catch(() => null);
     if (!r?.players) return;
-    const names = Object.fromEntries(r.players.map((p: any) => [p.addr, { name: p.name, bot: p.bot }]));
+    const names = Object.fromEntries(r.players.map((p: any) => [p.addr, { name: p.name, bot: p.bot, character: p.character }]));
     setMeta({ names, match: r.match, players: r.players, trades: r.trades, accounts:r.accounts, fills:r.fills });
     // seed the feed from indexed trades once
     const items: FeedItem[] = [];
@@ -152,6 +153,7 @@ export function useMatch(id: number): MatchView {
         addr,
         name: n?.name ?? shortAddr(addr),
         bot: !!n?.bot,
+        character: characterOf(addr, n?.character),
         team: Number(p.team),
         leverage: Number(p.leverage),
         out: p.out,

@@ -1,11 +1,10 @@
 'use client';
-import { Suspense, useRef } from 'react';
+import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { CLASSES, classOf, type ClassId } from '@longshort/shared';
+import { CHARACTER_INFO, characterOf } from '@longshort/shared';
 import type { Slot } from '@/lib/scene';
-import { FOOT_H, useCast, type CastClip } from './cast';
 
 /** Stable DOM host for nameplates (set by Stage). drei otherwise re-targets on event-system changes and remounts every root. */
 export const nameplateHost: { current: HTMLElement } = { current: null as unknown as HTMLElement };
@@ -58,20 +57,14 @@ function holo(color: string, power = 1) {
   return holoCache.get(k)!;
 }
 
-/** The class character on its foothold, playing the clip that fits the slot. */
-function Figure({ cls, color, clip }: { cls: ClassId; color: string; clip: CastClip }) {
-  const scene = useCast(cls, color, clip);
-  return <primitive object={scene} position={[0, FOOT_H, 0]} />;
-}
-
-/** A player in the lobby: their class character on its foothold, ringed in their colour. Open seats stay holograms. */
-export function Avatar({ slot, position, rotationY = 0, showName, scale = 1 }: { slot: Slot; position: [number, number, number]; rotationY?: number; showName: boolean; scale?: number }) {
+/** A seat in the lobby: the floor ring in the player's colour and their nameplate (the character itself lives in
+ * CastLayer, so it can rise in and sink away). Open seats show the waiting hologram. */
+export function Avatar({ slot, position, showName, scale = 1 }: { slot: Slot; position: [number, number, number]; showName: boolean; scale?: number }) {
   const ring = useRef<THREE.Mesh>(null);
   const ghost = useRef<THREE.Group>(null);
   const color = slot.out ? '#44474f' : slot.color;
   const trim = useTrim(color);
-  const cls = slot.leverage ? classOf(slot.leverage) : 'scout';
-  const clip: CastClip = slot.out ? 'out' : (slot.lead ?? 0) >= 1 ? 'win' : 'idle';
+  const id = slot.character ?? characterOf(slot.name);
 
   useFrame(({ clock }, dt) => {
     if (ring.current) ring.current.rotation.z += dt * (slot.me ? 1.4 : 0.6);
@@ -104,13 +97,7 @@ export function Avatar({ slot, position, rotationY = 0, showName, scale = 1 }: {
             </mesh>
           </group>
         </>
-      ) : (
-        <group rotation={[0, rotationY, 0]} scale={scale}>
-          <Suspense fallback={null}>
-            <Figure key={cls} cls={cls} color={color} clip={clip} />
-          </Suspense>
-        </group>
-      )}
+      ) : null}
       {/* floor ring in the player's colour; your own seat gets the turning arc */}
       <mesh material={trim} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.9 * scale, 0.93 * scale, 64]} />
@@ -131,7 +118,7 @@ export function Avatar({ slot, position, rotationY = 0, showName, scale = 1 }: {
               <b>{slot.name}</b>
               {slot.leverage ? (
                 <i>
-                  {CLASSES[cls].name} · {slot.leverage}x
+                  {CHARACTER_INFO[id].name} · {slot.leverage}x
                 </i>
               ) : null}
             </>

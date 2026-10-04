@@ -4,18 +4,18 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import type { ClassId } from '@longshort/shared';
+import type { CharacterId } from '@longshort/shared';
 
 /*
- * The arena cast: one low-poly, rigged character per class (built in Blender from web/art/cast, exported to
- * /models/<class>.glb with its foothold). Faces carry one flat colour each (COLOR_0); the "Accent" faces take
- * the player's colour. Clips: idle, win, out.
+ * The arena cast: low-poly, rigged characters (built in Blender from web/art/cast, exported to
+ * /models/<id>.glb with a foothold and, for the lounge pose, props). Faces carry one flat colour each
+ * (COLOR_0); the "Accent" faces take the player's colour. Clips: idle, win, out, lounge.
  */
 
-export const CAST_URL = (cls: ClassId) => `/models/${cls}.glb`;
+export const CAST_URL = (id: CharacterId) => `/models/${id}.glb`;
 /** Footholds are modelled below the feet (top at 0); lift a cast copy by this much to stand it on the floor. */
 export const FOOT_H = 0.3;
-export type CastClip = 'idle' | 'win' | 'out';
+export type CastClip = 'idle' | 'win' | 'out' | 'lounge';
 
 const body = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.82, metalness: 0 });
 const glow = new THREE.MeshBasicMaterial({ color: '#ffcf7a', toneMapped: false });
@@ -25,20 +25,33 @@ function accent(color: string) {
   return accents.get(color)!;
 }
 
-/** A private copy of a class's character + foothold, with its materials set for this player's colour. */
-export function useCast(cls: ClassId, color: string, clipName: CastClip = 'idle', speed = 1, at?: number) {
-  const gltf = useGLTF(CAST_URL(cls));
+/** A private copy of a character + foothold, with its materials set for this player's colour.
+ * Props only show in the lounge pose; `base: false` drops the foothold (landing stills). */
+export function useCast(id: CharacterId, color: string, clipName: CastClip = 'idle', speed = 1, at?: number, base = true) {
+  const gltf = useGLTF(CAST_URL(id));
   const scene = useMemo(() => {
     const s = cloneSkinned(gltf.scene) as THREE.Group;
     s.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       m.frustumCulled = false; // skinned bounds don't follow the pose
-      const mats = (Array.isArray(m.material) ? m.material : [m.material]).map((mat) => (mat.name.startsWith('Accent') ? accent(color) : mat.name.startsWith('Glow') ? glow : body));
-      m.material = Array.isArray(m.material) ? mats : mats[0];
+      if (m.name.includes('Prop')) m.userData.prop = true;
+      if (m.name.includes('Base')) m.userData.base = true;
+      m.userData.mats = (Array.isArray(m.material) ? m.material : [m.material]).map((mat) => mat.name);
     });
     return s;
-  }, [gltf.scene, color]);
+  }, [gltf.scene]);
+  // colour and visibility change in place: a new leverage colour must not re-clone (and restart) the figure
+  useEffect(() => {
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mats = (m.userData.mats as string[]).map((n) => (n.startsWith('Accent') ? accent(color) : n.startsWith('Glow') ? glow : body));
+      m.material = mats.length > 1 ? mats : mats[0];
+      if (m.userData.base) m.visible = base;
+      if (m.userData.prop) m.visible = clipName === 'lounge';
+    });
+  }, [scene, color, base, clipName]);
 
   const mixer = useMemo(() => new THREE.AnimationMixer(scene), [scene]);
   const current = useRef<THREE.AnimationAction | null>(null);
@@ -67,4 +80,4 @@ export function useCast(cls: ClassId, color: string, clipName: CastClip = 'idle'
   return scene;
 }
 
-export const preloadCast = () => (['tank', 'scout', 'sniper'] as ClassId[]).forEach((c) => useGLTF.preload(CAST_URL(c)));
+export const preloadCast = (ids: CharacterId[]) => ids.forEach((c) => useGLTF.preload(CAST_URL(c)));

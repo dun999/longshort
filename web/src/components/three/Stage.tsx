@@ -6,7 +6,7 @@ import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { useScene, prefersReducedMotion, type Shot, type Slot } from '@/lib/scene';
 import { Avatar, nameplateHost } from './Avatar';
-import { preloadCast } from './cast';
+import { CastLayer, type Seat } from './CastLayer';
 import { Jumbotron } from './Jumbotron';
 import { Arena } from './Arena';
 import { Stage2D } from '../Stage2D';
@@ -117,12 +117,15 @@ function Pedestals() {
   const places = useMemo(() => layout(slots, tall), [slots, tall]);
   const show = ['lobby', 'select'].includes(shot); // searching and results list the names in their own UI
   const scale = castScale(slots.length);
+  const seats = useMemo<Seat[]>(() => places.map((p) => ({ pos: p.pos, rot: p.rot, scale })), [places, scale]);
   // Fixed pool of 8, never unmounted: drei <Html> nameplates race React 19's root unmount otherwise.
   return (
     <group>
+      {/* entrances (rising out of the floor) play in the lobby and search shots */}
+      <CastLayer slots={slots} seats={seats} animate={shot === 'lobby' || shot === 'queue'} />
       {Array.from({ length: 8 }, (_, i) => (
         <group key={i} visible={i < slots.length}>
-          <Avatar slot={slots[i] ?? HIDDEN} position={places[i]?.pos ?? [0, -50, 0]} rotationY={places[i]?.rot ?? 0} showName={show && i < slots.length} scale={scale} />
+          <Avatar slot={slots[i] ?? HIDDEN} position={places[i]?.pos ?? [0, -50, 0]} showName={show && i < slots.length} scale={scale} />
         </group>
       ))}
     </group>
@@ -188,8 +191,6 @@ const hasWebGL = () => {
     return false;
   }
 };
-
-preloadCast();
 
 export default function Stage() {
   const [gl] = useState(hasWebGL);

@@ -1,4 +1,4 @@
-"""Tank — the Bulwark: a hoplite shield-bearer. Barrel chest in a bronze cuirass, Corinthian helmet with a
+"""Gladiator: a hoplite shield-bearer. Barrel chest in a bronze cuirass, Corinthian helmet with a
 crest, a great round shield on the left arm (crest and shield face take the player's colour), short sword
 low in the right hand, leather pteruges, bronze greaves, wide planted stance."""
 import math
@@ -20,7 +20,7 @@ C = dict(
 
 
 def build():
-    k = Kit('TankBody')
+    k = Kit('GladiatorBody')
     tw = torso_weights(J)
 
     # ── legs: bare thighs under the skirt, bronze greaves, heavy boots ──
@@ -90,27 +90,27 @@ def build():
     palmR = dR.cross(sword).normalized()
     hand(k, J['wristR'], dR, palmR, C['leather_dk'], 'HandR', size=1.32)
     cR = V(J['wristR']) + dR * 0.06
-    k.add(*k.loft([(cR - sword * 0.075, 0.022, 0.022), (cR + sword * 0.075, 0.02, 0.02)], n=6, sq=2), C['leather_dk'], 'HandR')
-    k.add(*k.box(cR - sword * 0.09, (0.04, 0.04, 0.035), chamfer=0.01, M=frame(sword, palmR)), C['bronze_hi'], 'HandR')
+    k.add(*k.loft([(cR - sword * 0.075, 0.022, 0.022), (cR + sword * 0.075, 0.02, 0.02)], n=6, sq=2), C['leather_dk'], 'Sword')
+    k.add(*k.box(cR - sword * 0.09, (0.04, 0.04, 0.035), chamfer=0.01, M=frame(sword, palmR)), C['bronze_hi'], 'Sword')
     g = cR + sword * 0.085
     side = palmR.cross(sword).normalized()
-    k.add(*k.box(g, (0.17, 0.035, 0.03), chamfer=0.008, M=basis(side, sword.cross(side), sword)), C['bronze'], 'HandR')
+    k.add(*k.box(g, (0.17, 0.035, 0.03), chamfer=0.008, M=basis(side, sword.cross(side), sword)), C['bronze'], 'Sword')
     blade = [(g + sword * 0.02, 0.04, 0.009), (g + sword * 0.22, 0.056, 0.01), (g + sword * 0.4, 0.04, 0.009), (g + sword * 0.5, 0.003, 0.003)]
-    k.add(*k.loft(blade, n=4, sq=2, side=side), C['steel'], 'HandR')
+    k.add(*k.loft(blade, n=4, sq=2, side=side), C['steel'], 'Sword')
 
     # ── shield on the left forearm (face = player colour) ──
     n = V((0.32, -1, 0.05)).normalized()
     sc = V(J['elbowL']).lerp(V(J['wristL']), 0.5) + n * 0.09 + V((0.02, 0, -0.01))
     M = frame(n, Z)
-    k.add(*k.disc(sc, 0.44, 0.05, n=16, M=M), C['bronze'], 'ForeArmL', jitter=0.002)
-    k.add(*k.dome(sc + n * 0.02, 0.405, 0.405, 0.07, n=16, rings=3, M=M), '#ffffff', 'ForeArmL', mat='Accent', jitter=0.003)
-    k.add(*k.dome(sc + n * 0.075, 0.2, 0.2, 0.035, n=16, rings=2, M=M), C['bronze_dk'], 'ForeArmL')
-    k.add(*k.dome(sc + n * 0.095, 0.17, 0.17, 0.04, n=16, rings=2, M=M), '#ffffff', 'ForeArmL', mat='Accent')
-    k.add(*k.dome(sc + n * 0.115, 0.07, 0.07, 0.06, n=10, rings=3, M=M), C['bronze_hi'], 'ForeArmL')
+    k.add(*k.disc(sc, 0.44, 0.05, n=16, M=M), C['bronze'], 'Shield', jitter=0.002)
+    k.add(*k.dome(sc + n * 0.02, 0.405, 0.405, 0.07, n=16, rings=3, M=M), '#ffffff', 'Shield', mat='Accent', jitter=0.003)
+    k.add(*k.dome(sc + n * 0.075, 0.2, 0.2, 0.035, n=16, rings=2, M=M), C['bronze_dk'], 'Shield')
+    k.add(*k.dome(sc + n * 0.095, 0.17, 0.17, 0.04, n=16, rings=2, M=M), '#ffffff', 'Shield', mat='Accent')
+    k.add(*k.dome(sc + n * 0.115, 0.07, 0.07, 0.06, n=10, rings=3, M=M), C['bronze_hi'], 'Shield')
     for i in range(12):
         a = 2 * math.pi * i / 12
         p = sc + (M.col[0].xyz * math.cos(a) + M.col[1].xyz * math.sin(a)) * 0.415 + n * 0.035
-        k.add(*k.box(p, (0.025, 0.025, 0.02), chamfer=0.006, M=M), C['bronze_hi'], 'ForeArmL')
+        k.add(*k.box(p, (0.025, 0.025, 0.02), chamfer=0.006, M=M), C['bronze_hi'], 'Shield')
 
     # ── head: beard below a Corinthian helmet with a crest ──
     k.add(*k.loft([(V((0, -0.11, 1.55)), 0.075, 0.03), (V((0, -0.125, 1.6)), 0.1, 0.035), (V((0, -0.118, 1.66)), 0.105, 0.03)], n=6, sq=3, side=X), C['beard'], 'Head', jitter=0.006)
@@ -130,6 +130,12 @@ def build():
     k.add(*k.loft(crest, n=6, sq=2.2, side=X), '#ffffff', 'Head', mat='Accent', jitter=0.004)
     k.add(*k.loft([(V((0, 0.17, 1.96)), 0.02, 0.06), (V((0, 0.24, 1.8)), 0.018, 0.05), (V((0, 0.25, 1.62)), 0.008, 0.03)], n=6, sq=2.2, side=X), '#ffffff', 'Head', mat='Accent', jitter=0.004)
 
-    arm = rig('Tank', J)
+    # the sword and shield ride their own bones (children of the hand and forearm), so a pose can set them down
+    arm = rig('Gladiator', J, extra=[('Sword', cR, cR + sword * 0.3, 'HandR'), ('Shield', sc, sc + n * 0.3, 'ForeArmL')])
     body = k.build(arm)
-    return arm, body
+    # the rock he sits on in the lounge pose (shown only with that clip)
+    r = Kit('GladiatorProp')
+    r.add(*r.box((0.0, 0.16, 0.2), (0.62, 0.5, 0.42), chamfer=0.07, taper=(0.86, 0.82)), '#7b766e', 'Prop', jitter=0.018, seed=3)
+    r.add(*r.box((0.05, 0.14, 0.44), (0.46, 0.38, 0.08), chamfer=0.03), '#8e897f', 'Prop', jitter=0.01, seed=4)
+    r.add(*r.box((-0.34, 0.02, 0.06), (0.16, 0.14, 0.12), chamfer=0.03), '#68645d', 'Prop', jitter=0.01, seed=5)
+    return arm, body, [r.build()]

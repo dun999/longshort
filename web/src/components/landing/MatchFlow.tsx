@@ -56,7 +56,7 @@ function Payout() {
 
 const STEPS = [
   { n: '01', t: 'Queue', d: REAL_TRADING ? 'Sign in with Mera, claim AUSD, pick Duel, Squad or Royale, then fund your seat: entry plus a separate 100 AUSD Perpl account.' : 'Pick a mode and stake. Matchmaking fills the lobby in seconds; a labelled bot takes any seat still empty after 12s.', v: <Radar /> },
-  { n: '02', t: 'Face-off', d: REAL_TRADING ? 'Meet your rivals: equal AUSD balances, BTC only, at 5x, 10x or 15x (in a Squad, the leader picks). Then a short countdown.' : 'Match found. Lock your class (Tank 10x, Scout 25x, Sniper 50x), see who you drew, then the countdown.', v: <FaceOff /> },
+  { n: '02', t: 'Face-off', d: REAL_TRADING ? 'Meet your rivals: equal AUSD balances, BTC only, at 5x, 10x or 15x (in a Squad, the leader picks). Then a short countdown.' : 'Match found. Lock your leverage (10x, 25x or 50x), see who you drew, then the countdown.', v: <FaceOff /> },
   { n: '03', t: 'Fight', d: 'Long, short, close, repeat. Round controls use your scoped signing session without extra passkey prompts. Each confirmed trade has a Monad receipt.', v: <Candles /> },
   { n: '04', t: 'Payout', d: REAL_TRADING ? 'Positions close on Perpl at the bell and the contract pays the pot: the Duel winner, the winning Squad, or the Royale top three. Your remaining trading capital comes back to you.' : 'At the bell ArenaCore closes every position at the oracle mark and pays the winners from the pot.', v: <Payout /> },
 ];

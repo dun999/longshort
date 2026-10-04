@@ -2,7 +2,7 @@
 /* Dev-only QA harness: renders each match phase with sample players (no chain, no stake). 404 in production. */
 import { notFound, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { REAL_TRADING, MARGIN, MODES, Mode, MatchState, MARKETS, payouts, type MarketSymbol } from '@longshort/shared';
+import { REAL_TRADING, MARGIN, MODES, Mode, MatchState, MARKETS, characterOf, payouts, type MarketSymbol } from '@longshort/shared';
 import type { MatchView, PlayerView } from '@/lib/match';
 import { useScene, type Shot } from '@/lib/scene';
 import { ClassSelect, MatchFound, Result, VsScreen, Waiting } from '@/components/match/Phases';
@@ -17,7 +17,7 @@ function sample(mode: Mode, filled: number): MatchView {
   // a Squad side shares its leader's leverage
   const players: PlayerView[] = Array.from({ length: Math.min(filled, max) }, (_, i) => {
     const equity = MARGIN + (i % 2 ? -1 : 1) * (12 + i * 7.3);
-    return { addr: ADDRS[i], name: NAMES[i], bot: NAMES[i].startsWith('bot'), team: mode === Mode.ROYALE ? 0 : i % 2, leverage: REAL_TRADING ? (mode === Mode.SQUAD ? [10, 5][i % 2] : [5, 10, 15][i % 3]) : [25, 10, 50][i % 3], out: false, outRank: 0, realized: 0, pos: null, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
+    return { addr: ADDRS[i], name: NAMES[i], bot: NAMES[i].startsWith('bot'), character: characterOf(ADDRS[i]), team: mode === Mode.ROYALE ? 0 : i % 2, leverage: REAL_TRADING ? (mode === Mode.SQUAD ? [10, 5][i % 2] : [5, 10, 15][i % 3]) : [25, 10, 50][i % 3], out: false, outRank: 0, realized: 0, pos: null, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
   });
   const sorted = [...players].sort((a, b) => b.equity - a.equity);
   return {

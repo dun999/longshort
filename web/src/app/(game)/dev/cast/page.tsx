@@ -1,15 +1,16 @@
 'use client';
 /* Dev-only character turntable: the class cast on their footholds in a neutral studio. 404 in production.
- * ?c=tank,scout,sniper  ?clip=idle|win|out  ?az=deg  ?accent=%23hex  ?bg=dark|none  ?zoom=1
- * ?portrait=1 frames one figure for a 3:4 still; ?at=seconds holds that frame of the clip (used by the card renders). */
+ * ?c=gladiator,sniper,…  ?base=0 (no foothold)  ?clip=idle|win|out|lounge  ?az=deg  ?accent=%23hex  ?bg=dark|none  ?zoom=1
+ * ?portrait=1 frames one figure for a 3:4 still; ?bust=<head height> frames head and shoulders; ?at=seconds holds that frame of the clip (used by the card renders).
+ * window.__castAt(seconds) moves the held frame without a reload (stills.cjs steps through the lounge loops with it). */
 import { notFound, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import type { ClassId } from '@longshort/shared';
+import { CHARACTERS, type CharacterId } from '@longshort/shared';
 import { FOOT_H, useCast, type CastClip } from '@/components/three/cast';
 
-function Figure({ cls, x, clip, color, at }: { cls: ClassId; x: number; clip: CastClip; color: string; at?: number }) {
-  const scene = useCast(cls, color, clip, 1, at);
+function Figure({ id, x, clip, color, at, base }: { id: CharacterId; x: number; clip: CastClip; color: string; at?: number; base: boolean }) {
+  const scene = useCast(id, color, clip, 1, at, base);
   useEffect(() => {
     scene.traverse((o) => {
       o.castShadow = true;
@@ -19,29 +20,42 @@ function Figure({ cls, x, clip, color, at }: { cls: ClassId; x: number; clip: Ca
   return <primitive object={scene} position={[x, FOOT_H, 0]} />;
 }
 
-function Rig({ az, n, zoom, portrait }: { az: number; n: number; zoom: number; portrait: boolean }) {
+function Rig({ az, n, zoom, portrait, bust }: { az: number; n: number; zoom: number; portrait: boolean; bust?: number }) {
   const camera = useThree((s) => s.camera);
   useEffect(() => {
-    const r = portrait ? 7.4 / zoom : (3.4 + n * 1.5) / zoom;
     const a = (az * Math.PI) / 180;
-    camera.position.set(Math.sin(a) * r, portrait ? 1.55 : 1.4 + 0.35 / zoom, Math.cos(a) * r);
-    camera.lookAt(0, portrait ? 1.2 : 1.15, 0);
+    if (bust !== undefined) {
+      // head-and-shoulders for avatars: bust = the head's height above the feet
+      const y = bust + FOOT_H;
+      camera.position.set(Math.sin(a) * 1.55, y + 0.1, Math.cos(a) * 1.55);
+      camera.lookAt(0, y - 0.08, 0);
+    } else {
+      const r = portrait ? 7.4 / zoom : (3.4 + n * 1.5) / zoom;
+      camera.position.set(Math.sin(a) * r, portrait ? 1.55 : 1.4 + 0.35 / zoom, Math.cos(a) * r);
+      camera.lookAt(0, portrait ? 1.2 : 1.15, 0);
+    }
     (window as unknown as { __castReady?: boolean }).__castReady = true;
-  }, [camera, az, n, zoom, portrait]);
+  }, [camera, az, n, zoom, portrait, bust]);
   return null;
 }
 
 function Studio() {
   const q = useSearchParams();
-  const list = (q.get('c') ?? 'tank,scout,sniper').split(',') as ClassId[];
+  const list = (q.get('c') ?? CHARACTERS.join(',')).split(',') as CharacterId[];
+  const base = q.get('base') !== '0';
   const clip = (q.get('clip') ?? 'idle') as CastClip;
   const az = Number(q.get('az') ?? 0);
   const zoom = Number(q.get('zoom') ?? 1);
   const color = q.get('accent') ?? '#7c5cff';
   const none = q.get('bg') === 'none';
   const dark = q.get('bg') === 'dark' || none;
-  const portrait = q.get('portrait') === '1';
-  const at = q.get('at') === null ? undefined : Number(q.get('at'));
+  const bust = q.get('bust') === null ? undefined : Number(q.get('bust'));
+  const portrait = q.get('portrait') === '1' || bust !== undefined;
+  const [held, setHeld] = useState<number>();
+  const at = held ?? (q.get('at') === null ? undefined : Number(q.get('at')));
+  useEffect(() => {
+    (window as unknown as { __castAt?: (t: number) => void }).__castAt = setHeld;
+  }, []);
   const gap = 1.9;
   return (
     <div className="fixed inset-0 z-[100]" style={{ background: none ? 'transparent' : dark ? '#0c0d10' : '#e7e5e0' }}>
@@ -64,7 +78,7 @@ function Studio() {
         />
         <Suspense fallback={null}>
           {list.map((c, i) => (
-            <Figure key={c + i} cls={c} x={(i - (list.length - 1) / 2) * gap} clip={clip} color={color} at={at} />
+            <Figure key={c + i} id={c} x={(i - (list.length - 1) / 2) * gap} clip={clip} color={color} at={at} base={base} />
           ))}
         </Suspense>
         {!none && (
@@ -73,7 +87,7 @@ function Studio() {
             <shadowMaterial opacity={dark ? 0.5 : 0.18} />
           </mesh>
         )}
-        <Rig az={az} n={list.length} zoom={zoom} portrait={portrait} />
+        <Rig az={az} n={list.length} zoom={zoom} portrait={portrait} bust={bust} />
       </Canvas>
     </div>
   );
