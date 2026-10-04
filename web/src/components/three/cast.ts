@@ -5,6 +5,7 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterId } from '@longshort/shared';
+import { asset } from '@/lib/asset';
 
 /*
  * The arena cast: low-poly, rigged characters (built in Blender from web/art/cast, exported to
@@ -12,7 +13,7 @@ import type { CharacterId } from '@longshort/shared';
  * (COLOR_0); the "Accent" faces take the player's colour. Clips: idle, cheer (a victory dance), sulk (defeat), lounge.
  */
 
-export const CAST_URL = (id: CharacterId) => `/models/${id}.glb`;
+export const CAST_URL = (id: CharacterId) => asset(`/models/${id}.glb`);
 /** Footholds are modelled below the feet (top at 0); lift a cast copy by this much to stand it on the floor. */
 export const FOOT_H = 0.3;
 export type CastClip = 'idle' | 'cheer' | 'sulk' | 'lounge';

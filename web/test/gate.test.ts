@@ -14,6 +14,7 @@ process.env.GATE_PASSWORD = 'gate-test-access-code';
 process.env.GATE_SESSION_SECRET = 'test-signing-secret-'.repeat(4);
 process.env.GATE_ORIGIN = 'https://longshort.fun';
 process.env.GATE_TRUST_PROXY = '1';
+process.env.NEXT_PUBLIC_ASSET_HASHES = JSON.stringify({ '/models/sniper.glb': 'a1b2c3d4e5f6' }); // set by next.config.ts in builds
 
 const protectedPaths = ['/', '/play', '/play?party=abc', '/practice', '/leaderboard', '/stats', '/profile/0x123', '/match/12', '/match/12/report', '/dev/cast', '/s/test', '/s/test/card', '/gatekeeper', '/gate/private', '/report.png', '/models/sniper.glb', '/cast/sniper.webp'];
 const cookie = `${GATE_COOKIE}=${createGateSession(gateConfig())}`;
@@ -45,6 +46,17 @@ test('all pages, including shares, apparent asset suffixes and gate-like paths, 
     }
     assert.equal(middleware(new NextRequest(url, { headers: { cookie } })).headers.get('x-middleware-next'), '1', path);
   }
+});
+
+test('only a valid session asking for current content-hashed media may cache it, and only privately', () => {
+  const cache = (path: string, headers: Record<string, string> = { cookie }) => middleware(new NextRequest(`https://longshort.fun${path}`, { headers })).headers.get('cache-control')!;
+  assert.equal(cache('/models/sniper.glb?v=a1b2c3d4e5f6'), 'private, max-age=31536000, immutable');
+  for (const path of ['/models/sniper.glb', '/models/sniper.glb?v=000000000000', '/models/sniper.glb?v=', '/cast/sniper.webp?v=a1b2c3d4e5f6', '/play?v=a1b2c3d4e5f6']) {
+    assert.match(cache(path), /no-store/, path);
+  }
+  const denied = middleware(new NextRequest('https://longshort.fun/models/sniper.glb?v=a1b2c3d4e5f6'));
+  assert.equal(denied.status, 307);
+  assert.match(denied.headers.get('cache-control')!, /no-store/);
 });
 
 test('only the gate and explicit framework/branding files are public; data requests get errors', () => {

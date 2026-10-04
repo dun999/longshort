@@ -19,6 +19,7 @@ import { ConnectDialog } from '../ConnectDialog';
 import { Guide, guideSeen } from './Guide';
 import { PlayerSearch } from '../PlayerSearch';
 import { useDialog } from '@/lib/useDialog';
+import { asset } from '@/lib/asset';
 
 type LobbyMode = Mode | 'practice';
 const MODE_LIST: LobbyMode[] = [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
@@ -523,7 +524,7 @@ function CharacterCard({ me }: { me?: string }) {
         {CHARACTERS.map((id) => (
           <button key={id} role="radio" aria-checked={id === current} aria-label={CHARACTER_INFO[id].name} title={CHARACTER_INFO[id].name} className={`char-tile ${id === current ? 'on' : ''}`} onMouseEnter={sfx.hover} onClick={() => (sfx.click(), pick(id))}>
             {/* eslint-disable-next-line @next/next/no-img-element -- 15 KB static avatar, no optimisation needed */}
-            <img src={`/cast/${id}.webp`} alt="" width={96} height={96} draggable={false} />
+            <img src={asset(`/cast/${id}.webp`)} alt="" width={96} height={96} draggable={false} />
           </button>
         ))}
       </div>

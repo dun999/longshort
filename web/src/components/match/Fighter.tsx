@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CharacterId } from '@longshort/shared';
 import RESULT from '@/assets/cast/result.json';
+import { asset } from '@/lib/asset';
 
 /**
  * A player's character on a result card: the victory dance, the defeat, or standing at rest, as transparent
@@ -14,7 +15,7 @@ export type FighterPose = 'cheer' | 'sulk' | 'idle';
 
 export function Fighter({ id, pose, flip }: { id: CharacterId; pose: FighterPose; flip?: boolean }) {
   const r = RESULT[id];
-  const src = `/cast/result/${id}-${pose}.webp`;
+  const src = asset(`/cast/result/${id}-${pose}.webp`);
   // fades in once decoded (a pose change swaps the image, so readiness is per source)
   const [loaded, setLoaded] = useState<string>();
   const ready = loaded === src;
@@ -28,7 +29,7 @@ export function Fighter({ id, pose, flip }: { id: CharacterId; pose: FighterPose
       className={`fighter ${flip ? 'flip' : ''} ${ready ? 'ready' : ''}`}
       style={{ ['--w' as string]: r.w, ['--h' as string]: r.h, ['--fx' as string]: flip ? 1 - r.x : r.x, ['--fy' as string]: r.y }}
     >
-      {pose !== 'idle' && <source srcSet={`/cast/result/${id}-${pose}-still.webp`} media="(prefers-reduced-motion: reduce)" />}
+      {pose !== 'idle' && <source srcSet={asset(`/cast/result/${id}-${pose}-still.webp`)} media="(prefers-reduced-motion: reduce)" />}
       <img
         key={src}
         ref={img}

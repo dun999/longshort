@@ -15,6 +15,7 @@ import { HeroChart } from '@/components/landing/HeroChart';
 import { Tracks } from '@/components/landing/Tracks';
 import { MatchFlow } from '@/components/landing/MatchFlow';
 import LOUNGE from '@/assets/cast/lounge.json';
+import { asset } from '@/lib/asset';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
@@ -94,7 +95,6 @@ const FAQ = [
   ['How long does matchmaking take?', 'By default, matchmaking waits for human players. Enable Match with bots in Settings to let labelled sparring bots fill empty seats after about 12 seconds.'],
 ];
 
-/** The real BTC mark from Perpl (via the keeper feed), ticking green/red. Hidden until the feed has a price. */
 /**
  * The lounge loops are 130-240 KB each, and on phones native lazy loading fetches them with the page (its
  * head start reaches past this section). Show the small still until the figure is near, then the loop; the
@@ -102,15 +102,16 @@ const FAQ = [
  */
 function LoungeImg({ id, w, h }: { id: CharacterId; w: number; h: number }) {
   const ref = useRef<HTMLImageElement>(null);
-  const near = useInView(ref, { once: true, margin: '600px 0px' });
+  const near = useInView(ref, { once: true, margin: '200px' });
   return (
     <picture>
-      <source srcSet={`/cast/lounge/${id}.webp`} media="(prefers-reduced-motion: reduce)" />
-      <img ref={ref} src={`/cast/lounge/${id}${near ? '-loop' : ''}.webp`} alt={`${CHARACTER_INFO[id].name}: ${CHARACTER_INFO[id].line}`} width={w} height={h} loading="lazy" decoding="async" draggable={false} />
+      <source srcSet={asset(`/cast/lounge/${id}.webp`)} media="(prefers-reduced-motion: reduce)" />
+      <img ref={ref} src={asset(`/cast/lounge/${id}${near ? '-loop' : ''}.webp`)} alt={`${CHARACTER_INFO[id].name}: ${CHARACTER_INFO[id].line}`} width={w} height={h} loading="lazy" decoding="async" draggable={false} />
     </picture>
   );
 }
 
+/** The real BTC mark from Perpl (via the keeper feed), ticking green/red. Hidden until the feed has a price. */
 function MarkTag() {
   const px = useSocket((s) => s.prices.BTC.at(-1)?.px);
   const prev = useRef<number | undefined>(undefined);
@@ -255,7 +256,7 @@ export default function Landing() {
                       {side.map((c, j) => (
                         <span key={j} className={`lp-av ${c.dim ? 'dim' : ''}`} style={c.ring ? { ['--ring' as string]: c.ring } : undefined}>
                           {/* eslint-disable-next-line @next/next/no-img-element -- 15 KB static avatar */}
-                          <img src={`/cast/${c.id}.webp`} alt="" width={96} height={96} loading="lazy" draggable={false} style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
+                          <img src={asset(`/cast/${c.id}.webp`)} alt="" width={96} height={96} loading="lazy" draggable={false} style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
                         </span>
                       ))}
                     </div>

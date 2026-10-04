@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { pathToFileURL } from 'node:url';
@@ -24,7 +24,7 @@ export async function checkGate(base, password, { services = true } = {}) {
   const origin = new URL(base).origin;
   const request = (path, options = {}) => fetch(new URL(path, origin), { redirect: 'manual', signal: AbortSignal.timeout(10_000), ...options });
   const privateResponse = (res) => assert.match(res.headers.get('cache-control') ?? '', /no-store/, 'Protected response was cacheable');
-  for (const path of ['/', '/play', '/practice', '/stats', '/match/1/report', '/s/gate-check', '/s/gate-check/card']) {
+  for (const path of ['/', '/play', '/practice', '/stats', '/match/1/report', '/s/gate-check', '/s/gate-check/card', '/models/gladiator.glb?v=000000000000', '/cast/gladiator.webp']) {
     for (const headers of [{}, { rsc: '1', 'next-router-prefetch': '1' }, { cookie: 'ls_gate=%' }, { 'x-middleware-subrequest': 'src/middleware:src/middleware:src/middleware:src/middleware:src/middleware' }]) {
       const res = await request(path, { headers });
       assert.ok([307, 401].includes(res.status), `Unauthenticated ${path} returned ${res.status}`);
@@ -53,6 +53,23 @@ export async function checkGate(base, password, { services = true } = {}) {
   for (const path of ['/', '/play', '/practice', ...(services ? ['/api/gate', '/api/stats'] : [])]) {
     const res = await request(path, { headers: { cookie } });
     assert.equal(res.status, 200, `Valid session rejected by ${path}`);
+    privateResponse(res);
+    await res.body?.cancel();
+  }
+  // Media: a valid session may cache only the current content-hashed URL, and only privately (web/src/lib/asset.ts).
+  const media = '/cast/gladiator.webp';
+  const plain = await request(media, { headers: { cookie } });
+  assert.equal(plain.status, 200, `Valid session rejected by ${media}`);
+  privateResponse(plain);
+  const v = createHash('sha256').update(Buffer.from(await plain.arrayBuffer())).digest('hex').slice(0, 12);
+  const versioned = await request(`${media}?v=${v}`, { headers: { cookie } });
+  const cache = versioned.headers.get('cache-control') ?? '';
+  assert.equal(versioned.status, 200, `Valid session rejected by ${media}?v=`);
+  assert.ok(/\bprivate\b/.test(cache) && /max-age=\d{4,}/.test(cache) && !/public|no-store/.test(cache), 'Versioned media must be cacheable privately only');
+  await versioned.body?.cancel();
+  for (const [path, headers] of [[`${media}?v=000000000000`, { cookie }], [`${media}?v=${v}`, {}]]) {
+    const res = await request(path, { headers });
+    assert.ok(headers.cookie ? res.status === 200 : [307, 401].includes(res.status), `${path} returned ${res.status}`);
     privateResponse(res);
     await res.body?.cancel();
   }
