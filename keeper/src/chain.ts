@@ -43,7 +43,7 @@ export const GAS = {
   cancel: 300_000n,
   approve: 70_000n,
   transfer: 70_000n,
-  oracleSet: 60_000n,
+  oracleSet: 90_000n, // local MockOracle: the first write to a market fills two empty slots (~68k)
 } as const;
 
 /** Estimate + 20% buffer (falls back to the table above). Cached per key when `cache` is set. */

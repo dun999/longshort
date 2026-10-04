@@ -38,7 +38,8 @@ async function confirm(row: Submitted): Promise<Hex> {
   if (!receipt) {
     if (!row.raw) throw new Error(`Transaction pending: ${row.hash}`);
     await pub.sendRawTransaction({serializedTransaction:row.raw}).catch(async(error)=>{
-      if (!/already known|nonce too low/i.test((error as Error).message) && !await pub.getTransactionReceipt({hash:row.hash}).catch(()=>undefined)) throw new Error(`Transaction pending: ${row.hash}`);
+      // A rebroadcast of a transaction already in the pool is fine: Monad and geth say "already known", anvil "already imported"
+      if (!/already known|already imported|nonce too low/i.test((error as Error).message) && !await pub.getTransactionReceipt({hash:row.hash}).catch(()=>undefined)) throw new Error(`Transaction pending: ${row.hash}`);
     });
     receipt = await pub.waitForTransactionReceipt({hash:row.hash,timeout:60_000});
   }

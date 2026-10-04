@@ -158,6 +158,29 @@ The full disclosure is on the site's Rules & Risks page.
 
 ## Verify and run locally
 
+The local stack is a self-contained sandbox: anvil, test USD, virtual margin at 10x/25x/50x and a mock oracle the keeper fills with live Perpl BTC prices. It needs no keys and no testnet funds. longshort.fun runs the real-Perpl profile on Monad testnet. Requirements: Node 22+, npm and [Foundry](https://getfoundry.sh).
+
+```bash
+git clone https://github.com/dun999/longshort && cd longshort
+npm install
+(cd contracts && forge install --no-git foundry-rs/forge-std@v1.16.2 OpenZeppelin/openzeppelin-contracts@v5.7.0)
+npm run use:local                          # local address profile
+npm run dev:chain                          # terminal 1: anvil on :8545
+npm run contracts:build && npm run deploy:local
+cp keeper/.env.example keeper/.env         # anvil keys, access gate open
+cp web/.env.example web/.env.local
+npm run keeper                             # terminal 2: API on :8787
+npm run web                                # terminal 3: http://localhost:3000
+```
+
+Open `http://localhost:3000/play`, choose **Sign in → Quick guest** (funded with 200 tUSD), switch on **Settings → Match with bots** in the account menu, then press **Play**. A labelled bot takes the empty seat after 12 seconds; the keeper funds its bots during its first minute or two (log line `bots funded & approved`).
+
+- `use:local` and `deploy:local` rewrite `packages/shared/src/addresses.json`; `git checkout packages/shared/src/addresses.json` restores the live profile.
+- After restarting anvil, run `deploy:local` again and delete `keeper/longshort.db`.
+- Match reports and history read the Envio indexer (`indexer/`); without it those pages stay empty and the game itself still works.
+
+Tests:
+
 ```bash
 npm -w keeper test        # 51 tests: matchmaking, relay, claims, recovery, access gate
 npm -w web test           # 28 tests: Mera keys, live accounts, journal, Envio reports, access gate
@@ -166,19 +189,7 @@ npm -w keeper run typecheck
 node_modules/.bin/tsc --noEmit -p web/tsconfig.json
 ```
 
-Local development uses Node 22+, npm and Foundry, with a local chain and the virtual-margin profile:
-
-```bash
-npm install
-npm run use:local
-npm run dev:chain          # terminal 1
-npm run contracts:build && npm run deploy:local
-cp keeper/.env.example keeper/.env
-npm run keeper             # terminal 2, http://localhost:8787
-npm run web                # terminal 3, http://localhost:3000
-```
-
-The example environment files set `GATE_DEV_BYPASS=1`, which opens the access gate locally and is ignored in production. The live deployment is recorded in [addresses.json](packages/shared/src/addresses.json). Secrets and signing keys stay in ignored environment files.
+The live deployment is recorded in [addresses.json](packages/shared/src/addresses.json). Secrets and signing keys stay in ignored environment files.
 
 | Path | What it holds |
 | --- | --- |
