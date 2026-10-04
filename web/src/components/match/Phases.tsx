@@ -14,6 +14,7 @@ import { practiceCode, rankedCode, shareText, type CardData } from '@/lib/shareL
 import { ShareIcon, ShareSheet } from './ShareSheet';
 import { useLang, useT } from '@/lib/i18n';
 import { TradingCapital } from './TradingCapital';
+import { Fighter, type FighterPose } from './Fighter';
 
 const fadeUp = { initial: { opacity: 0, y: 24 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -24 } };
 const EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -437,6 +438,8 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
   const lost = result?.result === 'loss';
   const delay = 0.3 + i * 0.08 + side * 0.12;
   const out = s.out ?? (p.out ? 'liquidated' : null);
+  // the character dances for a winner and hangs its head for a loser (or anyone knocked out before the bell)
+  const pose: FighterPose = won ? 'cheer' : lost || out ? 'sulk' : 'idle';
   const strip: [string, React.ReactNode, string?][] = [
     [t('rs.trades'), s.opens],
     [t('rs.winRate'), s.closes ? `${Math.round((s.wins / s.closes) * 100)}%` : '–'],
@@ -450,68 +453,77 @@ function ResultCard({ p, s, award, rank, result, color, side, i, compact, span }
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.55, ease: EASE }}
     >
-      <div className="rs-card-head">
+      {/* the right-hand side's characters are mirrored so the two sides face each other */}
+      <div className="rs-stage">
         <span className="rs-rank">{rank}</span>
-        <PlayerMark addr={p.addr} size={compact ? 30 : 42} />
-        <div className="rs-identity min-w-0">
-          <div className="rs-name">
-            <span className="truncate">{p.name}</span>
-            {p.isMe && <span className="rs-tag me">{t('hud.you')}</span>}
-            {p.bot && <span className="rs-tag">Bot</span>}
-          </div>
-          <div className="rs-class" style={{ color: CLASS_COLOR[p.leverage] }}>
-            {CHARACTER_INFO[p.character].name} · {p.leverage}x
-          </div>
-        </div>
-        {(won || compact) && <div className="rs-summary">
-        {won && (
-          <span className="rs-badge">
-            {t('rs.winner')}{result && result.payout > 0 && <b className="num">+{result.payout.toFixed(2)} {STAKE}</b>}
-          </span>
-        )}
-        {compact && (
-          <div className="rs-card-eq">
-            <b className={`num ${toneOf(roi)}`}>{signedPct(roi)}</b>
-            <span className="num">{fmtUsd(equity)}</span>
-          </div>
-        )}
-        </div>}
+        <Fighter id={p.character} pose={pose} flip={side === 1} />
       </div>
-
-      {!compact && (
-        <>
-          <div className="rs-hero">
-            <div className="rs-label">{t('rs.return')}</div>
-            <div className={`rs-roi num ${toneOf(roi)}`}>
-              <CountUp to={roi} suffix="%" sign delay={delay + 0.2} />
+      <div className="rs-card-body">
+        <div className="rs-card-head">
+          <div className="rs-identity min-w-0">
+            <div className="rs-name">
+              <span className="truncate">{p.name}</span>
+              {p.isMe && <span className="rs-tag me">{t('hud.you')}</span>}
+              {p.bot && <span className="rs-tag">Bot</span>}
             </div>
-            <div className="rs-eqline num">
-              {fmtUsd(equity)} {t('rs.equity')} · <span className={toneOf(pnl)}>{fmtUsd(pnl, true)}</span>
+            <div className="rs-class" style={{ color: CLASS_COLOR[p.leverage] }}>
+              {CHARACTER_INFO[p.character].name} · {p.leverage}x
             </div>
           </div>
-          <EquitySpark s={s} start={span[0]} end={span[1]} color={won ? '#ffc857' : color} delay={delay + 0.25} />
-        </>
-      )}
-
-      <div className="rs-strip">
-        {strip.map(([k, v, cls]) => (
-          <div key={k}>
-            <span>{k}</span>
-            <b className={`num ${cls ?? ''}`}>{v}</b>
-          </div>
-        ))}
-      </div>
-
-      {(award || out) && (
-        <div className="rs-foot">
-          {award && (
-            <span className="rs-award">
-              <i>★</i> {award.k} <em>{award.v}</em>
+          {(won || compact) && <div className="rs-summary">
+          {won && (
+            <span className="rs-badge">
+              {t('rs.winner')}{result && result.payout > 0 && <b className="num">+{result.payout.toFixed(2)} {STAKE}</b>}
             </span>
           )}
-          {out && <span className="rs-out">{t(out === 'eliminated' ? 'rs.eliminated' : 'rs.liquidated')}</span>}
+          {compact && (
+            <div className="rs-card-eq">
+              <b className={`num ${toneOf(roi)}`}>{signedPct(roi)}</b>
+              <span className="num">{fmtUsd(equity)}</span>
+            </div>
+          )}
+          </div>}
         </div>
-      )}
+
+        {!compact && (
+          <>
+            <div className="rs-hero">
+              <div className="rs-label">{t('rs.return')}</div>
+              <div className={`rs-roi num ${toneOf(roi)}`}>
+                <CountUp to={roi} suffix="%" sign delay={delay + 0.2} />
+              </div>
+              <div className="rs-eqline num">
+                <span>
+                  {fmtUsd(equity)} {t('rs.equity')}
+                </span>
+                <i> · </i>
+                <span className={toneOf(pnl)}>{fmtUsd(pnl, true)}</span>
+              </div>
+            </div>
+            <EquitySpark s={s} start={span[0]} end={span[1]} color={won ? '#ffc857' : color} delay={delay + 0.25} />
+          </>
+        )}
+
+        <div className="rs-strip">
+          {strip.map(([k, v, cls]) => (
+            <div key={k}>
+              <span>{k}</span>
+              <b className={`num ${cls ?? ''}`}>{v}</b>
+            </div>
+          ))}
+        </div>
+
+        {(award || out) && (
+          <div className="rs-foot">
+            {award && (
+              <span className="rs-award">
+                <i>★</i> {award.k} <em>{award.v}</em>
+              </span>
+            )}
+            {out && <span className="rs-out">{t(out === 'eliminated' ? 'rs.eliminated' : 'rs.liquidated')}</span>}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

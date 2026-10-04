@@ -65,7 +65,7 @@ function SquadBoard({ m }: { m: MatchView }) {
   const lead = teams[0].pnl === teams[1].pnl ? -1 : teams[0].pnl > teams[1].pnl ? 0 : 1;
   return (
     <div className="grid gap-2.5">
-      <PanelHeader title={T('hud.scoreboard')} sub={T('hud.teamPnl')} hint="Squad is 3v3. Each team's PnL is the sum of its players'. The team ahead at the bell splits the pot." />
+      <PanelHeader title={T('hud.scoreboard')} sub={T('hud.teamPnl')} hint="Squad is 2v2. Each team's PnL is the sum of its players'. The team ahead at the bell splits the pot." />
       {teams.map(({ t, ps, pnl }) => (
         <div key={t} className="grid gap-1.5">
           <div className="flex items-center justify-between border-b-2 pb-1" style={{ borderColor: TEAM_COLOR[t] }}>

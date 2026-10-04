@@ -62,7 +62,7 @@ export function CastLayer({ slots, seats, animate }: { slots: Slot[]; seats: Sea
 function Figure({ slot, seat, rise, leaving, onGone }: { slot: Slot; seat: Seat; rise: boolean; leaving: boolean; onGone: () => void }) {
   const id = slot.character ?? characterOf(slot.name);
   const color = slot.out ? '#44474f' : slot.color;
-  const clip: CastClip = slot.out ? 'out' : (slot.lead ?? 0) >= 1 ? 'win' : 'idle';
+  const clip: CastClip = slot.out ? 'sulk' : (slot.lead ?? 0) >= 1 ? 'cheer' : 'idle';
   const scene = useCast(id, color, clip);
   const group = useRef<THREE.Group>(null);
   const at = useRef<THREE.Vector3 | null>(null);

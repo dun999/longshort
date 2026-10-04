@@ -1,6 +1,6 @@
 'use client';
 /* Dev-only character turntable: the class cast on their footholds in a neutral studio. 404 in production.
- * ?c=gladiator,sniper,…  ?base=0 (no foothold)  ?clip=idle|win|out|lounge  ?az=deg  ?accent=%23hex  ?bg=dark|none  ?zoom=1
+ * ?c=gladiator,sniper,…  ?base=0 (no foothold)  ?clip=idle|cheer|sulk|lounge  ?az=deg  ?accent=%23hex  ?bg=dark|none  ?zoom=1
  * ?portrait=1 frames one figure for a 3:4 still; ?bust=<head height> frames head and shoulders; ?at=seconds holds that frame of the clip (used by the card renders).
  * window.__castAt(seconds) moves the held frame without a reload (stills.cjs steps through the lounge loops with it). */
 import { notFound, useSearchParams } from 'next/navigation';
@@ -16,6 +16,8 @@ function Figure({ id, x, clip, color, at, base }: { id: CharacterId; x: number; 
       o.castShadow = true;
       o.receiveShadow = true;
     });
+    // the model has loaded (the camera is placed before it, outside Suspense): stills can start
+    (window as unknown as { __castReady?: boolean }).__castReady = true;
   }, [scene]);
   return <primitive object={scene} position={[x, FOOT_H, 0]} />;
 }
@@ -34,7 +36,6 @@ function Rig({ az, n, zoom, portrait, bust }: { az: number; n: number; zoom: num
       camera.position.set(Math.sin(a) * r, portrait ? 1.55 : 1.4 + 0.35 / zoom, Math.cos(a) * r);
       camera.lookAt(0, portrait ? 1.2 : 1.15, 0);
     }
-    (window as unknown as { __castReady?: boolean }).__castReady = true;
   }, [camera, az, n, zoom, portrait, bust]);
   return null;
 }

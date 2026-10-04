@@ -9,13 +9,13 @@ import type { CharacterId } from '@longshort/shared';
 /*
  * The arena cast: low-poly, rigged characters (built in Blender from web/art/cast, exported to
  * /models/<id>.glb with a foothold and, for the lounge pose, props). Faces carry one flat colour each
- * (COLOR_0); the "Accent" faces take the player's colour. Clips: idle, win, out, lounge.
+ * (COLOR_0); the "Accent" faces take the player's colour. Clips: idle, cheer (a victory dance), sulk (defeat), lounge.
  */
 
 export const CAST_URL = (id: CharacterId) => `/models/${id}.glb`;
 /** Footholds are modelled below the feet (top at 0); lift a cast copy by this much to stand it on the floor. */
 export const FOOT_H = 0.3;
-export type CastClip = 'idle' | 'win' | 'out' | 'lounge';
+export type CastClip = 'idle' | 'cheer' | 'sulk' | 'lounge';
 
 const body = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.82, metalness: 0 });
 const glow = new THREE.MeshBasicMaterial({ color: '#ffcf7a', toneMapped: false });
