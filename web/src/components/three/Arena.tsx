@@ -5,10 +5,11 @@ import { MeshReflectorMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 import { useScene } from '@/lib/scene';
 import { LOGO_COLORS, LOGO_MARK, MARK_VIEWBOX } from '../brandPaths';
+import { Tribune } from './Tribune';
 
 /*
- * The arena: an octagonal glass stage ringed by chasing LEDs, tiered stands full of steady crowd
- * lights, four unlit light towers, and an overhead LED ring.
+ * The arena: an octagonal glass stage ringed by chasing LEDs, an empty octagonal tribune (Tribune.tsx),
+ * four unlit light towers, and an overhead LED ring.
  * Everything that glows is unlit/additive (no extra real lights, no shadow maps), so it stays cheap;
  * the scene's `intensity` (match energy) speeds up the chase and the sweep.
  */
@@ -224,77 +225,6 @@ function Chase() {
   );
 }
 
-// ─── stands + crowd ─────────────────────────────────────────────────────────
-const TIERS = Array.from({ length: 6 }, (_, k) => ({ r: 14 + k * 1.3, h: 0.6 + k * 0.85 }));
-
-function Stands() {
-  const geo = useMemo(() => {
-    const pts: THREE.Vector2[] = [new THREE.Vector2(13.4, -0.05)];
-    for (const t of TIERS) {
-      pts.push(new THREE.Vector2(t.r - 0.6, t.h));
-      pts.push(new THREE.Vector2(t.r + 0.7, t.h));
-    }
-    pts.push(new THREE.Vector2(TIERS.at(-1)!.r + 0.7, 0));
-    return new THREE.LatheGeometry(pts, 96);
-  }, []);
-  return (
-    <mesh geometry={geo}>
-      <meshStandardMaterial color="#121319" roughness={0.85} metalness={0.2} side={THREE.DoubleSide} />
-    </mesh>
-  );
-}
-
-const crowdVert = /* glsl */ `
-  attribute float aPhase;
-  attribute vec3 aColor;
-  varying vec3 vColor;
-  varying float vA;
-  void main() {
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vA = 0.2 + fract(aPhase * 7.1) * 0.12;
-    vColor = aColor;
-    gl_PointSize = 1.2 * (42.0 / -mv.z); // steady pin-points, not flashing orbs
-    gl_Position = projectionMatrix * mv;
-  }`;
-const crowdFrag = /* glsl */ `
-  varying vec3 vColor;
-  varying float vA;
-  void main() {
-    float d = length(gl_PointCoord - 0.5);
-    if (d > 0.5) discard;
-    gl_FragColor = vec4(vColor * (1.0 + vA), vA * (1.0 - d * 1.6));
-  }`;
-
-function Crowd() {
-  const geo = useMemo(() => {
-    const n = 1400;
-    const pos = new Float32Array(n * 3);
-    const col = new Float32Array(n * 3);
-    const ph = new Float32Array(n);
-    // mostly warm phone-light whites; one accent, rarely
-    const palette = ['#ffe8c2', '#ffe8c2', '#ffe8c2', '#f4efe6', '#f4efe6', '#a9b8d4'].map((c) => new THREE.Color(c));
-    for (let i = 0; i < n; i++) {
-      const t = TIERS[(Math.random() * TIERS.length) | 0];
-      const a = Math.random() * Math.PI * 2;
-      const r = t.r + (Math.random() - 0.5) * 1.0;
-      pos.set([Math.cos(a) * r, t.h + 0.35 + Math.random() * 0.25, Math.sin(a) * r], i * 3);
-      const c = palette[(Math.random() * palette.length) | 0];
-      col.set([c.r, c.g, c.b], i * 3);
-      ph[i] = Math.random();
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-    g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
-    return g;
-  }, []);
-  return (
-    <points geometry={geo}>
-      <shaderMaterial vertexShader={crowdVert} fragmentShader={crowdFrag} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
-    </points>
-  );
-}
-
 // ─── light towers (lamps off: no beams) ─────────────────────────────────────
 function Towers() {
   const towers = useMemo(
@@ -372,8 +302,7 @@ export function Arena() {
     <group>
       <Floor />
       <Chase />
-      <Stands />
-      <Crowd />
+      <Tribune />
       <Towers />
       <Overhead />
       <Portal />
