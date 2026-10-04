@@ -1414,6 +1414,7 @@ body {
   white-space: nowrap;
 }
 .phead p {
+  min-width: 0;
   font-size: 10.5px;
   color: var(--dim);
   overflow: hidden;
@@ -2207,13 +2208,32 @@ button.notch-pill:hover {
     .lpf-step > :not(.lpf-vis) {
       grid-column: 2;
     }
+    /* flex, not grid: a grid column would grow to the unscaled vignette and push it off-centre and out of the box */
     .lpf-step .lpf-vis {
       grid-row: 1 / 4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       height: 104px;
       margin-bottom: 0;
     }
     .lpf-vis > * {
+      flex: none;
       scale: 0.56;
+    }
+    /* shorter entrances so the slide-in and the pop stay inside the small frame */
+    .lpf-vs .a {
+      --from: -26px;
+    }
+    .lpf-vs .b {
+      --from: 26px;
+    }
+    .lpf-vs b,
+    .lpf-pay {
+      --pop: 1.3;
+    }
+    .lpf-vis > .lpf-pay {
+      scale: 0.46;
     }
     .lpf-step .lp-h3 {
       margin-top: 0;
@@ -2365,7 +2385,7 @@ button.notch-pill:hover {
   @keyframes lpf-pop {
     0%,
     4% {
-      transform: scale(2);
+      transform: scale(var(--pop, 2));
       opacity: 0;
     }
     16%,
@@ -4259,9 +4279,9 @@ button.notch-pill:hover {
   .sb {
     flex-shrink: 0;
   }
+  /* detail follows the chart straight away (the bottom padding lets the last of it scroll clear of the dock) */
   .hud-left {
     overflow: visible;
-    margin-top: var(--dock, 0px);
   }
   .hud-right > .panel:last-child {
     max-height: 320px;

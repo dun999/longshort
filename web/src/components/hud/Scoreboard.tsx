@@ -47,7 +47,7 @@ function DuelBoard({ m }: { m: MatchView }) {
   const a = m.players.find((p) => p.team === 0);
   const b = m.players.find((p) => p.team === 1);
   return (
-    <div className="grid gap-1.5">
+    <div className="grid grid-cols-1 gap-1.5">
       <PanelHeader title={t('hud.players')} sub={t('hud.playersSub')} hint="Each player's class, open position and PnL. The bar at the top of the arena shows who's ahead." />
       {a && <PlayerRow p={a} />}
       <div className="font-display text-center text-xs tracking-[0.4em] text-dim">VS</div>
@@ -64,10 +64,10 @@ function SquadBoard({ m }: { m: MatchView }) {
   });
   const lead = teams[0].pnl === teams[1].pnl ? -1 : teams[0].pnl > teams[1].pnl ? 0 : 1;
   return (
-    <div className="grid gap-2.5">
+    <div className="grid grid-cols-1 gap-2.5">
       <PanelHeader title={T('hud.scoreboard')} sub={T('hud.teamPnl')} hint="Squad is 2v2. Each team's PnL is the sum of its players'. The team ahead at the bell splits the pot." />
       {teams.map(({ t, ps, pnl }) => (
-        <div key={t} className="grid gap-1.5">
+        <div key={t} className="grid grid-cols-1 gap-1.5">
           <div className="flex items-center justify-between border-b-2 pb-1" style={{ borderColor: TEAM_COLOR[t] }}>
             <span className="font-display text-sm font-bold tracking-[0.2em] uppercase" style={{ color: TEAM_COLOR[t] }}>
               {t === 0 ? 'Alpha' : 'Bravo'} {lead === t && <span className="text-[10px] text-gold">{T('hud.leading')}</span>}
@@ -93,7 +93,7 @@ function RoyaleBoard({ m, now }: { m: MatchView; now: number }) {
   const nextCut = m.round < rounds ? m.startAt + roundLen * (m.round + 1) : null;
   const cutting = nextCut && alive.length > 3;
   return (
-    <div className="grid gap-1">
+    <div className="grid grid-cols-1 gap-1">
       <div className="flex items-center justify-between">
         <PanelHeader title={t('hud.survivors', { a: alive.length, n: m.players.length })} hint="Ranked by equity. At every countdown the lowest survivor (NEXT CUT) is eliminated onchain. The last three standing are paid 60/30/10." />
         {cutting ? (
