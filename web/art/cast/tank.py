@@ -59,9 +59,17 @@ def build():
     k.add(*k.box((0, -0.186, 0.998), (0.07, 0.02, 0.06), chamfer=0.008), C['bronze_hi'], 'Hips')
     # cape from the shoulders, hanging behind the knees
     capew = spine_weights([(0.75, 'Hips'), (1.05, 'Spine'), (1.3, 'Spine1'), (1.5, 'Spine2')])
-    cape = [(V((0, 0.2, 1.52)), 0.2, 0.03), (V((0, 0.228, 1.38)), 0.3, 0.04), (V((0, 0.25, 1.05)), 0.33, 0.042), (V((0, 0.29, 0.66)), 0.36, 0.04)]
-    wave = lambda q: V((q.x, q.y + 0.025 * math.sin(q.x * 22), q.z + (0.05 * math.sin(q.x * 9 + 1) if q.z < 0.7 else 0)))
-    k.add(*k.loft(cape, n=10, sq=3.2), C['cape'], 'Spine2', weights=capew, jitter=0.008, deform=wave)
+    cape = [(V((0, 0.2, 1.53)), 0.19, 0.03), (V((0, 0.228, 1.4)), 0.3, 0.035), (V((0, 0.25, 1.1)), 0.33, 0.035), (V((0, 0.3, 0.64)), 0.38, 0.035)]
+
+    def drape(q):
+        """Folds that deepen toward the hem, a hem that flares back and dips unevenly."""
+        drop = max(0.0, 1.5 - q.z) / 0.86
+        y = q.y + (0.012 + 0.045 * drop) * math.sin(q.x * 17) + 0.03 * drop * drop
+        z = q.z + (0.045 * math.sin(q.x * 8 + 1) if q.z < 0.7 else 0)
+        return V((q.x, y, z))
+    k.add(*k.loft(cape, n=28, sq=3.4), C['cape'], 'Spine2', weights=capew, jitter=0.006, deform=drape)
+    for x in (0.2, -0.2):
+        k.add(*k.disc((x, -0.02, 1.52), 0.045, 0.02, n=8, M=frame(V((x * 2, -1, 0.6)), Z)), C['bronze_hi'], 'Spine2')
     # neck
     limb(k, (0, 0.0, 1.5), (0, -0.01, 1.64), (0.085, 0.08), (0.08, 0.078), C['skin'], 'Neck', n=8)
 

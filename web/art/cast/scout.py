@@ -86,7 +86,7 @@ def build():
     for x, ln in ((0.035, 0.36), (-0.04, 0.28)):
         k.add(*k.loft([(V((x, 0.13, 1.54)), 0.045, 0.012), (V((x * 1.4, 0.215, 1.4)), 0.042, 0.012), (V((x * 1.9, 0.225, 1.54 - ln)), 0.03, 0.01)], n=4, sq=2, side=X), '#ffffff', 'Spine2', mat='Accent', jitter=0.004)
     # hood: an open-fronted shell with a dark lining, the face set back inside it, peaked at the back
-    hood = [((0, -0.152, 1.69), 0.15, 0.176), ((0, -0.06, 1.7), 0.164, 0.192), ((0, 0.07, 1.705), 0.156, 0.186), ((0, 0.16, 1.75), 0.11, 0.14), ((0, 0.25, 1.83), 0.04, 0.05)]
+    hood = [((0, -0.152, 1.69), 0.15, 0.176), ((0, -0.06, 1.7), 0.164, 0.192), ((0, 0.07, 1.705), 0.156, 0.186), ((0, 0.15, 1.77), 0.11, 0.14), ((0, 0.2, 1.9), 0.04, 0.05)]
     k.add(*k.loft([(V(c), rx, rz) for c, rx, rz in hood], n=12, sq=2.4, side=X, cap=(False, True), dome=(0, 0.03)), C['cloak'], 'Head', jitter=0.004)
     k.add(*k.loft([(V(c), rx * 0.9, rz * 0.9) for c, rx, rz in hood[:4]], n=12, sq=2.4, side=X, cap=(False, True)), C['cloak_in'], 'Head', flip=True)
     k.add(*k.loft([(V((0, -0.152, 1.69)), 0.152, 0.178), (V((0, -0.168, 1.69)), 0.142, 0.168)], n=12, sq=2.4, side=X, cap=(False, False)), C['cloak'], 'Head')

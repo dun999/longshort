@@ -24,16 +24,31 @@ const SHOTS: Record<Shot, { pos: [number, number, number]; target: [number, numb
   backdrop: { pos: [0, 7, 15], target: [0, 1.5, 0], orbit: 0.025 },
 };
 
+/** Shots that frame the cast on their footholds: on tall screens the camera backs off until every seat fits. */
+const CAST_SHOTS: Shot[] = ['lobby', 'queue', 'select', 'result'];
+const FOV = 40;
+
 function CameraRig() {
   const ref = useRef<CameraControls>(null);
   const shot = useScene((s) => s.shot);
+  // re-frame when the formation changes (seats added or teams formed), not on every lead/out update
+  const formation = useScene((s) => `${s.slots.length}|${s.slots.filter((x) => x.team === 1).length}`);
   const aspect = useThree((s) => s.size.width / s.size.height);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     const base = SHOTS[shot];
     // tall (phone) screens: dolly back along the shot so the same cast stays in frame
-    const k = aspect < 1 ? Math.min(2.1, (1 / aspect) ** 0.8) : 1;
+    let k = aspect < 1 ? Math.min(2.1, (1 / aspect) ** 0.8) : 1;
+    if (aspect < 1 && CAST_SHOTS.includes(shot)) {
+      const slots = useScene.getState().slots;
+      const r = 0.95 * castScale(slots.length);
+      const tanH = Math.tan((FOV * Math.PI) / 360) * aspect;
+      // a seat at (x, z) fits once the camera is |x| / tanH away from its plane; seats further back need less
+      const need = Math.max(0, ...layout(slots, true).map((p) => (Math.abs(p.pos[0]) + r) / tanH + p.pos[2])) * 1.06;
+      const dist = Math.hypot(...base.pos.map((v, i) => v - base.target[i]));
+      k = Math.max(k, Math.min(3, need / dist));
+    }
     const s = { ...base, pos: base.pos.map((v, i) => base.target[i] + (v - base.target[i]) * k) as [number, number, number] };
     const instant = prefersReducedMotion();
     // idle orbits accumulate azimuth (possibly several full turns); without normalizing,
@@ -47,7 +62,7 @@ function CameraRig() {
     c.maxDistance = 11 * k;
     c.minPolarAngle = 0.6;
     c.maxPolarAngle = 1.52;
-  }, [shot, aspect]);
+  }, [shot, aspect, formation]);
   useFrame((_, dt) => {
     const o = SHOTS[useScene.getState().shot].orbit;
     if (o && ref.current && !prefersReducedMotion()) ref.current.rotate(dt * o, 0, false);
@@ -56,7 +71,12 @@ function CameraRig() {
 }
 
 // ─── Lobby pedestals ────────────────────────────────────────────────────────
-function layout(slots: Slot[]): { pos: [number, number, number]; rot: number }[] {
+/** A full Royale row: footholds would touch at full size. */
+const castScale = (n: number) => (n > 5 ? 0.86 : 1);
+
+/** Seat positions. Wide screens spread the cast in a shallow arc; tall screens keep it narrow: each team stacks
+ * back from the centre line, and more than three seats form two staggered rows. */
+function layout(slots: Slot[], tall: boolean): { pos: [number, number, number]; rot: number }[] {
   const teams = slots.some((s) => s.team === 1);
   if (teams) {
     const idx = [0, 0];
@@ -64,11 +84,23 @@ function layout(slots: Slot[]): { pos: [number, number, number]; rot: number }[]
       const t = s.team ?? 0;
       const i = idx[t]++;
       const side = t === 0 ? -1 : 1;
-      return { pos: [side * (1.9 + i * 2.1), 0, -i * 0.9], rot: -side * 0.45 };
+      return tall ? { pos: [side * (1.15 + i * 1.05), 0, -i * 1.8], rot: -side * 0.3 } : { pos: [side * (1.9 + i * 2.1), 0, -i * 0.9], rot: -side * 0.45 };
     });
   }
   const n = slots.length;
-  const gap = n > 5 ? 1.9 : 2.3;
+  if (tall && n > 3) {
+    const gap = 1.7;
+    const front = Math.ceil(n / 2);
+    const back = n - front;
+    const shift = front === back ? gap / 4 : 0; // equal rows interleave by sliding apart
+    return slots.map((_, i) => {
+      const row = i < front ? 0 : 1;
+      const j = row ? i - front : i;
+      const off = (j - ((row ? back : front) - 1) / 2) * gap + (row ? shift : -shift);
+      return { pos: [off, 0, -row * 2.1], rot: -off * 0.06 };
+    });
+  }
+  const gap = tall ? 1.6 : n > 5 ? 1.9 : 2.3;
   // put "me" in the middle
   return slots.map((_, i) => {
     const off = i - (n - 1) / 2;
@@ -81,9 +113,10 @@ const HIDDEN: Slot = { empty: true, color: '#000000' };
 function Pedestals() {
   const slots = useScene((s) => s.slots);
   const shot = useScene((s) => s.shot);
-  const places = useMemo(() => layout(slots), [slots]);
+  const tall = useThree((s) => s.size.width < s.size.height);
+  const places = useMemo(() => layout(slots, tall), [slots, tall]);
   const show = ['lobby', 'select'].includes(shot); // searching and results list the names in their own UI
-  const scale = slots.length > 5 ? 0.86 : 1; // a full Royale row: footholds would touch at full size
+  const scale = castScale(slots.length);
   // Fixed pool of 8, never unmounted: drei <Html> nameplates race React 19's root unmount otherwise.
   return (
     <group>
@@ -174,7 +207,7 @@ export default function Stage() {
       <Canvas
         dpr={[1, 1.6]}
         frameloop={off ? 'never' : 'always'}
-        camera={{ fov: 40, position: [0, 4, 25], near: 0.1, far: 200 }}
+        camera={{ fov: FOV, position: [0, 4, 25], near: 0.1, far: 200 }}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
         fallback={<div className="stage-fallback" />}
       >
