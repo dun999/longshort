@@ -130,4 +130,4 @@ The keeper accepts `RPC_BACKUP_URL` for ordered provider failover across reads, 
 
 Website releases use [scripts/deploy.sh](scripts/deploy.sh). It builds artifacts before activation, refuses to restart the keeper with active rounds, saves a consistent SQLite backup and previous code, and activates/health-checks the keeper before the web. `scripts/deploy.sh web` releases only the web bundle. Contract deployment commands create new onchain deployments; they are separate from a website release.
 
-The access gate is mandatory in production and blocks access when its configuration is missing. See [Access gate setup and checks](docs/ACCESS-GATE.md) for the shared server secrets, Caddy configuration and first deployment. Local development must explicitly set `GATE_DEV_BYPASS=1` in both web and keeper environments; the example environment files include it. This opt-out is ignored in production.
+The access gate is mandatory in production and blocks access when its configuration is missing. Local development must explicitly set `GATE_DEV_BYPASS=1` in both web and keeper environments; the example environment files include it. This opt-out is ignored in production.
