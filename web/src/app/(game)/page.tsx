@@ -18,10 +18,10 @@ import { MatchFlow } from '@/components/landing/MatchFlow';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
-const MODES: { key: 'duel' | 'squad' | 'royale'; n: string; name: string; meta: string; line: string }[] = [
-  { key: 'duel', n: '01', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. The bigger balance at the bell takes the pot.' },
-  { key: 'squad', n: '02', name: 'Squad', meta: '2v2 · 120s', line: 'Team up with a friend or a stranger. Your leader picks the leverage; the bigger team total splits the pot.' },
-  { key: 'royale', n: '03', name: 'Royale', meta: '8 players · 180s', line: 'The lowest balance is cut every 30 seconds. Outlast the field; the top three are paid 60/30/10.' },
+const MODES: { key: 'duel' | 'squad' | 'royale'; name: string; meta: string; line: string }[] = [
+  { key: 'duel', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. The bigger balance at the bell takes the pot.' },
+  { key: 'squad', name: 'Squad', meta: '2v2 · 120s', line: 'Team up with a friend. Your leader sets the leverage; the bigger team total splits the pot.' },
+  { key: 'royale', name: 'Royale', meta: '8 players · 180s', line: 'The lowest balance is cut every 30 seconds. The top three are paid 60/30/10.' },
 ];
 
 const FAQ = [
@@ -141,7 +141,7 @@ export default function Landing() {
             <p>Three formats, one rule: the best trader walks away with the pot. All live on BTC with real Perpl orders; warm up in free Practice first.</p>
           </div>
           <div className="lp-modes">
-            {MODES.map(({ key, n, name, meta, line }, i) => (
+            {MODES.map(({ key, name, meta, line }, i) => (
               <motion.button
                 key={key}
                 initial={{ opacity: 0, y: 30 }}
@@ -149,25 +149,24 @@ export default function Landing() {
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ delay: i * 0.08, duration: 0.6, ease: EASE }}
                 className="lp-mode"
+                aria-label={`Queue ${name}, ${meta}`}
                 onClick={() => play(`/play?mode=${key}`)}
                 onMouseEnter={sfx.hover}
               >
-                <div className="lp-mode-stage">
-                  <ModeViz mode={key} />
-                </div>
-                <div className="lp-mode-body">
-                  <div className="flex items-baseline justify-between">
-                    <span className="lp-mono">{n}</span>
+                <div className="lp-mode-head">
+                  <div>
                     <span className="lp-mono">{meta}</span>
+                    <h3 className="lp-mode-name">{name}</h3>
                   </div>
-                  <h3 className="lp-h3">{name}</h3>
-                  <p>{line}</p>
-                  <span className="lp-mode-go">
-                    Queue {name}
-                    <svg viewBox="0 0 24 24" aria-hidden>
+                  <span className="lp-mode-go" aria-hidden>
+                    <svg viewBox="0 0 24 24">
                       <path d="M5 12h13M13 6l6 6-6 6" />
                     </svg>
                   </span>
+                </div>
+                <p className="lp-mode-line">{line}</p>
+                <div className="lp-mode-stage">
+                  <ModeViz mode={key} />
                 </div>
               </motion.button>
             ))}

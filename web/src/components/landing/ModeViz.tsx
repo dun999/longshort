@@ -47,25 +47,24 @@ function Num({ v, sign = false, className }: { v: number; sign?: boolean; classN
 
 const tone = (d: number) => (d > 0.004 ? 'up' : d < -0.004 ? 'down' : '');
 
-/** Shared frame: label + match clock on top, the board, the caption, and the match timeline. */
-function Board({ label, t, total, marks = [], caption, loop, boardRef, children }: { label: string; t: number; total: number; marks?: number[]; caption: string; loop: number; boardRef: React.RefObject<HTMLDivElement | null>; children: ReactNode }) {
+/** Shared frame: the board, then the caption beside the match clock, then the match timeline. */
+function Board({ t, total, marks = [], caption, loop, boardRef, children }: { t: number; total: number; marks?: number[]; caption: string; loop: number; boardRef: React.RefObject<HTMLDivElement | null>; children: ReactNode }) {
   const done = total - t;
   return (
     <div ref={boardRef} className="mv">
-      <div className="mv-top">
-        <span>{label}</span>
-        <span className={`mv-clock ${t === 0 ? 'bell' : ''}`}>{t === 0 ? 'Bell' : clock(t)}</span>
-      </div>
       {/* a new loop remounts the board, so the round restarts clean instead of rewinding */}
       <motion.div key={loop} className="mv-body" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
         {children}
       </motion.div>
-      <div className="mv-cap" aria-hidden>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span key={caption} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.18, ease: EASE }}>
-            {caption}
-          </motion.span>
-        </AnimatePresence>
+      <div className="mv-foot">
+        <div className="mv-cap" aria-hidden>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span key={caption} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.18, ease: EASE }}>
+              {caption}
+            </motion.span>
+          </AnimatePresence>
+        </div>
+        <span className={`mv-clock ${t === 0 ? 'bell' : ''}`}>{t === 0 ? 'Bell' : clock(t)}</span>
       </div>
       <div className="mv-rail">
         <i style={{ transform: `scaleX(${done / total})` }} />
@@ -118,7 +117,7 @@ function Duel() {
     </div>
   );
   return (
-    <Board label="Balance · AUSD" t={f.t} total={MODES[Mode.DUEL].duration} caption={f.cap} loop={loop} boardRef={ref}>
+    <Board t={f.t} total={MODES[Mode.DUEL].duration} caption={f.cap} loop={loop} boardRef={ref}>
       <div className="mv-btc">
         BTC <b className={tone(f.btc)}>{f.btc > 0 ? '▲ +' : f.btc < 0 ? '▼ −' : ''}{Math.abs(f.btc).toFixed(2)}%</b>
       </div>
@@ -189,7 +188,7 @@ function Squad() {
     </div>
   );
   return (
-    <Board label="Team total · AUSD" t={f.t} total={MODES[Mode.SQUAD].duration} caption={f.cap} loop={loop} boardRef={ref}>
+    <Board t={f.t} total={MODES[Mode.SQUAD].duration} caption={f.cap} loop={loop} boardRef={ref}>
       <div className="mv-squad">
         {team(0, 'Alpha', ['You', 'Mate'])}
         {team(1, 'Bravo', ['P3', 'P4'])}
@@ -238,7 +237,7 @@ function Royale() {
   const order = [...alive, ...[...f.out].reverse()]; // latest cut sits just under the survivors
   const max = Math.max(...alive.map(bal));
   return (
-    <Board label="Standings · AUSD" t={f.t} total={R.duration} marks={Array.from({ length: R.maxPlayers - 3 }, (_, k) => (k + 1) * roundLen)} caption={f.cap} loop={loop} boardRef={ref}>
+    <Board t={f.t} total={R.duration} marks={Array.from({ length: R.maxPlayers - 3 }, (_, k) => (k + 1) * roundLen)} caption={f.cap} loop={loop} boardRef={ref}>
       <div className="mv-list">
         {order.map((id) => {
           const isOut = f.out.includes(id);

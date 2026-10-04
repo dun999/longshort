@@ -1808,75 +1808,120 @@ button.notch-pill:hover {
     }
   }
 
-  /* modes */
+  /* modes: one surface per card (format, name, go), one line of rules, then the replay board */
   .lp-modes {
     display: grid;
     gap: 12px;
   }
-  @media (min-width: 768px) {
+  @media (min-width: 1180px) {
     .lp-modes {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
   .lp-mode {
+    --pad: 18px;
     display: flex;
     flex-direction: column;
+    padding: var(--pad) var(--pad) 0;
     text-align: left;
     background: var(--ink-2);
     color: inherit;
     box-shadow: inset 0 0 0 1px var(--hair);
-    clip-path: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+    clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
     cursor: pointer;
     transition: box-shadow 0.2s;
+  }
+  @media (min-width: 768px) {
+    .lp-mode {
+      --pad: 20px;
+    }
   }
   .lp-mode:hover {
     box-shadow: inset 0 0 0 1px var(--violet);
   }
-  .lp-mode-stage {
-    position: relative;
-    aspect-ratio: 4 / 3;
-    overflow: hidden;
-    background: #0e0e12;
-  }
-  .lp-mode-body {
-    padding: 18px 20px 18px;
-    border-top: 1px solid var(--hair);
-  }
-  .lp-mode-body .lp-h3 {
-    font-size: clamp(2.3rem, 3.4vw, 3.1rem);
-    margin-top: 6px;
-  }
-  .lp-mode-body p {
-    margin-top: 8px;
-    font-size: 15px;
-    line-height: 1.55;
-    color: #a5a2ae;
-  }
-  .lp-mode-go {
+  .lp-mode-head {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid var(--hair);
-    font-family: var(--font-jet), monospace;
-    font-size: 12px;
-    letter-spacing: 0.16em;
+    gap: 12px;
+  }
+  .lp-mode-name {
+    margin-top: 4px;
+    font-family: var(--font-saira), sans-serif;
+    font-stretch: 62%;
+    font-style: italic;
+    font-weight: 800;
+    font-size: 40px;
+    line-height: 0.86;
     text-transform: uppercase;
   }
+  .lp-mode-go {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.07);
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    transition:
+      background 0.18s,
+      color 0.18s;
+  }
   .lp-mode-go svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2;
+    stroke-width: 2.4;
+    stroke-linecap: square;
     transition: transform 0.18s;
   }
   .lp-mode:hover .lp-mode-go {
+    background: var(--violet);
     color: #fff;
   }
   .lp-mode:hover .lp-mode-go svg {
-    transform: translateX(4px);
+    transform: translateX(2px);
+  }
+  .lp-mode-line {
+    margin-top: 10px;
+    min-height: 3em;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #a5a2ae;
+  }
+  .lp-mode-stage {
+    position: relative;
+    height: 226px;
+    margin: auto calc(-1 * var(--pad)) 0;
+    padding-top: 16px;
+  }
+  /* tablet: one wide row per mode, rules on the left and the board on the right */
+  @media (min-width: 768px) and (max-width: 1179px) {
+    .lp-mode {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      grid-template-rows: auto 1fr;
+      column-gap: 32px;
+    }
+    .lp-mode-line {
+      grid-column: 1;
+      max-width: 22rem;
+    }
+    .lp-mode-stage {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      height: 210px;
+      margin: 0 calc(-1 * var(--pad)) 0 0;
+      padding-top: 2px;
+    }
+    .lp-mode-stage .mv-body,
+    .lp-mode-stage .mv-foot {
+      padding-left: 0;
+    }
+    .lp-mode-stage .mv-lead {
+      left: -16px;
+    }
   }
 
   /* how a match plays: the light section, cut on both edges */
@@ -2060,27 +2105,25 @@ button.notch-pill:hover {
 
   /* mode card key art (ModeViz): a scripted replay board per mode */
   .mv {
-    position: absolute;
-    inset: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 9px;
-    padding: 14px 16px 14px;
     font-family: var(--font-jet), monospace;
     font-size: 11px;
     color: #c9c6cf;
   }
-  .mv-top {
+  .mv-foot {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--mute);
+    gap: 12px;
+    height: 40px;
+    padding-inline: var(--pad);
   }
   .mv-clock {
+    flex: none;
     min-width: 5ch;
-    padding: 3px 7px;
+    padding: 2px 6px;
     text-align: center;
     color: var(--bone);
     background: rgba(255, 255, 255, 0.06);
@@ -2099,15 +2142,13 @@ button.notch-pill:hover {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    padding-inline: var(--pad);
   }
   .mv-cap {
-    height: 18px;
-    line-height: 18px;
-    overflow: hidden;
+    min-width: 0;
     font-size: 12px;
+    line-height: 15px;
     color: var(--bone);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
   .mv-cap span {
     display: block;
@@ -2115,7 +2156,7 @@ button.notch-pill:hover {
   .mv-rail {
     position: relative;
     height: 3px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
   }
   .mv-rail i {
     position: absolute;
@@ -2126,9 +2167,9 @@ button.notch-pill:hover {
   }
   .mv-rail b {
     position: absolute;
-    top: -3px;
+    top: -5px;
     width: 2px;
-    height: 9px;
+    height: 8px;
     margin-left: -1px;
     background: rgba(255, 255, 255, 0.28);
     transition: background 0.2s;
@@ -2197,6 +2238,7 @@ button.notch-pill:hover {
 
   /* duel */
   .mv-btc {
+    padding-bottom: 2px;
     letter-spacing: 0.12em;
     color: var(--mute);
   }
@@ -2212,19 +2254,17 @@ button.notch-pill:hover {
     grid-template-columns: 50px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    padding: 0 12px 0 14px;
-    background: rgba(255, 255, 255, 0.035);
-    box-shadow: inset 0 0 0 1px var(--hair);
+    border-top: 1px solid var(--hair);
     transition: opacity 0.3s;
   }
+  /* the leader's edge marker sits on the card edge, outside the content column */
   .mv-lead {
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
+    left: calc(-1 * var(--pad));
+    top: 10px;
+    bottom: 10px;
     width: 3px;
     background: var(--violet);
-    box-shadow: 0 0 12px rgba(124, 92, 255, 0.7);
   }
   .mv-bal {
     display: grid;
@@ -2232,7 +2272,7 @@ button.notch-pill:hover {
     gap: 3px;
   }
   .mv-bal > span:first-child {
-    font-size: 30px;
+    font-size: 28px;
   }
   .mv-delta {
     font-size: 11px;
@@ -2244,18 +2284,16 @@ button.notch-pill:hover {
     flex: 1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px;
+    gap: 16px;
   }
   .mv-team {
     --team: #6f8fd0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 9px 10px 8px;
-    background: rgba(255, 255, 255, 0.035);
-    box-shadow:
-      inset 0 2px 0 var(--team),
-      inset 0 0 0 1px var(--hair);
+    gap: 4px;
+    padding-top: 8px;
+    border-top: 2px solid var(--team);
+    transition: opacity 0.3s;
   }
   .mv-team.t1 {
     --team: #cf8a52;
@@ -2288,10 +2326,10 @@ button.notch-pill:hover {
     align-items: baseline;
     justify-content: space-between;
     gap: 6px;
-    margin: 2px 0 4px;
+    margin: 2px 0 2px;
   }
   .mv-total > span:first-child {
-    font-size: 36px;
+    font-size: 32px;
   }
   .mv-total .mv-delta {
     font-family: var(--font-jet), monospace;
@@ -2304,8 +2342,8 @@ button.notch-pill:hover {
     align-items: center;
     gap: 6px;
     flex: 1;
-    min-height: 26px;
-    max-height: 44px;
+    min-height: 24px;
+    max-height: 36px;
     border-top: 1px solid var(--hair);
   }
   .mv-mate .mv-pos {
@@ -2326,15 +2364,14 @@ button.notch-pill:hover {
     flex: 1;
     display: grid;
     grid-auto-rows: minmax(0, 1fr);
-    gap: 2px;
+    gap: 1px;
   }
   .mv-row {
     display: grid;
     grid-template-columns: 12px 13px 30px minmax(0, 1fr) 52px;
     align-items: center;
     gap: 7px;
-    padding: 0 8px 0 6px;
-    background: rgba(255, 255, 255, 0.03);
+    padding: 0 6px;
     transition:
       background 0.2s,
       color 0.2s,
@@ -2358,6 +2395,9 @@ button.notch-pill:hover {
   .mv-row.me .mv-who,
   .mv-row.me .mv-num {
     color: #a993ff;
+  }
+  .mv-row.me {
+    background: rgba(124, 92, 255, 0.1);
   }
   .mv-row.me .mv-bar i {
     background: var(--violet);
@@ -2385,15 +2425,6 @@ button.notch-pill:hover {
   .mv-row .mv-num b {
     font-weight: 600;
     color: #ffc857;
-  }
-  @media (max-width: 520px) {
-    .lp-mode-stage {
-      aspect-ratio: 5 / 4;
-    }
-    .mv {
-      padding: 12px 12px 12px;
-      gap: 8px;
-    }
   }
   @keyframes lpf-spin {
     to {
