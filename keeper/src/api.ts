@@ -460,6 +460,12 @@ export function startApi() {
       clients.delete(c);
       broadcast({ t: 'presence', online: online() });
     });
+    // A bad frame (Caddy closes proxied sockets with an unmasked frame when it reloads; any client can send one)
+    // fails that socket only. Without a listener, ws re-throws it and takes the whole keeper down mid-round.
+    ws.on('error', (e) => {
+      log('api', `socket dropped: ${(e as NodeJS.ErrnoException).code ?? e.message}`);
+      ws.terminate();
+    });
   });
   onChainEvent((e) => {
     broadcast({ t: 'chain', e });
