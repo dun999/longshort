@@ -24,6 +24,8 @@ interface SceneState {
   outcome: 'win' | 'loss' | 'draw' | null;
   shakeAt: number;
   flash: string | null;
+  /** the band of the viewport (px from its top) that the page leaves open over the stage; null: all of it */
+  view: { top: number; bottom: number } | null;
   set: (p: Partial<Omit<SceneState, 'set' | 'shake'>>) => void;
   shake: (color?: string) => void;
 }
@@ -35,6 +37,7 @@ export const useScene = create<SceneState>((set) => ({
   outcome: null,
   shakeAt: 0,
   flash: null,
+  view: null,
   set: (p) => set(p),
   shake: (color = 'rgba(210,90,85,0.5)') => set({ shakeAt: performance.now(), flash: color }),
 }));

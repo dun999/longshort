@@ -152,11 +152,11 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
-            className="account-popover panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-72 gap-3 overflow-y-auto p-3"
+            className="account-popover panel scroll-thin absolute top-[calc(100%+8px)] right-0 z-50 grid max-h-[calc(100dvh-64px)] w-72 gap-2.5 overflow-y-auto p-3"
             style={{ background: 'var(--panel-solid)' }}
           >
             <div className="flex items-center gap-2.5">
-              <PlayerMark addr={address} size={40} />
+              <PlayerMark addr={address} size={34} />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 truncate font-semibold">
                   {name}
@@ -179,20 +179,20 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { 
                 <i style={{ width: `${pct}%` }} />
               </div>
             </div>
-            <div className={`num grid gap-2 text-center ${injected ? 'grid-cols-2' : ''}`}>
-              <div className="border border-line py-1.5">
-                <div className="text-[9px] tracking-wider text-dim uppercase">{t('acct.balance')}</div>
-                <div className="text-[13px]">
+            <div className="acct-figures num">
+              <div>
+                <span>{t('acct.balance')}</span>
+                <b>
                   {ready ? stake.toFixed(2) : '···'} <span className="text-dim">{STAKE}</span>
-                </div>
+                </b>
               </div>
               {/* passkey and guest accounts are topped up automatically; only a browser wallet manages its own gas */}
               {injected && (
-                <div className="border border-line py-1.5">
-                  <div className="text-[9px] tracking-wider text-dim uppercase">{t('acct.fees')}</div>
-                  <div className="text-[13px]">
+                <div>
+                  <span>{t('acct.fees')}</span>
+                  <b>
                     {gas.toFixed(3)} <span className="text-dim">MON</span>
-                  </div>
+                  </b>
                 </div>
               )}
             </div>
@@ -224,20 +224,20 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { 
                 )}
               </details>
             )}
-            <div className="grid gap-1 border-t border-line pt-2.5">
-              <Link href={`/profile/${address}`} className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>
+            <div className="acct-menu">
+              <Link href={`/profile/${address}`} className="acct-item" onClick={() => setOpen(false)}>
                 {t('acct.profile')}
               </Link>
-              <Link href="/demo" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Demo evidence</Link>
-              {REAL_TRADING && injected && <Link href="/recover" className="gbtn ghost sm w-full" onClick={() => setOpen(false)}>Account recovery</Link>}
+              <Link href="/demo" className="acct-item" onClick={() => setOpen(false)}>Demo evidence</Link>
+              {REAL_TRADING && injected && <Link href="/recover" className="acct-item" onClick={() => setOpen(false)}>Account recovery</Link>}
               {!injected && (
-                <button className="gbtn ghost sm w-full" onClick={() => (sfx.click(), setOpen(false), useWallet.setState({ depositOpen: true }))}>
+                <button className="acct-item" onClick={() => (sfx.click(), setOpen(false), useWallet.setState({ depositOpen: true }))}>
                   {t('acct.deposit', { stake: STAKE })}
                 </button>
               )}
               {guest && <GuestKey />}
               <button
-                className="gbtn ghost sm w-full"
+                className="acct-item"
                 onClick={() => {
                   if (REAL_TRADING) { useWallet.setState({claimOpen:true}); setOpen(false); router.push('/play'); return; }
                   setMsg(t('acct.sending'));
@@ -249,17 +249,17 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { 
               >
                 {t('acct.funds')}
               </button>
-              {/* phones already have Settings in the menu button; the wrapper keeps the unlayered .gbtn display from beating the utility */}
+              {/* phones already have Settings in the menu button; the wrapper keeps the unlayered .acct-item display from beating the utility */}
               <div className="max-lg:hidden">
-                <button className="gbtn ghost sm flex w-full items-center justify-center gap-2" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
-                  <SettingsIcon />
+                <button className="acct-item" onClick={() => (sfx.click(), setOpen(false), onSettings())}>
                   {t('set.title')}
+                  <SettingsIcon />
                 </button>
               </div>
-              <button className="w-full py-1.5 text-[11px] tracking-wider text-dim uppercase hover:text-red" onClick={() => (disconnect(), setOpen(false))}>
+              <button className="acct-item out" onClick={() => (disconnect(), setOpen(false))}>
                 {t(passkey ? 'acct.signOut' : guest ? 'acct.disconnectGuest' : 'acct.disconnectWallet')}
               </button>
-              {msg && <span className="text-center text-[11px] text-muted">{msg}</span>}
+              {msg && <span className="pt-1 text-center text-[11px] text-muted">{msg}</span>}
             </div>
           </motion.div>
         )}
@@ -276,12 +276,12 @@ function GuestKey() {
   const key = shown ? useWallet.getState().exportGuestKey() : undefined;
   if (!shown)
     return (
-      <button className="gbtn ghost sm w-full" onClick={() => (sfx.click(), setShown(true))}>
+      <button className="acct-item" onClick={() => (sfx.click(), setShown(true))}>
         {t('acct.exportKey')}
       </button>
     );
   return (
-    <div className="grid gap-2 border border-gold/40 p-2.5 text-[11px]">
+    <div className="mx-3 my-2.5 grid gap-2 border border-gold/40 p-2.5 text-[11px]">
       <p className="leading-relaxed text-gold">{t('acct.exportWarn')}</p>
       <code className="num block bg-black/40 p-2 text-[11px] break-all select-all">{key}</code>
       <div className="flex gap-2">
@@ -306,7 +306,7 @@ function MobileNav({ path, onSettings, onInvites, inviteCount }: { path: string;
         aria-label="Menu"
         aria-expanded={open}
         onClick={() => (sfx.click(), setOpen((o) => !o))}
-        className={`relative grid h-[44px] w-[44px] place-items-center border transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line'}`}
+        className={`menu-btn relative grid h-[44px] w-[44px] place-items-center border transition-colors ${open ? 'border-[var(--line-hi)] bg-[var(--panel-hi)]' : 'border-line'}`}
       >
         <svg viewBox="0 0 18 14" width="18" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
           {open ? <path d="M3 1l12 12M15 1L3 13" /> : <path d="M1 1h16M1 7h16M1 13h10" />}

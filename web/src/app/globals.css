@@ -479,10 +479,25 @@ body {
   .topbar-actions {
     gap: 8px;
   }
+  /* the bar's two buttons look compact; ::after keeps a 44px touch target */
+  .player-chip,
+  .topbar .menu-btn {
+    position: relative;
+    height: 36px;
+  }
   .player-chip {
-    height: 44px;
     max-width: 128px;
     gap: 6px;
+    padding: 0 7px;
+  }
+  .topbar .menu-btn {
+    width: 36px;
+  }
+  .player-chip::after,
+  .topbar .menu-btn::after {
+    content: '';
+    position: absolute;
+    inset: -5px -3px;
   }
   .player-chip .num {
     overflow: hidden;
@@ -495,13 +510,22 @@ body {
   .account-popover,
   .mobile-nav {
     position: fixed;
-    top: calc(var(--topbar-height) + 8px);
+    top: calc(var(--topbar-height) + 6px);
     right: max(12px, env(safe-area-inset-right));
-    left: max(12px, env(safe-area-inset-left));
-    width: auto;
-    max-width: 420px;
+    left: auto;
+    width: min(300px, calc(100vw - 24px));
     max-height: calc(100dvh - var(--topbar-height) - 24px - env(safe-area-inset-bottom));
-    margin-left: auto;
+  }
+  .mobile-nav {
+    width: min(232px, calc(100vw - 24px));
+  }
+  .mobile-nav .mnav-link {
+    min-height: 44px;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+  }
+  .acct-item {
+    min-height: 44px;
   }
   .connect-panel p,
   .st p,
@@ -4500,6 +4524,70 @@ button.notch-pill:hover {
   background: var(--accent);
 }
 
+/* account menu: figures as label/value rows, actions as a plain list (not a stack of bordered buttons) */
+.acct-figures {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.acct-figures > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0 0;
+}
+.acct-figures span:first-child {
+  font-family: var(--font-chakra);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.acct-figures b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.acct-menu {
+  display: grid;
+  margin: 0 -12px -12px;
+  border-top: 1px solid var(--line);
+}
+.acct-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  font-family: var(--font-chakra);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.acct-item:hover {
+  color: var(--text);
+  background: var(--panel-hi);
+}
+.acct-item + .acct-item,
+.acct-menu > * + * {
+  border-top: 1px solid var(--line);
+}
+.acct-item.out {
+  color: var(--dim);
+}
+.acct-item.out:hover {
+  color: var(--red);
+}
+
 /* touch screens: every control is a comfortable thumb target (~44px) */
 @media (pointer: coarse) {
   .seg > button {
@@ -5322,6 +5410,53 @@ button.notch-pill:hover {
   .lobby-footer > * {
     position: relative;
     z-index: 1;
+  }
+}
+.party-glyph {
+  display: none;
+}
+/* phones: the arena gets the middle of the screen. Mode and party share one row, the footer panels sit close
+   together, and How to play lives in the menu (Cancel still takes its place while queueing) */
+@media (max-width: 640px) {
+  .lobby-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .lobby-top > .lobby-social {
+    justify-content: stretch;
+  }
+  .lobby-party-btn {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 64px;
+    padding: 6px 8px;
+  }
+  .lobby-party-btn .phead,
+  .lobby-party-btn .party-online,
+  .lobby-party-btn .party-caret {
+    display: none;
+  }
+  .party-glyph {
+    display: block;
+    color: var(--text);
+  }
+  .lobby-party-btn .party-count {
+    margin: 0;
+    font-size: 10px;
+  }
+  .lobby-footer {
+    gap: 8px;
+    padding-top: 28px;
+  }
+  .lobby-left {
+    gap: 6px;
+  }
+  .lobby-cta {
+    gap: 6px;
+  }
+  .lobby .guide-link.howto {
+    display: none;
   }
 }
 

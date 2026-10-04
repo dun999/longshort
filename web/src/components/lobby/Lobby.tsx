@@ -276,6 +276,32 @@ export function Lobby() {
   const [guide, setGuide] = useState(false);
   const t = useT();
   useEffect(() => setLev(lastLeverage()), []);
+  // phones stack the panels over the stage: tell it which band they leave open, so the cast stands there
+  const topRef = useRef<HTMLDivElement>(null);
+  const footRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stacked = matchMedia('(max-width: 1023px), (max-height: 500px) and (max-width: 1100px)');
+    const measure = () => {
+      const top = topRef.current?.getBoundingClientRect().bottom;
+      const bottom = footRef.current?.getBoundingClientRect().top;
+      const view = stacked.matches && top !== undefined && bottom !== undefined && bottom - top > 80 ? { top: Math.round(top), bottom: Math.round(bottom) } : null;
+      const cur = useScene.getState().view;
+      if (view?.top !== cur?.top || view?.bottom !== cur?.bottom) useScene.getState().set({ view });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    for (const el of [topRef.current, footRef.current]) if (el) ro.observe(el);
+    stacked.addEventListener('change', measure);
+    addEventListener('resize', measure);
+    addEventListener('scroll', measure, { passive: true });
+    return () => {
+      ro.disconnect();
+      stacked.removeEventListener('change', measure);
+      removeEventListener('resize', measure);
+      removeEventListener('scroll', measure);
+      useScene.getState().set({ view: null });
+    };
+  }, []);
   // first visit: the how-to-play tour opens once the lobby has laid out; /play?guide=1 reopens it
   useEffect(() => {
     if (search.get('guide') === '1') return setGuide(true);
@@ -390,12 +416,12 @@ export function Lobby() {
   return (
     <div className="lobby pointer-events-none! relative">
       {/* desktop: corner panels; phone: stacked at the top (see .lobby-top) */}
-      <div className="lobby-top">
+      <div ref={topRef} className="lobby-top">
         <QueueCard mode={effMode} entry={effEntry} lev={lev} locked={inParty && !leader} onOpen={() => setPicker(true)} />
         <SocialDrawer me={me} online={online} />
       </div>
       <div className="lobby-footer">
-      <div className="lobby-left pointer-events-none absolute bottom-3 left-3 flex w-[270px] flex-col gap-2">
+      <div ref={footRef} className="lobby-left pointer-events-none absolute bottom-3 left-3 flex w-[270px] flex-col gap-2">
         <CharacterCard me={me} />
         <Loadout lev={lev} mode={effMode} follower={inParty && !leader && effMode === Mode.SQUAD} onClass={pickClass} />
       </div>
@@ -430,7 +456,7 @@ export function Lobby() {
           {pay ? (
             <>
               {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
-              <Hint text={`PLAY commits the entry and separate trading budget. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution.${REAL_TRADING ? ` ${t('live.session')}` : ''}`} />
+              <Hint text={`PLAY commits the entry and separate trading budget. The trading budget can lose value; what is left returns after the round. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution.${REAL_TRADING ? ` ${t('live.session')}` : ''}`} />
             </>
           ) : (
             <>{t('lb.freePractice')}</>
@@ -447,14 +473,19 @@ export function Lobby() {
               </button>
             </div>
           )}
-        {REAL_TRADING && pay && <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">{t('live.budget',{amount:TRADING_BUDGET,total:effEntry+TRADING_BUDGET})}</p>}
+        {REAL_TRADING && pay && (
+          <p className="pointer-events-auto max-w-sm px-3 text-center text-[11px] text-gold">
+            <span className="sm:hidden">{t('live.budgetShort', { amount: TRADING_BUDGET, total: effEntry + TRADING_BUDGET })}</span>
+            <span className="hidden sm:inline">{t('live.budget', { amount: TRADING_BUDGET, total: effEntry + TRADING_BUDGET })}</span>
+          </p>
+        )}
         {err && <span className="pointer-events-auto max-w-md text-center text-xs text-red">{err}</span>}
         {busy && queuedAt ? (
           <button className="guide-link pointer-events-auto" disabled={cancelQueued} onClick={() => (sfx.click(), (cancelQ.current = true), setCancelQueued(true))}>
             {t(cancelQueued ? 'mm.cancelling' : 'mm.cancel')}
           </button>
         ) : (
-          <button className="guide-link pointer-events-auto" onClick={() => (sfx.click(), setGuide(true))}>
+          <button className="guide-link howto pointer-events-auto" onClick={() => (sfx.click(), setGuide(true))}>
             {t('nav.howto')}
           </button>
         )}
@@ -528,9 +559,9 @@ function Loadout({ lev, mode, follower, onClass }: { lev: number; mode: LobbyMod
             );
           })}
         </div>
-        <div className="mt-1.5 text-[10px] text-muted sm:text-[11px]">
-          <span className="sm:hidden">{t('lb.classPrefix')}</span>
-          {t('lb.liq', { role: t(`role.${id}`), pct: `~${(liqMove(lev) * 100).toFixed(liqMove(lev) < 0.1 ? 1 : 0)}%` })}
+        <div className="lobby-liq mt-1.5 text-[10px] text-muted sm:text-[11px]">
+          <span className="sm:hidden">{t('lb.liqShort', { pct: `~${(liqMove(lev) * 100).toFixed(liqMove(lev) < 0.1 ? 1 : 0)}%` })}</span>
+          <span className="hidden sm:inline">{t('lb.liq', { role: t(`role.${id}`), pct: `~${(liqMove(lev) * 100).toFixed(liqMove(lev) < 0.1 ? 1 : 0)}%` })}</span>
         </div>
         {mode === Mode.SQUAD && <div className="mt-1 text-[10px] text-gold sm:text-[11px]">{t(follower ? 'lb.squadFollower' : 'lb.squadRule')}</div>}
       </div>
@@ -547,14 +578,21 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
   const panel = useDialog(open, () => setOpen(false));
   return (
     <div data-tour="party" className="lobby-social pointer-events-auto absolute top-3 right-3 flex w-[280px] flex-col items-end gap-1.5">
-      <button aria-expanded={open} aria-haspopup="dialog" className="panel flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left" onClick={() => (sfx.click(), setOpen((o) => !o))}>
+      <button aria-expanded={open} aria-haspopup="dialog" aria-label={t('lb.party')} className="lobby-party-btn panel flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left" onClick={() => (sfx.click(), setOpen((o) => !o))}>
         <span className="phead">
           <h3>{t('lb.party')}</h3>
         </span>
-        <span className="num ml-auto text-[11px] text-muted">
-          <span className="text-green">●</span> {t('lb.online', { n: online.length })} · {party?.members.length ?? 1}/3
+        {/* phones: a people glyph stands in for the heading */}
+        <svg className="party-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5" />
+          <path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.6.7 2.6 2.2 3 4.6" />
+        </svg>
+        <span className="party-count num ml-auto text-[11px] text-muted">
+          <span className="text-green">●</span> <span className="party-online">{t('lb.online', { n: online.length })} · </span>
+          {party?.members.length ?? 1}/3
         </span>
-        <span className="text-dim">{open ? '▴' : '▾'}</span>
+        <span className="party-caret text-dim">{open ? '▴' : '▾'}</span>
       </button>
       {typeof document !== 'undefined' && createPortal(<AnimatePresence>
         {open && (

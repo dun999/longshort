@@ -70,6 +70,28 @@ function CameraRig() {
   return <CameraControls ref={ref} makeDefault />;
 }
 
+/** Phones: the lobby's panels cover the top and the bottom of the screen. Shift the picture (not the camera,
+ * so dragging and the shot framing stay as they are) until the shot's centre sits in the band left open, and
+ * widen it a little when the band is too short for the cast and their nameplates (about 0.72 of the width at the
+ * phone framing). A view offset whose window is larger than its "full" image widens the frustum: z < 1. */
+function ViewBand() {
+  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
+  const size = useThree((s) => s.size);
+  const view = useScene((s) => s.view);
+  useEffect(() => {
+    if (!view) {
+      camera.clearViewOffset();
+      return;
+    }
+    const { width: w, height: h } = size;
+    const mid = (view.top + view.bottom) / 2 - size.top;
+    const z = Math.max(0.8, Math.min(1, (view.bottom - view.top) / (0.72 * w)));
+    camera.setViewOffset(w * z, h * z, (w / 2) * (z - 1), (h * z) / 2 - mid, w, h);
+    return () => camera.clearViewOffset();
+  }, [camera, size, view]);
+  return null;
+}
+
 // ─── Lobby pedestals ────────────────────────────────────────────────────────
 /** A full Royale row: footholds would touch at full size. */
 const castScale = (n: number) => (n > 5 ? 0.86 : 1);
@@ -227,6 +249,7 @@ export default function Stage() {
               centre, and the NaN it blends in blacks out the frame through Bloom */}
         </World>
         <CameraRig />
+        <ViewBand />
         <Dimmer />
         <Effects />
         <DevFrameHook />
