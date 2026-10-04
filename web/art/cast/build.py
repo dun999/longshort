@@ -1,8 +1,10 @@
 """
-Builds the arena cast and exports one GLB per class into web/public/models/.
+Builds the arena cast and exports one GLB per class into web/public/models/, then meshopt-compresses
+each file (quantized attributes + EXT_meshopt_compression, ~60% smaller; drei's useGLTF decodes it).
 Run: blender -b --factory-startup --python web/art/cast/build.py [-- gladiator sniper ...]
 """
 import os
+import subprocess
 import sys
 
 import bpy
@@ -40,8 +42,10 @@ def export(name, objs):
         export_vertex_color='ACTIVE', export_all_vertex_colors=False, export_normals=False,
         export_texcoords=False, export_materials='EXPORT', export_force_sampling=True, export_optimize_animation_size=True,
     )
+    raw = os.path.getsize(path)
+    subprocess.run(['npx', '-y', '@gltf-transform/cli@4.5.1', 'meshopt', path, path], check=True, capture_output=True)
     tris = sum(len(p.vertices) - 2 for o in objs if o.type == 'MESH' for p in o.data.polygons)
-    print(f'EXPORT {name}: {os.path.getsize(path) // 1024} KB, {tris} tris')
+    print(f'EXPORT {name}: {raw // 1024} KB, meshopt {os.path.getsize(path) // 1024} KB, {tris} tris')
 
 
 for n in names:

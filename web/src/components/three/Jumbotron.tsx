@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { MARKETS, type MarketSymbol } from '@longshort/shared';
-import { useSocket } from '@/lib/socket';
+import { useSocket, type Tick } from '@/lib/socket';
 import { useApi } from '@/lib/api';
 import { useScene } from '@/lib/scene';
 import { BOARD, DOWN, TICKER_H, TOWER, UP, loadBoardFonts, paintPrice, paintPulse, paintTicker, paintTop, paintTower, tickerItems, type FeedRow, type Leader, type Pt } from './boards';
@@ -133,7 +133,15 @@ function useBoardData() {
   const online = useSocket((s) => s.online.length);
   const [fontsReady, setReady] = useState(false);
   useEffect(() => void loadBoardFonts().then(() => setReady(true)), []);
-  return { feed: Array.isArray(feed) ? feed : [], top: Array.isArray(leaders) ? leaders.filter((r) => !r.bot) : [], online, fontsReady };
+  return { feed: Array.isArray(feed) ? feed : [], top: Array.isArray(leaders) ? leaders.filter((r) => !r.bot) : [], online, fontsReady, off };
+}
+
+/** A market's ticks, held while the stage is hidden behind the HUD: a fight must not repaint boards nobody sees. */
+function useBoardTicks(market: MarketSymbol, off: boolean): Tick[] {
+  const held = useRef<Tick[]>([]);
+  const ticks = useSocket((s) => (off ? held.current : s.prices[market]));
+  held.current = ticks;
+  return ticks;
 }
 
 // ─── centre board ─────────────────────────────────────────────────────────
@@ -143,7 +151,7 @@ function CentreBoard({ market, position, width, data }: { market: MarketSymbol; 
   const tickerH = 0.44;
   const gap = 0.08;
   const { feed, top, online, fontsReady } = data;
-  const ticks = useSocket((s) => s.prices[market]);
+  const ticks = useBoardTicks(market, data.off);
   const gl = useThree((s) => s.gl);
   useEffect(() => void (gl.localClippingEnabled = true), [gl]);
 
@@ -325,7 +333,7 @@ function CentreBoard({ market, position, width, data }: { market: MarketSymbol; 
 function Tower({ market, position, rotationY, width, data }: { market: MarketSymbol; position: [number, number, number]; rotationY: number; width: number; data: BoardData }) {
   const height = (width * TOWER.h) / TOWER.w;
   const { feed, fontsReady } = data;
-  const ticks = useSocket((s) => s.prices[market]);
+  const ticks = useBoardTicks(market, data.off);
   const c = useCanvas(TOWER.w, TOWER.h);
   const head = useRef<THREE.Vector3 | null>(null);
   const [color, setColor] = useState(UP);

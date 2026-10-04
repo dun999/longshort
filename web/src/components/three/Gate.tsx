@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene } from '@/lib/scene';
+import { Batched } from './Batched';
 
 /*
  * The players' gate in the open back side of the tribune, after the Colosseum's entrance arches: one round
@@ -95,7 +96,7 @@ function Flame({ position, size = 1, phase = 0 }: { position: [number, number, n
     g.rotation.y = t * 0.15;
   });
   return (
-    <group ref={ref} position={position}>
+    <group ref={ref} position={position} userData={{ animated: true }}>
       <mesh material={flameOut} position={[0, 0.2, 0]}>
         <coneGeometry args={[0.2, 0.55, 5]} />
       </mesh>
@@ -140,21 +141,23 @@ function Portcullis() {
   const h = SPRING + AR + 0.4;
   return (
     <group ref={ref} position={[0, OPEN, WALL_Z - DEPTH * 0.45]}>
-      {bars.map((x) => (
-        <group key={x} position={[x, 0, 0]}>
-          <mesh material={iron} position={[0, h / 2 + 0.1, 0]}>
-            <boxGeometry args={[0.07, h, 0.07]} />
+      <Batched>
+        {bars.map((x) => (
+          <group key={x} position={[x, 0, 0]}>
+            <mesh material={iron} position={[0, h / 2 + 0.1, 0]}>
+              <boxGeometry args={[0.07, h, 0.07]} />
+            </mesh>
+            <mesh material={iron} position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]}>
+              <coneGeometry args={[0.06, 0.22, 4]} />
+            </mesh>
+          </group>
+        ))}
+        {[0.42, 1.24, 2.06, 2.88, 3.7].map((y) => (
+          <mesh key={y} material={iron} position={[0, y, 0.05]}>
+            <boxGeometry args={[2 * AR, 0.08, 0.05]} />
           </mesh>
-          <mesh material={iron} position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]}>
-            <coneGeometry args={[0.06, 0.22, 4]} />
-          </mesh>
-        </group>
-      ))}
-      {[0.42, 1.24, 2.06, 2.88, 3.7].map((y) => (
-        <mesh key={y} material={iron} position={[0, y, 0.05]}>
-          <boxGeometry args={[2 * AR, 0.08, 0.05]} />
-        </mesh>
-      ))}
+        ))}
+      </Batched>
     </group>
   );
 }
@@ -253,49 +256,51 @@ export function Gate() {
   const colX = AR + 1.45;
   return (
     <group>
-      <mesh geometry={wall} material={wallMat} position={[0, 0, WALL_Z - DEPTH]} />
-      {voussoirs.map(({ geo }, i) => (
-        <mesh key={i} geometry={geo} material={trim} position={[0, SPRING, WALL_Z]} />
-      ))}
-      {/* the keystone's inlay */}
-      <mesh material={inlay} position={[0, SPRING + RING + 0.04, WALL_Z + 0.345]} rotation={[0, 0, Math.PI / 4]}>
-        <planeGeometry args={[0.2, 0.2]} />
-      </mesh>
-      {/* piers framing the opening, and the imposts the arch springs from */}
-      {[-1, 1].map((s) => (
-        <group key={s}>
-          <mesh material={trim} position={[s * (AR + 0.3), SPRING / 2, WALL_Z + 0.08]}>
-            <boxGeometry args={[0.6, SPRING, 0.16]} />
-          </mesh>
-          <mesh material={trim} position={[s * (AR + 0.32), SPRING - 0.06, WALL_Z + 0.16]}>
-            <boxGeometry args={[0.78, 0.2, 0.32]} />
-          </mesh>
-          {/* engaged column: plinth, faceted shaft, capital */}
-          <mesh material={trim} position={[s * colX, 0.22, WALL_Z + 0.18]}>
-            <boxGeometry args={[0.92, 0.44, 0.5]} />
-          </mesh>
-          <mesh material={trim} position={[s * colX, 2.52, WALL_Z + 0.06]}>
-            <cylinderGeometry args={[0.3, 0.34, 4.16, 10]} />
-          </mesh>
-          <mesh material={trim} position={[s * colX, 4.72, WALL_Z + 0.18]}>
-            <boxGeometry args={[0.92, 0.32, 0.5]} />
-          </mesh>
-        </group>
-      ))}
-      {/* entablature with a violet inlay line, and a cornice */}
-      <mesh material={trim} position={[0, 5.21, WALL_Z + 0.2]}>
-        <boxGeometry args={[HALF * 2, 0.66, 0.4]} />
-      </mesh>
-      <mesh material={inlay} position={[0, 5.21, WALL_Z + 0.405]}>
-        <planeGeometry args={[HALF * 2, 0.05]} />
-      </mesh>
-      <mesh material={trim} position={[0, 5.63, WALL_Z + 0.3]}>
-        <boxGeometry args={[HALF * 2, 0.18, 0.6]} />
-      </mesh>
+      <Batched>
+        <mesh geometry={wall} material={wallMat} position={[0, 0, WALL_Z - DEPTH]} />
+        {voussoirs.map(({ geo }, i) => (
+          <mesh key={i} geometry={geo} material={trim} position={[0, SPRING, WALL_Z]} />
+        ))}
+        {/* the keystone's inlay */}
+        <mesh material={inlay} position={[0, SPRING + RING + 0.04, WALL_Z + 0.345]} rotation={[0, 0, Math.PI / 4]}>
+          <planeGeometry args={[0.2, 0.2]} />
+        </mesh>
+        {/* piers framing the opening, and the imposts the arch springs from */}
+        {[-1, 1].map((s) => (
+          <group key={s}>
+            <mesh material={trim} position={[s * (AR + 0.3), SPRING / 2, WALL_Z + 0.08]}>
+              <boxGeometry args={[0.6, SPRING, 0.16]} />
+            </mesh>
+            <mesh material={trim} position={[s * (AR + 0.32), SPRING - 0.06, WALL_Z + 0.16]}>
+              <boxGeometry args={[0.78, 0.2, 0.32]} />
+            </mesh>
+            {/* engaged column: plinth, faceted shaft, capital */}
+            <mesh material={trim} position={[s * colX, 0.22, WALL_Z + 0.18]}>
+              <boxGeometry args={[0.92, 0.44, 0.5]} />
+            </mesh>
+            <mesh material={trim} position={[s * colX, 2.52, WALL_Z + 0.06]}>
+              <cylinderGeometry args={[0.3, 0.34, 4.16, 10]} />
+            </mesh>
+            <mesh material={trim} position={[s * colX, 4.72, WALL_Z + 0.18]}>
+              <boxGeometry args={[0.92, 0.32, 0.5]} />
+            </mesh>
+          </group>
+        ))}
+        {/* entablature with a violet inlay line, and a cornice */}
+        <mesh material={trim} position={[0, 5.21, WALL_Z + 0.2]}>
+          <boxGeometry args={[HALF * 2, 0.66, 0.4]} />
+        </mesh>
+        <mesh material={inlay} position={[0, 5.21, WALL_Z + 0.405]}>
+          <planeGeometry args={[HALF * 2, 0.05]} />
+        </mesh>
+        <mesh material={trim} position={[0, 5.63, WALL_Z + 0.3]}>
+          <boxGeometry args={[HALF * 2, 0.18, 0.6]} />
+        </mesh>
+        <Tunnel />
+        <Brazier x={-(colX + 1.25)} />
+        <Brazier x={colX + 1.25} />
+      </Batched>
       <Portcullis />
-      <Tunnel />
-      <Brazier x={-(colX + 1.25)} />
-      <Brazier x={colX + 1.25} />
       {/* the braziers' warm light on the stone */}
       <pointLight position={[0, 2.6, WALL_Z + 2.6]} color="#ffb070" intensity={14} distance={12} decay={2} />
     </group>

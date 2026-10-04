@@ -96,7 +96,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       {/* the landing page (and the dev cast turntable) bring their own canvas; one WebGL context per page */}
       {path !== '/' && path !== '/dev/cast' && (
         <div className={`stage-wrap ${dimmed ? 'dimmed' : ''} ${off ? 'off' : ''}`}>
-          <Stage />
+          <Stage dimmed={dimmed} />
         </div>
       )}
       <div className="scanlines" />

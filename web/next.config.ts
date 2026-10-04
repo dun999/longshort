@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // the share card reads its fonts and the class figures from disk at runtime
   outputFileTracingIncludes: { '/s/[code]/card': ['./src/assets/fonts/*.ttf', './src/assets/cast/*.png'] },
+  webpack: (config) => {
+    // the arena uses Bloom and Vignette only; see src/components/three/n8ao-stub.ts
+    config.resolve.alias = { ...config.resolve.alias, n8ao$: path.resolve(process.cwd(), 'src/components/three/n8ao-stub.ts') };
+    return config;
+  },
 };
 
 export default nextConfig;

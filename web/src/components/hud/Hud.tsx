@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { REAL_TRADING, MARKETS, MODES, MARGIN, explorerTx, fmtPx, fmtUsd, type MarketSymbol } from '@longshort/shared';
 import Link from 'next/link';
@@ -14,7 +14,13 @@ import { PanelHeader } from '../ui/Hint';
 import { ScoreBar } from './ScoreBar';
 import { useT } from '@/lib/i18n';
 
-function KillFeed({ feed }: { feed: FeedItem[] }) {
+// The round clock re-renders the HUD five times a second. These parts don't show time and get the same
+// props between ticks, so memo lets them skip those renders (the chart and trade panel are the heavy ones).
+const Chart = memo(PriceChart);
+const Trade = memo(TradePanel);
+const OpenPositions = memo(Positions);
+
+const KillFeed = memo(function KillFeed({ feed }: { feed: FeedItem[] }) {
   const items = [...feed].reverse().slice(0, 30);
   return (
     <div className="scroll-thin grid max-h-full content-start gap-0.5 overflow-x-hidden overflow-y-auto">
@@ -37,10 +43,10 @@ function KillFeed({ feed }: { feed: FeedItem[] }) {
       </AnimatePresence>
     </div>
   );
-}
+});
 
 /** Order latency, framed the way players already read network quality: as ping. */
-function Ping({ fills, simulated }: { fills: Fill[]; simulated?: boolean }) {
+const Ping = memo(function Ping({ fills, simulated }: { fills: Fill[]; simulated?: boolean }) {
   const t = useT();
   const ok = fills.filter((f) => f.ok);
   const last = ok[0];
@@ -73,7 +79,7 @@ function Ping({ fills, simulated }: { fills: Fill[]; simulated?: boolean }) {
       </div>
     </div>
   );
-}
+});
 
 export function Hud({ m, now, actions, live }: { m: MatchView; now: number; actions: HudActions; live: boolean }) {
   const t = useT();
@@ -125,7 +131,7 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
         <section className="hud-center">
           <ScoreBar m={m} now={now} left={left} live={live} practice={actions.simulated} />
           <div className="hud-chart panel">
-            <PriceChart
+            <Chart
               market={MARKETS[market]}
               pos={m.me?.pos && m.me.pos.market === market ? m.me.pos : null}
               realized={m.me?.realized}
@@ -135,9 +141,9 @@ export function Hud({ m, now, actions, live }: { m: MatchView; now: number; acti
               leverage={m.me?.leverage}
             />
           </div>
-          <Positions m={m} />
+          <OpenPositions m={m} />
           {m.me ? (
-            <TradePanel me={m.me} market={market} setMarket={setMarket} prices={m.prices} actions={actions} live={live} onFill={onFill} />
+            <Trade me={m.me} market={market} setMarket={setMarket} prices={m.prices} actions={actions} live={live} onFill={onFill} />
           ) : (
             <SpectatorBar market={market} setMarket={setMarket} prices={m.prices} mode={cfg.name} />
           )}

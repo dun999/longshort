@@ -52,6 +52,15 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
+/* taps act at once: a quick double tap on a control (Long, Short, Close) must not zoom the page; pinch zoom stays */
+button,
+a,
+input,
+select,
+label,
+[role='button'] {
+  touch-action: manipulation;
+}
 ::selection {
   background: var(--purple);
   color: white;

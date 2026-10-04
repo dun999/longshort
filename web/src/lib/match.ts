@@ -1,10 +1,10 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatUnits } from 'viem';
+import { formatUnits, stringify } from 'viem';
 import { REAL_TRADING, MARGIN, MARKETS, Mode, MatchState, characterOf, equityOf, shortAddr, type CharacterId, type MarketSymbol, type Pos } from '@longshort/shared';
 import { arena, publicClient } from './clients';
 import { api } from './api';
-import { onChainEvent, useSocket, lastPx } from './socket';
+import { onChainEvent, useMarketPrices } from './socket';
 import { useWallet } from './wallet';
 
 export interface PlayerView {
@@ -79,7 +79,6 @@ const MKT = (m: number) => MARKETS[m] ?? '?';
 
 export function useMatch(id: number): MatchView {
   const me = useWallet((s) => s.address?.toLowerCase());
-  const ticks = useSocket((s) => s.prices);
   const [raw, setRaw] = useState<{ m: any; ps: readonly any[] } | null>(null);
   const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean; character?: string | null }>; match?: any; players?: any[]; trades?: TradeRow[]; accounts?:MatchView['accounts'];fills?:MatchView['fills'] }>({ names: {} });
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -87,17 +86,27 @@ export function useMatch(id: number): MatchView {
   const nameRef = useRef(meta.names);
   nameRef.current = meta.names;
 
+  // The chain is read every second; an unchanged answer must not re-render the whole match screen.
+  const lastRaw = useRef('');
   const load = useCallback(async () => {
     const [m, ps] = await Promise.all([
       publicClient.readContract({ ...arena, functionName: 'getMatch', args: [BigInt(id)] }),
       publicClient.readContract({ ...arena, functionName: 'getPlayers', args: [BigInt(id)] }),
     ]).catch(() => [null, null] as const);
-    if (m && ps) setRaw({ m, ps });
+    if (!m || !ps) return;
+    const key = `${id}:${stringify([m, ps])}`;
+    if (key === lastRaw.current) return;
+    lastRaw.current = key;
+    setRaw({ m, ps });
   }, [id]);
 
+  const lastMeta = useRef('');
   const loadMeta = useCallback(async () => {
     const r = await api<any>(`/match/${id}`).catch(() => null);
     if (!r?.players) return;
+    const key = `${id}:${JSON.stringify(r)}`;
+    if (key === lastMeta.current) return;
+    lastMeta.current = key;
     const names = Object.fromEntries(r.players.map((p: any) => [p.addr, { name: p.name, bot: p.bot, character: p.character }]));
     setMeta({ names, match: r.match, players: r.players, trades: r.trades, accounts:r.accounts, fills:r.fills });
     // seed the feed from indexed trades once
@@ -136,10 +145,7 @@ export function useMatch(id: number): MatchView {
     };
   }, [id, load, loadMeta]);
 
-  const prices = useMemo(
-    () => Object.fromEntries(MARKETS.map((m) => [m, lastPx(ticks[m])])) as Record<MarketSymbol, number | undefined>,
-    [ticks],
-  );
+  const prices = useMarketPrices();
 
   return useMemo<MatchView>(() => {
     const m = raw?.m;

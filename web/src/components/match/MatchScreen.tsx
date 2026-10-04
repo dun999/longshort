@@ -6,7 +6,7 @@ import { REAL_TRADING, MARGIN, MARKETS, MatchState, Mode, equityOf, feeFor, noti
 import { useMatch, type MatchView } from '@/lib/match';
 import { useChainNow } from '@/lib/clock';
 import { useScene, CLASS_COLOR, TEAM_COLOR, type Shot, type Slot } from '@/lib/scene';
-import { cancelMatchmaking, joinAny, joinMatch, lastLeverage, prepareMatchRecovery, rematch, setClass, sweepMatchKey, tradeClose, tradeOpen } from '@/lib/actions';
+import { cancelMatchmaking, joinAny, joinMatch, lastLeverage, prepareMatchRecovery, rematch, setClass, sweepMatchKey, tradeClose, tradeOpen, warmTrading } from '@/lib/actions';
 import { formatEther } from 'viem';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -87,6 +87,7 @@ export function MatchScreen({ id }: { id: number }) {
     void prepareMatchRecovery(id).catch((e) => { if (current) setErr(friendly(e)); });
     return () => { current = false; };
   }, [active, locked, id, address]);
+  useEffect(() => void (active && warmTrading()), [active, address]);
 
   // ─── lobby guard heartbeat: bots only fill a lobby whose players are actually here ─
   const send = useSocket((s) => s.send);

@@ -214,10 +214,28 @@ const hasWebGL = () => {
   }
 };
 
-export default function Stage() {
+/** Renders a frame every `ms` while the canvas is on demand. */
+function Ticker({ ms }: { ms: number }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    const i = setInterval(() => invalidate(), ms);
+    return () => clearInterval(i);
+  }, [invalidate, ms]);
+  return null;
+}
+
+export default function Stage({ dimmed = false }: { dimmed?: boolean }) {
   const [gl] = useState(hasWebGL);
   // hidden behind the fight HUD and the result screen: stop rendering, keep the context
   const off = useScene((s) => s.shot === 'arena' || s.shot === 'result');
+  // Reading pages blur and darken the arena (.stage-wrap.dimmed). Once the 0.5 s blur is in, half resolution
+  // at 20 fps looks the same and leaves a phone's GPU to the page on top; leaving the page restores it at once.
+  const [low, setLow] = useState(false);
+  useEffect(() => {
+    if (!dimmed) return setLow(false);
+    const t = setTimeout(() => setLow(true), 600);
+    return () => clearTimeout(t);
+  }, [dimmed]);
   if (!gl)
     return (
       <div className="stage" aria-hidden>
@@ -228,8 +246,8 @@ export default function Stage() {
     <div className="stage" aria-hidden>
       <div ref={(el) => void (el && (nameplateHost.current = el))} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
       <Canvas
-        dpr={[1, 1.6]}
-        frameloop={off ? 'never' : 'always'}
+        dpr={low ? 0.5 : [1, 1.6]}
+        frameloop={off ? 'never' : low ? 'demand' : 'always'}
         camera={{ fov: FOV, position: [0, 4, 25], near: 0.1, far: 200 }}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
         fallback={<div className="stage-fallback" />}
@@ -252,6 +270,7 @@ export default function Stage() {
         <ViewBand />
         <Dimmer />
         <Effects />
+        {low && !off && <Ticker ms={50} />}
         <DevFrameHook />
       </Canvas>
     </div>

@@ -1,6 +1,7 @@
 'use client';
+import { useMemo } from 'react';
 import { create } from 'zustand';
-import { MARKETS, type MarketSymbol } from '@longshort/shared';
+import { MARKETS, REAL_TRADING, type MarketSymbol } from '@longshort/shared';
 import { WS_URL } from './config';
 import { api } from './api';
 import { checkGate, returnToGate } from './gate-client';
@@ -159,3 +160,13 @@ export function startSocket() {
 }
 
 export const lastPx = (ticks: Tick[]) => ticks.at(-1)?.px;
+
+/** Last price per market for the match screens. Live rounds trade BTC only, so only BTC ticks re-render
+ * them (the arena's ETH and MON towers subscribe on their own); the other markets are read as BTC moves. */
+export function useMarketPrices(): Record<MarketSymbol, number | undefined> {
+  const moved = useSocket((s) => (REAL_TRADING ? s.prices[MARKETS[0]] : s.prices));
+  return useMemo(() => {
+    const all = useSocket.getState().prices;
+    return Object.fromEntries(MARKETS.map((m) => [m, lastPx(all[m])])) as Record<MarketSymbol, number | undefined>;
+  }, [moved]); // eslint-disable-line react-hooks/exhaustive-deps
+}

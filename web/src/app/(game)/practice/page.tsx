@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import Link from 'next/link';
-import { characterOf, REAL_TRADING, MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type MarketSymbol, type Pos, shortAddr } from '@longshort/shared';
-import { useSocket, lastPx } from '@/lib/socket';
+import { characterOf, REAL_TRADING, MARGIN, MARKETS, MAINT, Mode, MatchState, equityOf, feeFor, notionalFor, upnl, type Pos, shortAddr } from '@longshort/shared';
+import { useMarketPrices, useSocket } from '@/lib/socket';
 import { useWallet } from '@/lib/wallet';
 import { useScene, TEAM_COLOR } from '@/lib/scene';
 import { lastLeverage } from '@/lib/actions';
@@ -29,10 +29,9 @@ interface Seat {
 /** Client-side practice using the contract's exact math on live Perpl prices, against a scripted bot. */
 export default function Practice() {
   const t = useT();
-  const ticks = useSocket((s) => s.prices);
   const connected = useSocket((s) => s.connected);
   const address = useWallet((s) => s.address?.toLowerCase()) ?? '0xyou';
-  const prices = useMemo(() => Object.fromEntries(MARKETS.map((m) => [m, lastPx(ticks[m])])) as Record<MarketSymbol, number | undefined>, [ticks]);
+  const prices = useMarketPrices();
   const pxRef = useRef(prices);
   pxRef.current = prices;
 
@@ -156,38 +155,42 @@ export default function Practice() {
   }, [done, run, doClose]);
 
   const myCharacter = useCharacter((c) => c.id);
-  const players: PlayerView[] = seats.map((s, i) => {
+  // Memoized: the round clock re-renders this page five times a second, and the HUD's chart, positions and
+  // trade panel skip those renders only while the view they are given stays the same object.
+  const players = useMemo<PlayerView[]>(() => seats.map((s, i) => {
     const px = s.pos ? prices[MARKETS[s.pos.market]] : undefined;
     const equity = s.out ? 0 : equityOf(s.realized, s.pos, px);
     return { addr: s.addr, name: s.name, bot: i === 1, character: characterOf(s.addr, i === 0 ? myCharacter : undefined), team: i, leverage: s.leverage, out: s.out, outRank: 0, realized: s.realized, pos: s.pos, equity, pnl: equity - MARGIN, isMe: i === 0, session: '' };
-  });
+  }), [seats, prices, myCharacter]);
   const [a, b] = players;
-  const win = done && a && b ? (a.equity > b.equity ? 'win' : a.equity < b.equity ? 'loss' : 'draw') : undefined;
 
-  const m: MatchView = {
-    id: 0,
-    trades,
-    loaded: true,
-    mode: Mode.DUEL,
-    state: done ? MatchState.SETTLED : MatchState.LIVE,
-    entry: 0,
-    maxPlayers: 2,
-    nPlayers: 2,
-    duration: DURATION,
-    createdAt: roundStart,
-    startAt: roundStart,
-    endAt,
-    round: 0,
-    players,
-    me: players[0],
-    prices,
-    feed,
-    results: done && a && b ? [
-      { addr: a.addr, result: win!, payout: 0, final_equity: a.equity, xp_delta: 0 },
-      { addr: b.addr, result: win === 'win' ? 'loss' : win === 'loss' ? 'win' : 'draw', payout: 0, final_equity: b.equity, xp_delta: 0 },
-    ] : undefined,
-    refresh: () => {},
-  };
+  const m = useMemo<MatchView>(() => {
+    const win = done && a && b ? (a.equity > b.equity ? 'win' : a.equity < b.equity ? 'loss' : 'draw') : undefined;
+    return {
+      id: 0,
+      trades,
+      loaded: true,
+      mode: Mode.DUEL,
+      state: done ? MatchState.SETTLED : MatchState.LIVE,
+      entry: 0,
+      maxPlayers: 2,
+      nPlayers: 2,
+      duration: DURATION,
+      createdAt: roundStart,
+      startAt: roundStart,
+      endAt,
+      round: 0,
+      players,
+      me: players[0],
+      prices,
+      feed,
+      results: done && a && b ? [
+        { addr: a.addr, result: win!, payout: 0, final_equity: a.equity, xp_delta: 0 },
+        { addr: b.addr, result: win === 'win' ? 'loss' : win === 'loss' ? 'win' : 'draw', payout: 0, final_equity: b.equity, xp_delta: 0 },
+      ] : undefined,
+      refresh: () => {},
+    };
+  }, [players, a, b, done, trades, roundStart, endAt, prices, feed]);
 
   const actions: HudActions = useMemo(
     () => ({

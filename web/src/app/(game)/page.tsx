@@ -95,6 +95,22 @@ const FAQ = [
 ];
 
 /** The real BTC mark from Perpl (via the keeper feed), ticking green/red. Hidden until the feed has a price. */
+/**
+ * The lounge loops are 130-240 KB each, and on phones native lazy loading fetches them with the page (its
+ * head start reaches past this section). Show the small still until the figure is near, then the loop; the
+ * still stays on screen until the loop has loaded.
+ */
+function LoungeImg({ id, w, h }: { id: CharacterId; w: number; h: number }) {
+  const ref = useRef<HTMLImageElement>(null);
+  const near = useInView(ref, { once: true, margin: '600px 0px' });
+  return (
+    <picture>
+      <source srcSet={`/cast/lounge/${id}.webp`} media="(prefers-reduced-motion: reduce)" />
+      <img ref={ref} src={`/cast/lounge/${id}${near ? '-loop' : ''}.webp`} alt={`${CHARACTER_INFO[id].name}: ${CHARACTER_INFO[id].line}`} width={w} height={h} loading="lazy" decoding="async" draggable={false} />
+    </picture>
+  );
+}
+
 function MarkTag() {
   const px = useSocket((s) => s.prices.BTC.at(-1)?.px);
   const prev = useRef<number | undefined>(undefined);
@@ -213,10 +229,7 @@ export default function Landing() {
                   transition={{ delay: i * 0.05, duration: 0.5, ease: EASE }}
                   style={{ ['--w' as string]: w, ['--h' as string]: h }}
                 >
-                  <picture>
-                    <source srcSet={`/cast/lounge/${id}.webp`} media="(prefers-reduced-motion: reduce)" />
-                    <img src={`/cast/lounge/${id}-loop.webp`} alt={`${CHARACTER_INFO[id].name}: ${CHARACTER_INFO[id].line}`} width={w} height={h} loading="lazy" decoding="async" draggable={false} />
-                  </picture>
+                  <LoungeImg id={id} w={w} h={h} />
                   <figcaption>{CHARACTER_INFO[id].name}</figcaption>
                 </motion.figure>
               );

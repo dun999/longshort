@@ -11,6 +11,7 @@ import {
   parseEther,
   type Account,
   type Hash,
+  type Log,
   type WalletClient,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -105,6 +106,8 @@ export interface TxResult {
   hash: Hash;
   ms: number;
   status: 'success' | 'reverted';
+  /** The receipt's logs (a sponsored call: only the arena's), so callers read events without fetching the receipt again. */
+  logs?: Log[];
 }
 
 /** Send + wait, measuring wall-clock confirmation latency (shown in the HUD). */
@@ -112,7 +115,7 @@ export async function timedTx(send: () => Promise<Hash>): Promise<TxResult> {
   const t0 = performance.now();
   const hash = await send();
   const r = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 120 });
-  return { hash, ms: Math.round(performance.now() - t0), status: r.status };
+  return { hash, ms: Math.round(performance.now() - t0), status: r.status, logs: r.logs };
 }
 
 declare global {
