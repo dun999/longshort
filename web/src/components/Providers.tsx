@@ -93,8 +93,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [joinMatch, path, router]);
   return (
     <>
-      {/* the landing page brings its own lightweight figures canvas; one WebGL context per page */}
-      {path !== '/' && (
+      {/* the landing page (and the dev cast turntable) bring their own canvas; one WebGL context per page */}
+      {path !== '/' && path !== '/dev/cast' && (
         <div className={`stage-wrap ${dimmed ? 'dimmed' : ''} ${off ? 'off' : ''}`}>
           <Stage />
         </div>

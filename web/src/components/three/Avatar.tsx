@@ -1,10 +1,11 @@
 'use client';
-import { useMemo, useRef } from 'react';
+import { Suspense, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html, RoundedBox } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { CLASSES, classOf } from '@longshort/shared';
+import { CLASSES, classOf, type ClassId } from '@longshort/shared';
 import type { Slot } from '@/lib/scene';
+import { FOOT_H, useCast, type CastClip } from './cast';
 
 /** Stable DOM host for nameplates (set by Stage). drei otherwise re-targets on event-system changes and remounts every root. */
 export const nameplateHost: { current: HTMLElement } = { current: null as unknown as HTMLElement };
@@ -57,111 +58,71 @@ function holo(color: string, power = 1) {
   return holoCache.get(k)!;
 }
 
-/** A player on a pedestal: a holographic trader projected in their colour. Build varies by class (leverage). */
-export function Avatar({ slot, position, rotationY = 0, showName }: { slot: Slot; position: [number, number, number]; rotationY?: number; showName: boolean }) {
-  const body = useRef<THREE.Group>(null);
+/** The class character on its foothold, playing the clip that fits the slot. */
+function Figure({ cls, color, clip }: { cls: ClassId; color: string; clip: CastClip }) {
+  const scene = useCast(cls, color, clip);
+  return <primitive object={scene} position={[0, FOOT_H, 0]} />;
+}
+
+/** A player in the lobby: their class character on its foothold, ringed in their colour. Open seats stay holograms. */
+export function Avatar({ slot, position, rotationY = 0, showName, scale = 1 }: { slot: Slot; position: [number, number, number]; rotationY?: number; showName: boolean; scale?: number }) {
   const ring = useRef<THREE.Mesh>(null);
-  const seed = useMemo(() => Math.random() * 10, []);
+  const ghost = useRef<THREE.Group>(null);
   const color = slot.out ? '#44474f' : slot.color;
-  const lead = slot.lead ?? 0;
-  const skin = holo(color, slot.out ? 0.45 : lead >= 1 ? 1.35 : 1);
-  const trim = useMemo(() => new THREE.MeshBasicMaterial({ color, toneMapped: false }), [color]);
-  const beam = holo(color, 0.18);
+  const trim = useTrim(color);
   const cls = slot.leverage ? classOf(slot.leverage) : 'scout';
-  const shoulder = cls === 'tank' ? 0.26 : cls === 'sniper' ? 0.15 : 0.2;
-  const torsoW = cls === 'tank' ? 0.86 : cls === 'sniper' ? 0.58 : 0.7;
+  const clip: CastClip = slot.out ? 'out' : (slot.lead ?? 0) >= 1 ? 'win' : 'idle';
 
   useFrame(({ clock }, dt) => {
-    const t = clock.elapsedTime + seed;
-    if (body.current) {
-      body.current.position.y = 0.42 + Math.sin(t * 1.6) * 0.05 + (slot.empty ? 0 : lead * 0.12);
-      body.current.rotation.y = rotationY + Math.sin(t * 0.5) * 0.12;
-      body.current.rotation.z = THREE.MathUtils.lerp(body.current.rotation.z, slot.out ? 0.5 : 0, dt * 3);
-    }
     if (ring.current) ring.current.rotation.z += dt * (slot.me ? 1.4 : 0.6);
+    if (ghost.current) ghost.current.position.y = 1.3 + Math.sin(clock.elapsedTime * 1.6) * 0.05;
   });
 
   return (
     <group position={position}>
-      {/* pedestal + projector */}
-      <mesh material={metal} position={[0, 0.12, 0]}>
-        <cylinderGeometry args={[0.85, 0.95, 0.24, 48]} />
-      </mesh>
-      <mesh material={trim} position={[0, 0.245, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.74, 0.79, 64]} />
-      </mesh>
-      <mesh ref={ring} material={trim} position={[0, 0.25, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.9, 0.93, 64, 1, 0, Math.PI * 1.2]} />
-      </mesh>
-      <mesh material={beam} position={[0, 1.35, 0]}>
-        <cylinderGeometry args={[0.45, 0.78, 2.2, 32, 1, true]} />
-      </mesh>
-
       {slot.empty ? (
-        <group position={[0, 1.3, 0]}>
-          <mesh material={holo('#626873', 0.6)}>
-            <capsuleGeometry args={[0.32, 0.9, 8, 16]} />
+        <>
+          {/* open seat: the old projector pedestal and a waiting hologram */}
+          <mesh material={metal} position={[0, 0.12, 0]}>
+            <cylinderGeometry args={[0.85, 0.95, 0.24, 48]} />
           </mesh>
-          <mesh material={trim}>
-            <boxGeometry args={[0.5, 0.05, 0.05]} />
+          <mesh material={trim} position={[0, 0.245, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.74, 0.79, 64]} />
           </mesh>
-          <mesh material={trim}>
-            <boxGeometry args={[0.05, 0.5, 0.05]} />
+          <mesh material={holo(color, 0.18)} position={[0, 1.35, 0]}>
+            <cylinderGeometry args={[0.45, 0.78, 2.2, 32, 1, true]} />
           </mesh>
-        </group>
+          <group ref={ghost} position={[0, 1.3, 0]}>
+            <mesh material={holo('#626873', 0.6)}>
+              <capsuleGeometry args={[0.32, 0.9, 8, 16]} />
+            </mesh>
+            <mesh material={trim}>
+              <boxGeometry args={[0.5, 0.05, 0.05]} />
+            </mesh>
+            <mesh material={trim}>
+              <boxGeometry args={[0.05, 0.5, 0.05]} />
+            </mesh>
+          </group>
+        </>
       ) : (
-        <group ref={body}>
-          {/* legs */}
-          {[-0.17, 0.17].map((x) => (
-            <mesh key={x} material={skin} position={[x, 0.42, 0]}>
-              <capsuleGeometry args={[0.11, 0.55, 6, 16]} />
-            </mesh>
-          ))}
-          {/* torso */}
-          <RoundedBox args={[torsoW, 0.82, 0.42]} radius={0.12} smoothness={4} position={[0, 1.18, 0]} material={skin} />
-          <mesh material={trim} position={[0, 1.22, 0.215]}>
-            <boxGeometry args={[torsoW * 0.62, 0.04, 0.01]} />
-          </mesh>
-          <mesh material={trim} position={[0, 1.07, 0.215]}>
-            <boxGeometry args={[torsoW * 0.3, 0.025, 0.01]} />
-          </mesh>
-          {/* shoulders */}
-          {[-1, 1].map((s) => (
-            <mesh key={s} material={skin} position={[s * (torsoW / 2 + shoulder * 0.55), 1.46, 0]}>
-              <sphereGeometry args={[shoulder, 24, 16]} />
-            </mesh>
-          ))}
-          {/* arms */}
-          {[-1, 1].map((s) => (
-            <mesh key={s} material={skin} position={[s * (torsoW / 2 + 0.12), 1.08, 0]} rotation={[0, 0, s * 0.08]}>
-              <capsuleGeometry args={[0.08, 0.5, 6, 16]} />
-            </mesh>
-          ))}
-          {/* head + visor */}
-          <RoundedBox args={[0.42, 0.38, 0.4]} radius={0.14} smoothness={4} position={[0, 1.84, 0]} material={skin} />
-          <mesh material={trim} position={[0, 1.86, 0.2]}>
-            <boxGeometry args={[0.3, cls === 'sniper' ? 0.035 : 0.07, 0.02]} />
-          </mesh>
-          {cls === 'sniper' && (
-            <group position={[0.15, 2.07, -0.05]}>
-              <mesh material={skin}>
-                <cylinderGeometry args={[0.014, 0.014, 0.34]} />
-              </mesh>
-              <mesh material={trim} position={[0, 0.19, 0]}>
-                <sphereGeometry args={[0.035]} />
-              </mesh>
-            </group>
-          )}
-          {cls === 'tank' && (
-            <mesh material={skin} position={[0, 1.18, -0.26]}>
-              <boxGeometry args={[0.55, 0.55, 0.07]} />
-            </mesh>
-          )}
+        <group rotation={[0, rotationY, 0]} scale={scale}>
+          <Suspense fallback={null}>
+            <Figure key={cls} cls={cls} color={color} clip={clip} />
+          </Suspense>
         </group>
+      )}
+      {/* floor ring in the player's colour; your own seat gets the turning arc */}
+      <mesh material={trim} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.9 * scale, 0.93 * scale, 64]} />
+      </mesh>
+      {slot.me && (
+        <mesh ref={ring} material={trim} position={[0, 0.014, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.97 * scale, 1.0 * scale, 64, 1, 0, Math.PI * 1.2]} />
+        </mesh>
       )}
 
       {/* always mounted (toggling <Html> mid-render races React's root unmount); hidden via style */}
-      <Html portal={nameplateHost} position={[0, 2.55, 0]} center distanceFactor={9} zIndexRange={[20, 0]} style={{ pointerEvents: 'none', opacity: showName ? 1 : 0, transition: 'opacity .2s' }}>
+      <Html portal={nameplateHost} position={[0, 2.75 * (slot.empty ? 0.93 : scale), 0]} center distanceFactor={9} zIndexRange={[20, 0]} style={{ pointerEvents: 'none', opacity: showName ? 1 : 0, transition: 'opacity .2s' }}>
         <div className={`nameplate ${slot.me ? 'is-me' : ''} ${slot.empty ? 'is-empty' : ''}`} style={{ ['--c' as string]: color }}>
           {slot.empty ? (
             <span>{slot.name ?? 'OPEN SLOT'}</span>
@@ -179,4 +140,10 @@ export function Avatar({ slot, position, rotationY = 0, showName }: { slot: Slot
       </Html>
     </group>
   );
+}
+
+const trims = new Map<string, THREE.MeshBasicMaterial>();
+function useTrim(color: string) {
+  if (!trims.has(color)) trims.set(color, new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+  return trims.get(color)!;
 }
