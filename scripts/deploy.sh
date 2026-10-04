@@ -11,6 +11,13 @@ SSH=(ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$KEY")
 printf -v SSH_RSYNC 'ssh -o BatchMode=yes -o IdentitiesOnly=yes -i %q' "$KEY"
 what=${1:-all}
 [[ $what == all || $what == web || $what == keeper ]] || { echo 'usage: deploy.sh [all|web|keeper]' >&2; exit 1; }
+
+# Production is always a pushed commit: the build reads the working tree, so refuse anything GitHub doesn't have.
+git -C "$ROOT" diff --quiet HEAD -- || { echo 'Tracked files have uncommitted changes. Commit and push first.' >&2; exit 1; }
+stray=$(git -C "$ROOT" ls-files --others --exclude-standard -- web keeper/src packages scripts deploy)
+[[ -z $stray ]] || { printf 'Untracked files would ship:\n%s\nCommit or remove them first.\n' "$stray" >&2; exit 1; }
+git -C "$ROOT" fetch -q origin main
+git -C "$ROOT" merge-base --is-ancestor HEAD origin/main || { echo 'HEAD is not on origin/main. Push first.' >&2; exit 1; }
 release="$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$ROOT" rev-parse --short HEAD)"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
