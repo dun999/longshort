@@ -1808,50 +1808,224 @@ button.notch-pill:hover {
     }
   }
 
-  /* modes: one surface per card (format, name, go), one line of rules, then the replay board */
+  /* the cast, off duty and looping: one row on wide screens, a swipeable strip on phones and tablets.
+   * --w/--h are each image's pixels (one shared scale), --s the display scale per breakpoint. */
+  .lp-roster {
+    --s: 0.36; /* phones: the fourth figure peeks in from the edge, so the strip reads as swipeable */
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin: 0 -16px 18px;
+    padding: 0 16px 2px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .lp-roster::-webkit-scrollbar {
+    display: none;
+  }
+  @media (min-width: 768px) {
+    .lp-roster {
+      --s: 0.46;
+      margin: 0 -40px 22px;
+      padding: 0 40px 2px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .lp-roster {
+      --s: 0.5;
+      justify-content: center;
+      gap: 22px;
+      margin: 0 0 26px;
+      padding: 0;
+      overflow: visible;
+    }
+  }
+  @media (min-width: 1180px) {
+    .lp-roster {
+      --s: 0.58;
+      gap: 34px;
+    }
+  }
+  .lp-roster-fig {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    scroll-snap-align: center;
+  }
+  /* the images are opaque on the page's ink, floor glow baked in (see stills.cjs), so no CSS shadow or backdrop */
+  .lp-roster-fig picture {
+    display: block;
+  }
+  .lp-roster-fig img {
+    display: block;
+    width: calc(var(--w) * var(--s) * 1px);
+    height: calc(var(--h) * var(--s) * 1px);
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .lp-roster-fig:hover img {
+    transform: translateY(-4px);
+  }
+  .lp-roster-fig figcaption {
+    font-family: var(--font-jet), monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mute);
+    transition: color 0.2s;
+  }
+  .lp-roster-fig:hover figcaption {
+    color: var(--bone);
+  }
+
+  /* modes: soft cards, each format told by who's in it (the picker's avatars), then name, length and one rule */
   .lp-modes {
     display: grid;
     gap: 12px;
   }
-  @media (min-width: 1180px) {
+  @media (min-width: 1024px) {
     .lp-modes {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
     }
   }
   .lp-mode {
-    --pad: 18px;
+    --tint: #7c5cff;
+    position: relative;
     display: flex;
     flex-direction: column;
-    padding: var(--pad) var(--pad) 0;
     text-align: left;
-    background: var(--ink-2);
     color: inherit;
-    box-shadow: inset 0 0 0 1px var(--hair);
-    clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+    border-radius: 22px;
+    background: linear-gradient(180deg, #17161d, #111015 70%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 18px 40px -26px rgba(0, 0, 0, 0.9);
+    overflow: hidden;
     cursor: pointer;
-    transition: box-shadow 0.2s;
+    transition:
+      transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.3s;
   }
-  @media (min-width: 768px) {
-    .lp-mode {
-      --pad: 20px;
-    }
+  .lp-mode.squad {
+    --tint: #5b8cff;
+  }
+  .lp-mode.royale {
+    --tint: #ffc857;
+  }
+  /* a soft glow of the mode's tint behind its cast */
+  .lp-mode::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(46% 84px at 50% 76px, color-mix(in srgb, var(--tint) 22%, transparent), transparent);
+    pointer-events: none;
   }
   .lp-mode:hover {
-    box-shadow: inset 0 0 0 1px var(--violet);
+    transform: translateY(-3px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 0 0 1px color-mix(in srgb, var(--tint) 40%, transparent),
+      0 26px 50px -28px color-mix(in srgb, var(--tint) 45%, #000);
   }
-  .lp-mode-head {
+  .lp-mode:focus-visible {
+    outline: 2px solid var(--violet);
+    outline-offset: 3px;
+  }
+  .lp-mode-cast {
+    position: relative;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    padding: 16px 16px 0;
+  }
+  .lp-mode-side {
+    display: flex;
+    align-items: center;
+  }
+  .lp-mode-vs {
+    margin: 0 16px;
+    font-family: var(--font-jet), monospace;
+    font-style: normal;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .lp-av {
+    --av: 80px;
+    --ring: rgba(255, 255, 255, 0.14);
+    position: relative;
+    flex: none;
+    width: var(--av);
+    height: var(--av);
+    border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, #2c2a35, #17161c 72%);
+    box-shadow:
+      0 0 0 2px var(--ring),
+      0 10px 20px -8px rgba(0, 0, 0, 0.7);
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .lp-av + .lp-av {
+    margin-left: calc(var(--av) * -0.2);
+  }
+  .lp-av img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 50% 26%;
+  }
+  .lp-mode.squad .lp-av {
+    --av: 62px;
+  }
+  .lp-mode.royale .lp-av {
+    --av: 44px;
+  }
+  .lp-av.dim {
+    filter: grayscale(1) brightness(0.55);
+    opacity: 0.55;
+  }
+  .lp-mode:hover .lp-av {
+    transform: translateY(-2px);
+  }
+  .lp-mode-body {
+    position: relative;
+    display: grid;
+    gap: 10px;
+    padding: 16px 20px 20px;
+  }
+  .lp-mode-meta {
+    display: flex;
+    gap: 6px;
+  }
+  .lp-mode-meta span {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    font-family: var(--font-jet), monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c9c6d1;
+  }
+  .lp-mode-row {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
   }
   .lp-mode-name {
-    margin-top: 4px;
     font-family: var(--font-saira), sans-serif;
     font-stretch: 62%;
     font-style: italic;
     font-weight: 800;
-    font-size: 40px;
+    font-size: 44px;
     line-height: 0.86;
     text-transform: uppercase;
   }
@@ -1859,13 +2033,13 @@ button.notch-pill:hover {
     display: grid;
     place-items: center;
     flex: none;
-    width: 44px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.07);
-    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
     transition:
-      background 0.18s,
-      color 0.18s;
+      background 0.2s,
+      color 0.2s;
   }
   .lp-mode-go svg {
     width: 18px;
@@ -1873,8 +2047,9 @@ button.notch-pill:hover {
     fill: none;
     stroke: currentColor;
     stroke-width: 2.4;
-    stroke-linecap: square;
-    transition: transform 0.18s;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.2s;
   }
   .lp-mode:hover .lp-mode-go {
     background: var(--violet);
@@ -1884,44 +2059,70 @@ button.notch-pill:hover {
     transform: translateX(2px);
   }
   .lp-mode-line {
-    margin-top: 10px;
-    min-height: 3em;
+    max-width: 30rem;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #a5a2ae;
   }
-  .lp-mode-stage {
-    position: relative;
-    height: 226px;
-    margin: auto calc(-1 * var(--pad)) 0;
-    padding-top: 16px;
-  }
-  /* tablet: one wide row per mode, rules on the left and the board on the right */
-  @media (min-width: 768px) and (max-width: 1179px) {
+  /* tablet: one wide card per mode, the cast on the left */
+  @media (min-width: 640px) and (max-width: 1023px) {
     .lp-mode {
       display: grid;
-      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-      grid-template-rows: auto 1fr;
-      column-gap: 32px;
+      grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr);
+      align-items: center;
     }
-    .lp-mode-line {
-      grid-column: 1;
-      max-width: 22rem;
+    .lp-mode::before {
+      background: radial-gradient(26% 70% at 24% 50%, color-mix(in srgb, var(--tint) 20%, transparent), transparent);
     }
-    .lp-mode-stage {
-      grid-column: 2;
-      grid-row: 1 / span 2;
-      height: 210px;
-      margin: 0 calc(-1 * var(--pad)) 0 0;
-      padding-top: 2px;
+    .lp-mode-cast {
+      height: 100%;
+      min-height: 150px;
+      padding: 16px;
     }
-    .lp-mode-stage .mv-body,
-    .lp-mode-stage .mv-foot {
-      padding-left: 0;
+    .lp-mode-body {
+      padding: 22px 24px 22px 4px;
     }
-    .lp-mode-stage .mv-lead {
-      left: -16px;
+  }
+  @media (min-width: 1024px) and (max-width: 1179px) {
+    .lp-mode.royale .lp-av {
+      --av: 38px;
     }
+  }
+  @media (max-width: 639px) {
+    .lp-mode-cast {
+      height: 108px;
+      padding-top: 14px;
+    }
+    .lp-mode::before {
+      background: radial-gradient(48% 74px at 50% 64px, color-mix(in srgb, var(--tint) 22%, transparent), transparent);
+    }
+    .lp-av {
+      --av: 68px;
+    }
+    .lp-mode.squad .lp-av {
+      --av: 54px;
+    }
+    .lp-mode.royale .lp-av {
+      --av: 38px;
+    }
+    .lp-mode-body {
+      gap: 8px;
+      padding: 12px 18px 18px;
+    }
+    .lp-mode-name {
+      font-size: 40px;
+    }
+  }
+
+  /* the Monad numbers count up into place */
+  .lp-count {
+    display: inline-grid;
+  }
+  .lp-count > [aria-hidden] {
+    grid-area: 1 / 1;
+  }
+  .lp-count-hold {
+    visibility: hidden;
   }
 
   /* how a match plays: the light section, cut on both edges */
@@ -2103,329 +2304,6 @@ button.notch-pill:hover {
     color: var(--bone);
   }
 
-  /* mode card key art (ModeViz): a scripted replay board per mode */
-  .mv {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    font-family: var(--font-jet), monospace;
-    font-size: 11px;
-    color: #c9c6cf;
-  }
-  .mv-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    height: 40px;
-    padding-inline: var(--pad);
-  }
-  .mv-clock {
-    flex: none;
-    min-width: 5ch;
-    padding: 2px 6px;
-    text-align: center;
-    color: var(--bone);
-    background: rgba(255, 255, 255, 0.06);
-    font-variant-numeric: tabular-nums;
-    transition:
-      background 0.2s,
-      color 0.2s;
-  }
-  .mv-clock.bell {
-    background: var(--bone);
-    color: var(--ink);
-  }
-  .mv-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-inline: var(--pad);
-  }
-  .mv-cap {
-    min-width: 0;
-    font-size: 12px;
-    line-height: 15px;
-    color: var(--bone);
-  }
-  .mv-cap span {
-    display: block;
-  }
-  .mv-rail {
-    position: relative;
-    height: 3px;
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .mv-rail i {
-    position: absolute;
-    inset: 0;
-    background: var(--bone);
-    transform-origin: left;
-    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .mv-rail b {
-    position: absolute;
-    top: -5px;
-    width: 2px;
-    height: 8px;
-    margin-left: -1px;
-    background: rgba(255, 255, 255, 0.28);
-    transition: background 0.2s;
-  }
-  .mv-rail b.hit {
-    background: var(--red);
-  }
-  .mv .up {
-    color: var(--green);
-  }
-  .mv .down {
-    color: var(--red);
-  }
-  .mv-who {
-    color: var(--bone);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .mv-who small {
-    margin-left: 5px;
-    font-size: 9px;
-    color: var(--violet);
-  }
-  .mv-chipslot {
-    display: flex;
-    min-width: 0;
-  }
-  .mv-pos,
-  .mv-win {
-    padding: 2px 6px;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    white-space: nowrap;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--bone);
-  }
-  .mv-pos.long {
-    background: rgba(47, 208, 138, 0.16);
-    color: var(--green);
-  }
-  .mv-pos.short {
-    background: rgba(255, 61, 90, 0.16);
-    color: var(--red);
-  }
-  .mv-win {
-    background: var(--bone);
-    color: var(--ink);
-    font-weight: 600;
-  }
-  .mv-total > span:first-child,
-  .mv-bal > span:first-child {
-    font-family: var(--font-saira), sans-serif;
-    font-stretch: 62%;
-    font-style: italic;
-    font-weight: 800;
-    line-height: 1;
-    color: var(--bone);
-    font-variant-numeric: tabular-nums;
-  }
-  .mv .lost {
-    opacity: 0.38;
-    transition: opacity 0.3s;
-  }
-
-  /* duel */
-  .mv-btc {
-    padding-bottom: 2px;
-    letter-spacing: 0.12em;
-    color: var(--mute);
-  }
-  .mv-btc b {
-    margin-left: 6px;
-    font-weight: 500;
-    color: var(--bone);
-  }
-  .mv-duel-row {
-    position: relative;
-    flex: 1;
-    display: grid;
-    grid-template-columns: 50px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    border-top: 1px solid var(--hair);
-    transition: opacity 0.3s;
-  }
-  /* the leader's edge marker sits on the card edge, outside the content column */
-  .mv-lead {
-    position: absolute;
-    left: calc(-1 * var(--pad));
-    top: 10px;
-    bottom: 10px;
-    width: 3px;
-    background: var(--violet);
-  }
-  .mv-bal {
-    display: grid;
-    justify-items: end;
-    gap: 3px;
-  }
-  .mv-bal > span:first-child {
-    font-size: 28px;
-  }
-  .mv-delta {
-    font-size: 11px;
-    color: var(--mute);
-  }
-
-  /* squad */
-  .mv-squad {
-    flex: 1;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 16px;
-  }
-  .mv-team {
-    --team: #6f8fd0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding-top: 8px;
-    border-top: 2px solid var(--team);
-    transition: opacity 0.3s;
-  }
-  .mv-team.t1 {
-    --team: #cf8a52;
-  }
-  .mv-team-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 18px;
-    font-family: var(--font-saira), sans-serif;
-    font-stretch: 62%;
-    font-style: italic;
-    font-weight: 800;
-    font-size: 17px;
-    text-transform: uppercase;
-    color: var(--team);
-  }
-  .mv-lead-tag {
-    padding: 2px 6px;
-    font-family: var(--font-jet), monospace;
-    font-style: normal;
-    font-weight: 500;
-    font-size: 9px;
-    letter-spacing: 0.12em;
-    background: var(--team);
-    color: var(--ink);
-  }
-  .mv-total {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-    margin: 2px 0 2px;
-  }
-  .mv-total > span:first-child {
-    font-size: 32px;
-  }
-  .mv-total .mv-delta {
-    font-family: var(--font-jet), monospace;
-    font-style: normal;
-    font-weight: 400;
-  }
-  .mv-mate {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    min-height: 24px;
-    max-height: 36px;
-    border-top: 1px solid var(--hair);
-  }
-  .mv-mate .mv-pos {
-    padding: 1px 5px;
-  }
-  .mv-team-foot {
-    display: flex;
-    min-height: 19px;
-    margin-top: auto;
-  }
-  .mv-num {
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  /* royale */
-  .mv-list {
-    flex: 1;
-    display: grid;
-    grid-auto-rows: minmax(0, 1fr);
-    gap: 1px;
-  }
-  .mv-row {
-    display: grid;
-    grid-template-columns: 12px 13px 30px minmax(0, 1fr) 52px;
-    align-items: center;
-    gap: 7px;
-    padding: 0 6px;
-    transition:
-      background 0.2s,
-      color 0.2s,
-      opacity 0.3s;
-  }
-  .mv-rank {
-    color: var(--mute);
-    text-align: right;
-  }
-  .mv-bar {
-    height: 4px;
-    background: rgba(255, 255, 255, 0.05);
-  }
-  .mv-bar i {
-    display: block;
-    height: 100%;
-    background: rgba(169, 184, 212, 0.55);
-    transform-origin: left;
-    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .mv-row.me .mv-who,
-  .mv-row.me .mv-num {
-    color: #a993ff;
-  }
-  .mv-row.me {
-    background: rgba(124, 92, 255, 0.1);
-  }
-  .mv-row.me .mv-bar i {
-    background: var(--violet);
-  }
-  .mv-row.cutting {
-    background: rgba(255, 61, 90, 0.2);
-  }
-  .mv-row.cutting .mv-num {
-    color: var(--red);
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  .mv-row.out {
-    opacity: 0.3;
-    background: transparent;
-  }
-  .mv-row.out .mv-who {
-    text-decoration: line-through;
-  }
-  .mv-row.out .mv-num {
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  .mv-row .mv-num b {
-    font-weight: 600;
-    color: #ffc857;
-  }
   @keyframes lpf-spin {
     to {
       transform: rotate(360deg);

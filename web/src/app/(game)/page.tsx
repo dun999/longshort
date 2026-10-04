@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
+import { animate, AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
 import { useScene } from '@/lib/scene';
-import { REAL_TRADING, fmtPx } from '@longshort/shared';
+import { CHARACTER_INFO, REAL_TRADING, fmtPx, type CharacterId } from '@longshort/shared';
 import { useWallet } from '@/lib/wallet';
 import { useApi } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
@@ -13,21 +13,81 @@ import { Logo } from '@/components/Logo';
 import { ConnectDialog } from '@/components/ConnectDialog';
 import { HeroChart } from '@/components/landing/HeroChart';
 import { Tracks } from '@/components/landing/Tracks';
-import { ModeViz } from '@/components/landing/ModeViz';
 import { MatchFlow } from '@/components/landing/MatchFlow';
+import LOUNGE from '@/assets/cast/lounge.json';
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
-const MODES: { key: 'duel' | 'squad' | 'royale'; name: string; meta: string; line: string }[] = [
-  { key: 'duel', name: 'Duel', meta: '1v1 · 60s', line: 'One rival, one minute. The bigger balance at the bell takes the pot.' },
-  { key: 'squad', name: 'Squad', meta: '2v2 · 120s', line: 'Team up with a friend. Your leader sets the leverage; the bigger team total splits the pot.' },
-  { key: 'royale', name: 'Royale', meta: '8 players · 180s', line: 'The lowest balance is cut every 30 seconds. The top three are paid 60/30/10.' },
+type Seat = { id: CharacterId; flip?: boolean; ring?: string; dim?: boolean };
+/** Each format told by who's in it: the avatars are the same portraits as the lobby's character picker. */
+const MODES: { key: 'duel' | 'squad' | 'royale'; name: string; meta: [string, string]; line: string; sides: Seat[][] }[] = [
+  {
+    key: 'duel',
+    name: 'Duel',
+    meta: ['1v1', '60s'],
+    line: 'One rival, one minute. The bigger balance at the bell takes the pot.',
+    sides: [[{ id: 'gladiator' }], [{ id: 'sniper', flip: true }]],
+  },
+  {
+    key: 'squad',
+    name: 'Squad',
+    meta: ['2v2', '120s'],
+    line: 'Team up with a friend. Your leader sets the leverage; the bigger team total splits the pot.',
+    sides: [
+      [{ id: 'keone', ring: '#5b8cff' }, { id: 'pigeon', ring: '#5b8cff' }],
+      [{ id: 'pirate', flip: true, ring: '#ff9a3d' }, { id: 'pathfinder', flip: true, ring: '#ff9a3d' }],
+    ],
+  },
+  {
+    key: 'royale',
+    name: 'Royale',
+    meta: ['8 players', '180s'],
+    line: 'The lowest balance is cut every 30 seconds. The top three are paid 60/30/10.',
+    sides: [
+      [
+        { id: 'pirate', ring: '#ffc857' },
+        { id: 'keone', ring: '#c9ced8' },
+        { id: 'sniper', ring: '#d08a52' },
+        { id: 'pigeon' },
+        { id: 'pathfinder' },
+        { id: 'gladiator' },
+        { id: 'sniper', dim: true },
+        { id: 'pigeon', dim: true },
+      ],
+    ],
+  },
 ];
+
+/** The cast off duty, each in its own 4 s loop (rendered from the arena models: web/art/cast/stills.cjs). Sizes are
+ * the images' pixels at one shared scale, so the pigeon stays pigeon-sized next to the gladiator. */
+const ROSTER: CharacterId[] = ['gladiator', 'sniper', 'pirate', 'pigeon', 'keone', 'pathfinder'];
+
+/** Counts up to `to` the first time it scrolls into view; the final number is what's served and read out. */
+function CountUp({ to }: { to: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const seen = useInView(ref, { once: true, amount: 0.8 });
+  const still = useReducedMotion();
+  const [n, setN] = useState(to);
+  useEffect(() => {
+    if (still) return;
+    if (!seen) return setN(0);
+    const c = animate(0, to, { duration: 1.5, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => setN(Math.round(v)) });
+    return () => c.stop();
+  }, [seen, still, to]);
+  return (
+    <span ref={ref} className="lp-count">
+      <span className="sr-only">{to}</span>
+      {/* the final number holds the width, so the unit beside it doesn't shuffle while counting */}
+      <span aria-hidden className="lp-count-hold">{to}</span>
+      <span aria-hidden className="lp-count-run">{n}</span>
+    </span>
+  );
+}
 
 const FAQ = [
   ['Is this real money?', 'longshort runs on Monad testnet with test AUSD. Duels execute real testnet Perpl trades, while Practice is a simulation. The tokens have no monetary value.'],
   ['Do I need a wallet?', 'Create a Mera passkey account with your device, then claim 200 test AUSD. No seed phrase, extension, email or OTP, and the same passkey restores the account in a fresh browser. No passkey on your device? Play as a guest and export its key from the account menu.'],
-  ['What is leverage?', 'A multiplier on your position. At 5x, 95 AUSD controls a 475 AUSD BTC position: wins and losses both grow five times, and a big enough move against you knocks you out. Pick Tank (5x) to start, Scout (10x) or Sniper (15x) when you feel brave.'],
+  ['What is leverage?', 'A multiplier on your position. At 5x, 95 AUSD controls a 475 AUSD BTC position: wins and losses both grow five times, and a big enough move against you knocks you out. Start at 5x, move to 10x or 15x when you feel brave. Your character is just your look: any character plays at any leverage.'],
   ['How are winners paid?', 'Each pot is every entry added together, minus a 2.5% rake. A Duel winner takes it all, the winning Squad team splits it, and Royale pays the top three 60%, 30% and 10%. Ties get their entries back. The full math is on the Rules & Risks page.'],
   ['Who holds the pot?', REAL_TRADING ? 'The PerplArena contract escrows entries and pays prizes onchain after settlement. A separate trading account holds each player’s 100 AUSD budget. Trading and fees can reduce it; remaining capital returns to that player. Settlement is coordinated by the keeper.' : 'The arena contract escrows stakes and pays prizes after settlement.'],
   ['What happens if I get liquidated?', REAL_TRADING ? 'Perpl closes the position and the round uses the actual remaining trading balance. Entry and trading capital are both at risk. The report shows returned capital separately from the prize.' : 'The position closes when it reaches its liquidation threshold.'],
@@ -140,33 +200,69 @@ export default function Landing() {
             <h2 className="lp-h2">Pick your fight</h2>
             <p>Three formats, one rule: the best trader walks away with the pot. All live on BTC with real Perpl orders; warm up in free Practice first.</p>
           </div>
+          <div className="lp-roster">
+            {ROSTER.map((id, i) => {
+              const [w, h] = LOUNGE[id];
+              return (
+                <motion.figure
+                  key={id}
+                  className="lp-roster-fig"
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ delay: i * 0.05, duration: 0.5, ease: EASE }}
+                  style={{ ['--w' as string]: w, ['--h' as string]: h }}
+                >
+                  <picture>
+                    <source srcSet={`/cast/lounge/${id}.webp`} media="(prefers-reduced-motion: reduce)" />
+                    <img src={`/cast/lounge/${id}-loop.webp`} alt={`${CHARACTER_INFO[id].name}: ${CHARACTER_INFO[id].line}`} width={w} height={h} loading="lazy" decoding="async" draggable={false} />
+                  </picture>
+                  <figcaption>{CHARACTER_INFO[id].name}</figcaption>
+                </motion.figure>
+              );
+            })}
+          </div>
           <div className="lp-modes">
-            {MODES.map(({ key, name, meta, line }, i) => (
+            {MODES.map(({ key, name, meta, line, sides }, i) => (
               <motion.button
                 key={key}
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 24 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ delay: i * 0.08, duration: 0.6, ease: EASE }}
-                className="lp-mode"
-                aria-label={`Queue ${name}, ${meta}`}
+                className={`lp-mode ${key}`}
+                aria-label={`Queue ${name}, ${meta.join(', ')}`}
                 onClick={() => play(`/play?mode=${key}`)}
                 onMouseEnter={sfx.hover}
               >
-                <div className="lp-mode-head">
-                  <div>
-                    <span className="lp-mono">{meta}</span>
-                    <h3 className="lp-mode-name">{name}</h3>
-                  </div>
-                  <span className="lp-mode-go" aria-hidden>
-                    <svg viewBox="0 0 24 24">
-                      <path d="M5 12h13M13 6l6 6-6 6" />
-                    </svg>
-                  </span>
+                <div className="lp-mode-cast" aria-hidden>
+                  {sides.map((side, s) => (
+                    <div key={s} className="lp-mode-side">
+                      {s > 0 && <i className="lp-mode-vs">vs</i>}
+                      {side.map((c, j) => (
+                        <span key={j} className={`lp-av ${c.dim ? 'dim' : ''}`} style={c.ring ? { ['--ring' as string]: c.ring } : undefined}>
+                          {/* eslint-disable-next-line @next/next/no-img-element -- 15 KB static avatar */}
+                          <img src={`/cast/${c.id}.webp`} alt="" width={96} height={96} loading="lazy" draggable={false} style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
+                        </span>
+                      ))}
+                    </div>
+                  ))}
                 </div>
-                <p className="lp-mode-line">{line}</p>
-                <div className="lp-mode-stage">
-                  <ModeViz mode={key} />
+                <div className="lp-mode-body">
+                  <div className="lp-mode-meta">
+                    {meta.map((m) => (
+                      <span key={m}>{m}</span>
+                    ))}
+                  </div>
+                  <div className="lp-mode-row">
+                    <h3 className="lp-mode-name">{name}</h3>
+                    <span className="lp-mode-go" aria-hidden>
+                      <svg viewBox="0 0 24 24">
+                        <path d="M5 12h13M13 6l6 6-6 6" />
+                      </svg>
+                    </span>
+                  </div>
+                  <p className="lp-mode-line">{line}</p>
                 </div>
               </motion.button>
             ))}
@@ -191,7 +287,7 @@ export default function Landing() {
             ].map(([v, u, d]) => (
               <div key={v + u}>
                 <div className="lp-num">
-                  {v}
+                  {Number(v) > 0 ? <CountUp to={Number(v)} /> : v}
                   <small>{u}</small>
                 </div>
                 <p>{d}</p>
