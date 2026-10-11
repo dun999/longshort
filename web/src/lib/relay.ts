@@ -64,6 +64,13 @@ export function warmRelay(account: Account | null | undefined) {
   void chainState(account.address).catch(() => {});
 }
 
+/** Whether this account's next sponsored call also carries its one-time delegation (its first, or after a relay upgrade). */
+export async function needsDelegation(address: Address) {
+  if (!sponsorLive()) return false;
+  const { who } = await chainState(address).catch(() => ({ who: 'other' as const }));
+  return who === 'empty' || (who !== 'other' && who.toLowerCase() !== ADDR.relayDelegate!.toLowerCase());
+}
+
 /**
  * Ask the keeper to submit a call that the account itself signed. The first call also carries
  * the one-time EIP-7702 delegation. The keeper pays the gas; this account's MON does not move.

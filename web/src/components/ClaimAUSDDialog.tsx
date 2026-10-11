@@ -7,6 +7,9 @@ import { usePathname } from 'next/navigation';
 import { REAL_TRADING, explorerTx } from '@longshort/shared';
 import { useWallet } from '@/lib/wallet';
 import { useT } from '@/lib/i18n';
+import { useName, useNeedsName } from '@/lib/profileName';
+import { friendly } from '@/lib/errors';
+import { NameField, useNameDraft } from './NameDialog';
 
 const dollars = (value?: string) => Number(formatUnits(BigInt(value ?? '0'),6)).toLocaleString('en-US',{maximumFractionDigits:2});
 
@@ -18,7 +21,29 @@ export function ClaimAUSDDialog() {
   const panel = useRef<HTMLDivElement>(null);
   const confirmed = claim?.status === 'confirmed';
   const open = path === '/play' && REAL_TRADING && !!address && !connecting && claimOpen;
-  const dismiss = () => { if (!useWallet.getState().claimBusy) useWallet.setState({ claimOpen: false }); };
+  // a new player names themselves on the same screen: one tap saves the name and claims
+  const needsName = useNeedsName();
+  const name = useNameDraft(open && needsName);
+  const [naming, setNaming] = useState(false);
+  const namingRef = useRef(false);
+  namingRef.current = naming;
+  const [nameError, setNameError] = useState<string>();
+  const dismiss = () => {
+    if (useWallet.getState().claimBusy || namingRef.current) return;
+    useWallet.setState({ claimOpen: false });
+    if (useName.getState().name === null) useName.setState({ deferred: true });
+  };
+  const claimNow = async () => {
+    if (needsName && !confirmed) {
+      if (!name.ok) return;
+      setNaming(true);
+      setNameError(undefined);
+      try { await useName.getState().save(name.draft); }
+      catch (e) { setNameError(friendly(e)); return; }
+      finally { setNaming(false); }
+    }
+    await faucet().catch(() => {});
+  };
   useEffect(()=>setMounted(true),[]);
   useEffect(()=>{
     if (!open) return;
@@ -27,7 +52,7 @@ export function ClaimAUSDDialog() {
     const handle = (e: KeyboardEvent) => {
       if(e.key==='Escape') dismiss();
       if(e.key==='Tab') {
-        const nodes = panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href]');
+        const nodes = panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled)');
         if(!nodes?.length) return;
         const first=nodes[0],last=nodes[nodes.length-1];
         if(e.shiftKey && (document.activeElement===first || document.activeElement===panel.current)) {e.preventDefault();last.focus();}
@@ -48,7 +73,8 @@ export function ClaimAUSDDialog() {
         </div>
         <h2 id="claim-ausd-title" className="font-display mt-1 text-2xl font-bold tracking-[0.06em] uppercase">{t(confirmed?'claim.confirmed':'claim.title')}</h2>
         <p id="claim-ausd-body" className="mt-2 text-xs leading-relaxed text-muted">{t(confirmed?'claim.doneBody':'claim.body')}</p>
-        <div className="my-5 border-y border-line py-5" aria-live="polite">
+        {needsName && !confirmed && <div className="mt-4"><NameField d={name} disabled={claimBusy || naming} />{nameError && <p role="alert" className="text-xs text-red">{nameError}</p>}</div>}
+        <div className={`${needsName && !confirmed ? 'mb-5 mt-2' : 'my-5'} border-y border-line py-5`} aria-live="polite">
           <div className="panel-title">{t(confirmed?'claim.balance':'claim.grant')}</div>
           <div className={`num mt-2 flex items-baseline gap-2 ${confirmed?'text-green':'text-white'}`}>
             <span className="text-[clamp(2rem,9vw,3rem)] font-semibold leading-none tracking-tight">{confirmed?Number(formatUnits(usd,6)).toFixed(2):dollars(claim?.amount??'200000000')}</span>
@@ -59,7 +85,7 @@ export function ClaimAUSDDialog() {
         {!confirmed && <p className="mb-5 text-xs leading-relaxed text-muted">{t('claim.cost')}</p>}
         {claimError && <p role="alert" className="mb-3 text-xs text-red">{claimError}</p>}
         {confirmed ? <button className="btn-play sm min-h-12 w-full !px-4 !text-[13px] !tracking-[0.12em]" onClick={dismiss}>{t('claim.play')}</button> :
-          <button className="btn-play sm min-h-12 w-full !px-4 !text-[13px] !tracking-[0.12em]" disabled={claimBusy} onClick={()=>void faucet().catch(()=>{})}>{t(claimBusy?'claim.pending':claim?.status==='pending'?'claim.check':'claim.action',{amount:dollars(claim?.amount??'200000000')})}</button>}
+          <button className="btn-play sm min-h-12 w-full !px-4 !text-[13px] !tracking-[0.12em]" disabled={claimBusy || naming || (needsName && !name.ok)} onClick={()=>void claimNow()}>{t(naming?'name.saving':claimBusy?'claim.pending':claim?.status==='pending'?'claim.check':'claim.action',{amount:dollars(claim?.amount??'200000000')})}</button>}
         {claim?.tx && <a className="mt-3 block text-center text-xs text-muted underline" href={explorerTx(claim.tx)} target="_blank" rel="noreferrer">{t('claim.transaction')} ↗</a>}
         {!confirmed && <button className="mt-3 block w-full text-center text-xs text-muted underline" onClick={() => useWallet.setState({ claimOpen: false, depositOpen: true })}>{t('claim.deposit')}</button>}
         <p className="mt-4 text-center text-[10px] text-dim">{t('claim.testnet')}</p>

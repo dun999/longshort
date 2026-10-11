@@ -10,11 +10,11 @@ import { hasSavedPasskey, passkeySupported } from '@/lib/mera';
 import { sfx } from '@/lib/sfx';
 import { useT } from '@/lib/i18n';
 import { useDialog } from '@/lib/useDialog';
+import { useName } from '@/lib/profileName';
 
 export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
   const { connectInjected, connectGuest, connectPasskey, connecting, error, address } = useWallet();
-  const [username, setUsername] = useState('');
   const [creating, setCreating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -68,14 +68,8 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
                 <p className="text-[11px] text-gold">{t('cd.unsupported')}</p>
               ) : creating || !saved ? (
                 <div className="grid gap-2">
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value.replace(/[^\w.-]/g, '').slice(0, 20))}
-                    placeholder={t('cd.callsign')}
-                    aria-label={t('cd.callsign')}
-                    className="min-h-[44px] min-w-0 border border-line bg-black/30 px-3 py-2 text-[16px] outline-none focus:border-[var(--accent)]"
-                  />
-                  <button className="btn-play sm w-full" disabled={connecting} onClick={() => (sfx.lockIn(), void connectPasskey({ create: true, username }))}>
+                  {/* the name is picked right after, on the welcome screen; the suggestion labels the passkey meanwhile */}
+                  <button className="btn-play sm w-full" disabled={connecting} onClick={() => (sfx.lockIn(), void connectPasskey({ create: true, username: useName.getState().suggestion }))}>
                     {t(connecting ? 'cd.waiting' : 'cd.create')}
                   </button>
                   {saved && (
@@ -112,9 +106,7 @@ export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () =>
                 {t('cd.guest')}
               </button>
             </div></>}
-            <p className="mt-3 text-[10px] leading-relaxed text-dim">
-              {t(REAL_TRADING ? 'cd.liveFooter' : 'cd.footer', { stake: STAKE })}
-            </p>
+            {!REAL_TRADING && <p className="mt-3 text-[10px] leading-relaxed text-dim">{t('cd.footer', { stake: STAKE })}</p>}
             {/* secondary on purpose: Mera stays the account layer, a guest is for judges and devices without passkeys */}
             {REAL_TRADING && (
               <div className="mt-4 grid gap-1.5 border-t border-line pt-3">

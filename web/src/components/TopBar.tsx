@@ -16,6 +16,7 @@ import { SettingsDialog } from './Settings';
 import { describeKeys } from '@/lib/mera';
 import { friendly } from '@/lib/errors';
 import { useSocket } from '@/lib/socket';
+import { useName } from '@/lib/profileName';
 
 const NAV: { href: string; label: Key }[] = [
   { href: '/play', label: 'nav.play' },
@@ -46,6 +47,7 @@ export function TopBar({ onInvites }: { onInvites: () => void }) {
   const [settings, setSettings] = useState(false);
   const inviteCount = useSocket((s) => s.invites.length + s.rematchInvites.length);
   const { data: prof } = useApi<any>(address ? `/profile/${address}` : null, 10_000);
+  const name = useName((s) => s.name);
   useEffect(() => {
     if (!address) return;
     const i = setInterval(refresh, 8000);
@@ -76,16 +78,19 @@ export function TopBar({ onInvites }: { onInvites: () => void }) {
       </nav>
       <div className="topbar-actions ml-auto flex min-w-0 shrink-0 items-center gap-3">
         {address ? (
-          <PlayerMenu address={address} name={prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} ready={balanceReady} onSettings={() => setSettings(true)} />
+          <PlayerMenu address={address} name={name ?? prof?.profile?.name ?? shortAddr(address)} kind={kind} xp={xp} usd={usd} mon={mon} ready={balanceReady} onSettings={() => setSettings(true)} />
         ) : (
           <>
             {/* signed out there's no account menu: a gear opens settings (phones use the menu) */}
             <button className="desktop-settings chip h-8 w-8 justify-center !p-0" onClick={() => (sfx.click(), setSettings(true))} aria-label={t('set.title')} title={t('set.title')}>
               <SettingsIcon />
             </button>
-            <button className="gbtn sm whitespace-nowrap" onClick={() => (sfx.click(), setOpen(true))}>
-              {t('nav.signIn')}
-            </button>
+            {/* the lobby's own PLAY button signs in, so the lobby shows one sign-in, not two */}
+            {path !== '/play' && (
+              <button className="gbtn sm whitespace-nowrap" onClick={() => (sfx.click(), setOpen(true))}>
+                {t('nav.signIn')}
+              </button>
+            )}
           </>
         )}
         <MobileNav path={path} onSettings={() => setSettings(true)} onInvites={onInvites} inviteCount={inviteCount} />
@@ -230,25 +235,26 @@ function PlayerMenu({ address, name, kind, xp, usd, mon, ready, onSettings }: { 
               </Link>
               <Link href="/demo" className="acct-item" onClick={() => setOpen(false)}>Demo evidence</Link>
               {REAL_TRADING && injected && <Link href="/recover" className="acct-item" onClick={() => setOpen(false)}>Account recovery</Link>}
+              {/* one way in for funds: the welcome claim while it is unclaimed, otherwise a deposit */}
               {!injected && (
-                <button className="acct-item" onClick={() => (sfx.click(), setOpen(false), useWallet.setState({ depositOpen: true }))}>
-                  {t('acct.deposit', { stake: STAKE })}
+                <button
+                  className="acct-item"
+                  onClick={async () => {
+                    sfx.click();
+                    if (!REAL_TRADING) {
+                      setMsg(t('acct.sending'));
+                      return void faucet().then(() => setMsg(t('acct.fundsSent')), (e) => setMsg(friendly(e)));
+                    }
+                    setOpen(false);
+                    await useWallet.getState().checkClaim(); // opens the claim while one is due
+                    if (useWallet.getState().claimOpen) router.push('/play');
+                    else useWallet.setState({ depositOpen: true });
+                  }}
+                >
+                  {t('acct.add', { stake: STAKE })}
                 </button>
               )}
               {guest && <GuestKey />}
-              <button
-                className="acct-item"
-                onClick={() => {
-                  if (REAL_TRADING) { useWallet.setState({claimOpen:true}); setOpen(false); router.push('/play'); return; }
-                  setMsg(t('acct.sending'));
-                  faucet().then(
-                    () => setMsg(t('acct.fundsSent')),
-                    (e) => setMsg(friendly(e)),
-                  );
-                }}
-              >
-                {t('acct.funds')}
-              </button>
               {/* phones already have Settings in the menu button; the wrapper keeps the unlayered .acct-item display from beating the utility */}
               <div className="max-lg:hidden">
                 <button className="acct-item" onClick={() => (sfx.click(), setOpen(false), onSettings())}>

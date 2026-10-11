@@ -22,8 +22,9 @@ import { api } from './api';
 import { saveToken, useSocket } from './socket';
 import * as mera from './mera';
 import { friendly } from './errors';
-import { relayTx, sponsorAccount } from './relay';
+import { needsDelegation, relayTx, sponsorAccount } from './relay';
 import { recordReceipt } from './journey';
+import { step } from './progress';
 
 type Kind = 'injected' | 'guest' | 'passkey';
 const LS = { kind: 'ls.kind', guest: 'ls.guest.v1', session: 'ls.session.v1', passkeyAddr: 'ls.passkey.owner' };
@@ -180,7 +181,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     if (get().kind !== 'passkey') return;
     if (mera.isUnlocked() && !opts.verify) return mera.touch();
     const expected = get().address;
-    const owner = await mera.unlock();
+    const owner = await step('verify', () => mera.unlock());
     if (expected && owner.address.toLowerCase() !== expected.toLowerCase()) {
       mera.lock();
       throw new Error('Choose the passkey for this account. Sign out to use a different account.');
@@ -347,15 +348,17 @@ export const useWallet = create<WalletState>((set, get) => ({
     if (amount <= 0n) throw new Error('Invalid entry amount');
     // Replace even a legacy unlimited approval with this entry plus its trading budget.
     if (allowance === amount) return;
-    let tx: TxResult;
-    if (relayLive(ADDR.relayDelegate) && kind !== 'injected') {
-      const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, amount] });
-      tx = await relayTx(sponsorAccount(main.account), ADDR.stake, data);
-    } else {
-      tx = await timedTx(() =>
+    const sponsored = relayLive(ADDR.relayDelegate) && kind !== 'injected';
+    const setup = sponsored && (await needsDelegation(address));
+    const tx = await step('approve', async () => {
+      if (sponsored) {
+        const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, amount] });
+        return relayTx(sponsorAccount(main.account), ADDR.stake, data);
+      }
+      return timedTx(() =>
         main.writeContract({ account: main.account ?? address, chain: activeChain, address: ADDR.stake, abi: erc20Abi, functionName: 'approve', args: [ADDR.arena, amount], gas: GAS.approve }),
       );
-    }
+    }, { setup });
     if (tx.status !== 'success') throw new Error('Entry approval reverted. Retry before joining.');
     recordReceipt('approval', tx.hash);
     await get().refresh();

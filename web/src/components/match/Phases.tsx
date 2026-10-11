@@ -28,7 +28,6 @@ function sides(m: MatchView): [PlayerView[], PlayerView[]] {
 }
 
 // ─── matchmaking: searching ─────────────────────────────────────────────────
-const STATUS = ['mm.s1', 'mm.s2', 'mm.s3', 'mm.s4'] as const;
 
 function Seat({ p, color, i }: { p?: PlayerView; color: string; i: number }) {
   const t = useT();
@@ -62,15 +61,26 @@ export function Waiting({ m, now, onLeave, onJoin, leaving }: { m: MatchView; no
   const t = Math.max(0, now - m.createdAt);
   const cfg = MODES[m.mode];
   const teams = m.mode !== Mode.ROYALE;
-  const status = STATUS[Math.floor(t / 2.4) % STATUS.length];
   const fillIn = Math.max(0, BOT_FILL - t);
 
-  // a blip for every trader who sits down
+  // a blip, and their name for a moment, for every trader who sits down
   const seen = useRef(m.players.length);
+  const [joined, setJoined] = useState<string>();
   useEffect(() => {
-    if (m.players.length > seen.current) sfx.select();
+    const newest = m.players.at(-1);
+    if (m.players.length > seen.current) {
+      sfx.select();
+      if (newest && !newest.isMe) setJoined(newest.name);
+    }
     seen.current = m.players.length;
-  }, [m.players.length]);
+  }, [m.players]);
+  useEffect(() => {
+    if (!joined) return;
+    const t = setTimeout(() => setJoined(undefined), 3000);
+    return () => clearTimeout(t);
+  }, [joined]);
+  const left = Math.max(0, m.maxPlayers - m.nPlayers);
+  const status = joined ? T('mm.joined', { name: joined }) : m.mode === Mode.DUEL ? T('mm.waitRival') : left === 1 ? T('mm.waitOne') : T('mm.waitMore', { n: left });
 
   const per = teams ? m.maxPlayers / 2 : m.maxPlayers;
   const [a, b] = teams ? sides(m) : [m.players, []];
@@ -93,14 +103,15 @@ export function Waiting({ m, now, onLeave, onJoin, leaving }: { m: MatchView; no
           <div className="panel-title">
             {T('mm.lobby', { id: m.id })} · {cfg.name} · {m.entry} {STAKE}
           </div>
+          {m.me && <div className="mm-seat-ok">✓ {T(REAL_TRADING ? 'mm.seatPerpl' : 'mm.seat')}</div>}
           <div className="mm-title">
             {T('mm.finding')} <b>{m.nPlayers}</b>
             <span>/{m.maxPlayers}</span>
           </div>
           <AnimatePresence mode="wait">
             <motion.div key={status} className="mm-status" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.25 }}>
-              {T(status)}
-              <span className="mm-dots" />
+              {status}
+              {!joined && <span className="mm-dots" />}
             </motion.div>
           </AnimatePresence>
         </div>

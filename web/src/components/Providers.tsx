@@ -12,6 +12,8 @@ import { initLang } from '@/lib/i18n';
 import { music } from '@/lib/music';
 import { Invites } from './lobby/Invites';
 import { DepositDialog } from './DepositDialog';
+import { NameDialog } from './NameDialog';
+import { startProfileName } from '@/lib/profileName';
 import { initSettings } from '@/lib/settings';
 import { useWakeLock } from '@/lib/wakeLock';
 import { startJourney } from '@/lib/journey';
@@ -67,6 +69,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     startSocket();
     startAuth();
+    startProfileName();
     void useWallet.getState().restore().catch(() => {});
     initLang();
     initSettings();
@@ -107,6 +110,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       </div>
       <Invites open={invitesOpen} onClose={() => setInvitesOpen(false)} />
       <DepositDialog />
+      <NameDialog />
       <Toast />
     </>
   );

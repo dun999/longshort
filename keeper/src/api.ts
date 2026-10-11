@@ -166,12 +166,24 @@ route('GET', '/feed', () =>
   (db.prepare('SELECT * FROM trades ORDER BY id DESC LIMIT 40').all() as any[]).map((t) => ({ ...t, name: nameOf(t.addr)?.name ?? null })),
 );
 
+// Names are unique ignoring case, so the one a player picks is the one rivals see.
+const validName = (name: unknown): name is string => typeof name === 'string' && name === name.trim() && /^[\w .·-]{2,20}$/.test(name) && !/^bot/i.test(name);
+const nameTaken = (name: string, addr = '') =>
+  !!db.prepare('SELECT 1 FROM profiles WHERE name = ? COLLATE NOCASE AND addr != ? LIMIT 1').get(name, addr.toLowerCase());
+route('GET', '/name/:name', (req, [raw]) => {
+  const name = decodeURIComponent(raw);
+  const self = new URL(req.url!, 'http://x').searchParams.get('addr') ?? '';
+  return { available: validName(name) && !nameTaken(name, self) };
+});
+
 route('POST', '/profile', async (_r, _p, body) => {
   const { addr, name, ts, sig } = body ?? {};
-  if (typeof name !== 'string' || !/^[\w .·-]{2,20}$/.test(name) || /^bot/i.test(name)) return { error: 'bad name' };
+  if (!validName(name)) return { error: 'bad name' };
+  if (!isAddress(String(addr))) return { error: 'bad address' };
   if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return { error: 'expired' };
   const ok = await verifyMessage({ address: addr, message: `longshort.fun name:${name} ts:${ts}`, signature: sig }).catch(() => false);
   if (!ok) return { error: 'bad signature' };
+  if (nameTaken(name, addr)) return { error: 'name taken' };
   ensureProfile(addr);
   db.prepare('UPDATE profiles SET name = ? WHERE addr = ?').run(name, addr.toLowerCase());
   for (const client of clientsOf(addr.toLowerCase())) client.name = name;

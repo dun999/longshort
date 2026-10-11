@@ -2,41 +2,24 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MODES, Mode, explorerAddr, explorerTx, fmtUsd, level, levelProgress, shortAddr, STAKE } from '@longshort/shared';
-import { api, useApi } from '@/lib/api';
+import { useApi } from '@/lib/api';
 import { EnvioBadge, envioProfile, useIndexed } from '@/lib/envio';
 import { useScene } from '@/lib/scene';
 import { useWallet } from '@/lib/wallet';
 import { PlayerMark } from '@/components/PlayerMark';
 import { BackButton } from '@/components/ui/BackButton';
+import { NameField, useNameDraft } from '@/components/NameDialog';
+import { useName } from '@/lib/profileName';
+import { friendly } from '@/lib/errors';
 
 export default function Profile({ params }: { params: Promise<{ addr: string }> }) {
   const { addr } = use(params);
   const { data, reload } = useApi<any>(`/profile/${addr}`, 10_000);
   const { data: ix } = useIndexed<any>(() => envioProfile(addr), null, 10_000, `profile:${addr.toLowerCase()}`);
-  const { address, disconnect } = useWallet();
+  const { address } = useWallet();
   const mine = address?.toLowerCase() === addr.toLowerCase();
-  const [name, setName] = useState('');
-  const [msg, setMsg] = useState<string>();
-  const [saving, setSaving] = useState(false);
   const p = data?.profile;
   useEffect(() => useScene.getState().set({ shot: 'backdrop', slots: [] }), []);
-
-  const save = async () => {
-    if (!address || saving) return;
-    setSaving(true); setMsg(undefined);
-    try {
-      await useWallet.getState().ensureUnlocked();
-      const { main, address: current } = useWallet.getState();
-      if (!main || current !== address) throw new Error('Account changed. Sign in again.');
-      const ts = Math.floor(Date.now() / 1000);
-      const sig = await main.signMessage({ account: main.account ?? address, message: `longshort.fun name:${name} ts:${ts}` });
-      await api('/profile', { addr: address, name, ts, sig });
-      setMsg('Saved');
-      reload();
-    } catch (e) {
-      setMsg((e as Error).message.split('\n')[0]);
-    } finally { setSaving(false); }
-  };
 
   const xp = p?.xp ?? 1000;
   return (
@@ -84,19 +67,7 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
         ))}
         </div>
       </div>
-      {mine && (
-        <div className="panel flex flex-wrap items-center gap-3 p-4">
-          <span className="panel-title">Callsign</span>
-          <input aria-label="Callsign" value={name} disabled={saving} onChange={(e) => setName(e.target.value)} placeholder={p?.name ?? 'pick a name'} maxLength={20} className="border border-line bg-black/30 px-3 py-2 text-sm outline-none focus:border-violet" />
-          <button className="gbtn sm" onClick={save} disabled={saving || !/^[\w .·-]{2,20}$/.test(name) || /^bot/i.test(name)}>
-            {saving ? 'Saving…' : 'Save callsign'}
-          </button>
-          {msg && <span className="text-xs text-muted">{msg}</span>}
-          <button className="ml-auto text-xs text-dim hover:text-red" onClick={disconnect}>
-            Sign out
-          </button>
-        </div>
-      )}
+      {mine && data && <Rename current={p?.name ?? undefined} onSaved={reload} />}
       <div className="panel min-w-0 p-2">
         <div className="flex items-center gap-2 px-3 py-2">
           <span className="panel-title">Match history · verified onchain</span>
@@ -134,5 +105,35 @@ export default function Profile({ params }: { params: Promise<{ addr: string }> 
         {!(ix?.matches ?? data?.matches)?.length && <div className="p-6 text-center text-sm text-muted">No matches yet.</div>}
       </div>
     </div>
+  );
+}
+
+/** Change the name rivals see; the account's key signs it, so it follows the account to any device. */
+function Rename({ current, onSaved }: { current?: string; onSaved: () => void }) {
+  const d = useNameDraft(true, current);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string>();
+  const save = async () => {
+    if (!d.ok || saving || d.draft === current) return;
+    setSaving(true);
+    setMsg(undefined);
+    try {
+      await useName.getState().save(d.draft);
+      setMsg('Saved');
+      onSaved();
+    } catch (e) {
+      setMsg(friendly(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <form className="panel grid gap-2 p-4 sm:max-w-md" onSubmit={(e) => (e.preventDefault(), void save())}>
+      <NameField d={d} disabled={saving} />
+      <div className="flex items-center gap-3">
+        <button className="gbtn sm" disabled={saving || !d.ok || d.draft === current}>{saving ? 'Saving…' : 'Save name'}</button>
+        {msg && <span className="text-xs text-muted">{msg}</span>}
+      </div>
+    </form>
   );
 }

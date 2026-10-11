@@ -2786,9 +2786,79 @@ button.notch-pill:hover {
   text-transform: uppercase;
   color: var(--muted);
 }
+.mm-seat-ok {
+  font-family: var(--font-jet), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--green);
+}
 .mm-dots::after {
   content: '';
   animation: mm-dots 1.2s steps(4) infinite;
+}
+/* PLAY's real steps (lib/progress): a spinner while a request or transaction is out, its time once it confirms */
+.queue-steps {
+  display: grid;
+  gap: 4px;
+  min-width: 270px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  background: rgba(12, 13, 16, 0.86);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-jet), monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.queue-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.queue-steps li.on {
+  color: var(--text);
+}
+.queue-steps i {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--green);
+}
+.queue-steps li.on i {
+  border: 1.5px solid var(--line-hi);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: q-spin 0.8s linear infinite;
+}
+.queue-steps small {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 10px;
+  color: var(--dim);
+}
+@keyframes q-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .queue-steps li.on i {
+    animation: none;
+  }
+}
+/* phones keep the arena open: only the step in progress (or the one that just finished) */
+@media (max-width: 1023px) {
+  .queue-steps {
+    min-width: 0;
+  }
+  .queue-steps li.done:not(:last-child) {
+    display: none;
+  }
 }
 .mm-seats {
   display: flex;

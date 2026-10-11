@@ -20,6 +20,7 @@ import { Guide, guideSeen } from './Guide';
 import { PlayerSearch } from '../PlayerSearch';
 import { useDialog } from '@/lib/useDialog';
 import { asset } from '@/lib/asset';
+import { startSteps, stopSteps, useSteps, type Step } from '@/lib/progress';
 
 type LobbyMode = Mode | 'practice';
 const MODE_LIST: LobbyMode[] = [Mode.DUEL, Mode.SQUAD, Mode.ROYALE, 'practice'];
@@ -87,7 +88,6 @@ function QueueCard({ mode, entry, lev, locked, onOpen }: { mode: LobbyMode; entr
           <div className="font-display text-lg leading-none font-bold tracking-[0.08em] uppercase">{cfg.name}</div>
           <div className="num mt-1 truncate text-[10px] text-muted">
             {cfg.maxPlayers}p · BTC {lev}x · {cfg.duration}s · {mode === 'practice' ? t('lb.free') : `${entry} ${STAKE}`}
-            {!!live?.length && <span className="text-red"> · ● {t('lb.live', { n: live.length })}</span>}
           </div>
         </div>
         <button className="gbtn ghost sm shrink-0" disabled={locked} onClick={() => (sfx.click(), onOpen())}>
@@ -351,7 +351,7 @@ export function Lobby() {
     const cap = effMode === Mode.ROYALE ? 3 : 2;
     const slots: Slot[] = others.map((m) => toSlot(m, false));
     if (me) slots.splice(Math.floor(slots.length / 2), 0, toSlot(mine ?? { addr: me, leverage: lev }, true));
-    else slots.push({ empty: true, color: '#626873', name: t('lb.slotSignIn') });
+    else slots.push({ empty: true, color: '#626873', name: t('lb.slotYou') });
     if (effMode === 'practice') slots.push({ id: 'bot·Rex', name: 'bot·Rex', character: characterOf('bot·Rex'), leverage: lev, color: '#626873' });
     while (slots.length < cap && effMode !== 'practice') slots.push({ empty: true, color: '#626873', name: t(effMode === Mode.DUEL ? 'lb.slotRival' : 'lb.slotInvite') });
     useScene.getState().set({ shot: queuedAt ? 'queue' : 'lobby', slots, intensity: 0.25 });
@@ -370,6 +370,7 @@ export function Lobby() {
   busyRef.current = busy;
   const [cancelQueued, setCancelQueued] = useState(false);
   useEffect(() => () => void (busyRef.current && (cancelQ.current = true)), []); // leaving the page mid-queue cancels too
+  useEffect(() => stopSteps, []); // the list stays up until the match screen replaces the lobby
 
   const findMatch = async () => {
     if (effMode === 'practice') return router.push('/practice');
@@ -380,6 +381,7 @@ export function Lobby() {
     cancelQ.current = false;
     setCancelQueued(false);
     setQueuedAt(Date.now());
+    startSteps();
     sfx.queue();
     try {
       if (inParty && effMode === Mode.DUEL && party!.members.length > 2) throw new Error('Duel parties are 2 players: switch to Squad or Royale');
@@ -387,6 +389,7 @@ export function Lobby() {
       const id = await (inParty ? partyPlay : quickPlay)(effMode as Mode, effEntry, lev, () => cancelQ.current);
       if (cancelQ.current) {
         await cancelMatchmaking(id);
+        stopSteps();
         useSocket.setState({ toast: t('mm.cancelled') });
         setQueuedAt(null);
         setBusy(false);
@@ -394,6 +397,7 @@ export function Lobby() {
       }
       router.push(`/match/${id}`);
     } catch (e) {
+      stopSteps();
       if (cancelQ.current) {
         // cancelled before any stake moved (still waiting for a lobby)
         useSocket.setState({ toast: t('mm.cancelled') });
@@ -431,11 +435,13 @@ export function Lobby() {
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
         {legacy && effMode !== 'practice' && <Link href="/recover" className="pointer-events-auto max-w-sm text-center text-xs text-gold underline">Existing account detected · finish rounds or recover capital</Link>}
         <AnimatePresence>
-          {queuedAt && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="font-display text-xs tracking-[0.4em] text-muted uppercase">
-              {t(cancelQueued ? 'mm.cancelling' : 'lb.locking')}
+          {queuedAt && (cancelQueued ? (
+            <motion.div key="cancel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="font-display text-xs tracking-[0.4em] text-muted uppercase">
+              {t('mm.cancelling')}
             </motion.div>
-          )}
+          ) : (
+            <QueueSteps key="steps" mode={effMode as Mode} entry={effEntry} />
+          ))}
         </AnimatePresence>
         <motion.button
           data-tour="play"
@@ -506,6 +512,32 @@ export function Lobby() {
       <ConnectDialog open={connect} onClose={() => setConnect(false)} />
       <Guide open={guide && !claimOpen} onClose={() => setGuide(false)} />
     </div>
+  );
+}
+
+/** What PLAY is doing, step by step, with each finished step's measured time (see lib/progress). */
+function QueueSteps({ mode, entry }: { mode: Mode; entry: number }) {
+  const t = useT();
+  const steps = useSteps((s) => s.steps);
+  const label = (x: Step) => {
+    switch (x.id) {
+      case 'verify': return t('q.verify');
+      case 'find': return mode === Mode.DUEL ? t('q.rival') : t('q.lobby', { mode: MODES[mode].name });
+      case 'key': return t('q.key');
+      case 'approve': return x.setup ? t('q.gasless') : t('q.approve', { amount: entry + TRADING_BUDGET, stake: STAKE });
+      case 'account': return REAL_TRADING ? t('q.perpl') : t('q.entry', { amount: entry, stake: STAKE });
+    }
+  };
+  return (
+    <motion.ol initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="queue-steps" aria-live="polite">
+      {steps.map((x) => (
+        <li key={x.at} className={x.ms === undefined ? 'on' : 'done'}>
+          <i aria-hidden>{x.ms === undefined ? '' : '✓'}</i>
+          <span>{label(x)}</span>
+          {x.ms !== undefined && <small className="num">{x.ms < 1000 ? `${x.ms} ms` : `${(x.ms / 1000).toFixed(1)} s`}</small>}
+        </li>
+      ))}
+    </motion.ol>
   );
 }
 

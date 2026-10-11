@@ -10,6 +10,7 @@ import { authed, signIn } from './auth';
 import { useSettings } from './settings';
 import { relayTx, sponsorAccount, warmRelay } from './relay';
 import { recordReceipt } from './journey';
+import { step } from './progress';
 
 const LAST_CLASS = 'ls.class';
 /** The class this player last picked; a newcomer starts as the low-risk Tank. */
@@ -94,11 +95,13 @@ async function publishMatchKey(owner: Address, session: Address, label: string) 
 async function sessionArgs(): Promise<{ session: `0x${string}`; value: bigint; label?: string }> {
   const w = useWallet.getState();
   if (w.kind === 'passkey') {
-    const label = mera.nextMatchLabel();
-    const session = mera.matchKey(label).address;
-    // Save the public hint before funds move, including when the entry's response is lost.
-    await publishMatchKey(w.address!, session, label);
-    return { session, value: 0n, label };
+    return step('key', async () => {
+      const label = mera.nextMatchLabel();
+      const session = mera.matchKey(label).address;
+      // Save the public hint before funds move, including when the entry's response is lost.
+      await publishMatchKey(w.address!, session, label);
+      return { session, value: 0n, label };
+    });
   }
   if (w.kind !== 'injected' || !w.sessionAddress) return { session: zeroAddress, value: 0n };
   return { session: w.sessionAddress, value: 0n };
@@ -112,19 +115,12 @@ export async function createMatch(mode: Mode, entry: number, leverage: number, t
   // The approval moves no funds, so the match key's public hint is saved alongside it, not after it.
   const [, { session, value, label }] = await Promise.all([w.ensureAllowance(parseUnits(String(entry + TRADING_BUDGET), 6)), sessionArgs()]);
   const createArgs = [mode, parseUnits(String(entry), 6), cfg.duration, cfg.maxPlayers, team, leverage, session] as const;
-  const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'createMatch', createArgs, value);
-  const gas = relayed ? 0n : await gasFor('createMatch', est('createMatch', createArgs, w.address!, value), GAS.createMatch, true);
-  const tx = relayed ?? await timedTx(() =>
-    client.writeContract({
-      ...arena,
-      account,
-      chain: activeChain,
-      functionName: 'createMatch',
-      args: [mode, parseUnits(String(entry), 6), cfg.duration, cfg.maxPlayers, team, leverage, session],
-      value,
-      gas,
-    }),
-  );
+  const tx = await step('account', async () => {
+    const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'createMatch', createArgs, value);
+    if (relayed) return relayed;
+    const gas = await gasFor('createMatch', est('createMatch', createArgs, w.address!, value), GAS.createMatch, true);
+    return timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'createMatch', args: createArgs, value, gas }));
+  });
   const ev = parseEventLogs({ abi: arenaAbi, logs: await logsOf(tx), eventName: 'MatchCreated' })[0];
   if (!ev) throw new Error('Match creation reverted');
   if (label) mera.bindMatch(Number(ev.args.id), label);
@@ -167,9 +163,12 @@ export async function joinMatch(id: number, team: number, leverage: number): Pro
   const [, { session, value, label }] = await Promise.all([w.ensureAllowance(parseUnits(String(info.match.entry + TRADING_BUDGET), 6)), sessionArgs()]);
   const args = [BigInt(id), team, leverage, session] as const;
   await publicClient.simulateContract({ ...arena, account: w.address!, functionName: 'joinMatch', args, value });
-  const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'joinMatch', args, value);
-  const gas = relayed ? 0n : await gasFor('joinMatch', est('joinMatch', args, w.address!, value), GAS.joinMatch, true);
-  const tx = relayed ?? await timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'joinMatch', args, value, gas }));
+  const tx = await step('account', async () => {
+    const relayed = await maybeRelay(client, relayLive(ADDR.relayDelegate) && w.kind !== 'injected', arena.address, 'joinMatch', args, value);
+    if (relayed) return relayed;
+    const gas = await gasFor('joinMatch', est('joinMatch', args, w.address!, value), GAS.joinMatch, true);
+    return timedTx(() => client.writeContract({ ...arena, account, chain: activeChain, functionName: 'joinMatch', args, value, gas }));
+  });
   if (tx.status !== 'success') throw new Error('Match join reverted');
   if (label && tx.status === 'success') mera.bindMatch(id, label);
   recordReceipt('entry', tx.hash, id);
@@ -188,13 +187,19 @@ async function play(req: { mode: Mode; entry: number; party?: boolean; lobby?: n
   const allowBots = useSettings.getState().allowBots;
   const deadline = Date.now() + 90_000;
   let avoid: number | undefined;
-  for (let retries = 0; Date.now() < deadline; ) {
-    if (cancelled()) throw new Error('Cancelled');
-    const r = await authed<Assignment>('/matchmake', { ...req, allowBots, avoid });
-    if ('wait' in r) {
+  await signIn(); // a locked passkey asks here, before the search starts
+  // the keeper answers "wait" while another player is opening the lobby we would share
+  const assignment = () => step('find', async () => {
+    for (;;) {
+      if (cancelled()) throw new Error('Cancelled');
+      if (Date.now() >= deadline) throw new Error('No lobby found. Try again.');
+      const r = await authed<Assignment>('/matchmake', { ...req, allowBots, avoid });
+      if (!('wait' in r)) return r;
       await pause(1000);
-      continue;
     }
+  });
+  for (let retries = 0; Date.now() < deadline; ) {
+    const r = await assignment();
     if ('join' in r) {
       try {
         await joinMatch(r.join, r.team, leverage);
