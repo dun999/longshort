@@ -15,10 +15,10 @@ longshort.fun {
     handle @public {
         reverse_proxy 127.0.0.1:3100
     }
-    # The cast's models and renders: the same gate as every page. Next answers a valid session asking for a
-    # content-hashed URL (?v=<hash>) with "private, immutable", so that browser keeps the file; refusals and
-    # any other answer stay no-store. Meshopt models shrink by about two thirds again under gzip.
-    @media path /models/* /cast/* /brand/*
+    # The cast's models and renders, and the music: the same gate as every page. Next answers a valid session
+    # asking for a content-hashed URL (?v=<hash>) with "private, immutable", so that browser keeps the file;
+    # refusals and any other answer stay no-store. Meshopt models shrink by about two thirds again under gzip.
+    @media path /models/* /cast/* /brand/* /audio/*
     handle @media {
         header ?Cache-Control "private, no-store, max-age=0"
         encode {
