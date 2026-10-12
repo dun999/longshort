@@ -41,6 +41,8 @@ export const ADDR = addresses as {
 export const STAKE = ADDR.stakeSymbol ?? 'tUSD';
 export const REAL_TRADING = ADDR.realTrading === true;
 export const TRADING_BUDGET = REAL_TRADING ? (ADDR.tradingBudget ?? 100) : 0;
+/** Players per party, the leader included: live matches pair you with one friend. */
+export const PARTY_MAX = REAL_TRADING ? 2 : 3;
 export const knownRelay = (who: string) => ADDR.previousRelayDelegates?.some((a) => a.toLowerCase() === who.toLowerCase()) === true;
 
 // Owners need enough for an approval plus a buffered createMatch transaction.

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isAddress, parseEther, parseUnits, verifyMessage } from 'viem';
-import { ADDR, REAL_TRADING, erc20Abi, relayLive } from '@longshort/shared';
+import { ADDR, PARTY_MAX, REAL_TRADING, erc20Abi, relayLive } from '@longshort/shared';
 import { MARKETS, isCharacter } from '@longshort/shared';
 import { db, ensureProfile } from './db';
 import { env } from './env';
@@ -376,7 +376,7 @@ function onMessage(c: Client, msg: any) {
     case 'party:join': {
       const p = parties.get(msg.partyId);
       if (me && p?.members.some((m) => m.addr === me)) return pushParty(p);
-      if (!me || !p || p.members.length >= (REAL_TRADING ? 2 : 3)) return send(c, { t: 'toast', text: 'Party is full or gone' });
+      if (!me || !p || p.members.length >= PARTY_MAX) return send(c, { t: 'toast', text: 'Party is full or gone' });
       leaveParty(me);
       p.members.push({ addr: me, name: c.name, ready: false, leverage: 25, character: nameOf(me)?.avatar ?? undefined });
       p.chat.push({ from: 'system', text: `${c.name ?? me.slice(0, 6)} joined the party`, at: Date.now() });

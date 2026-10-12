@@ -5511,7 +5511,8 @@ button.notch-pill:hover {
     z-index: 1;
   }
 }
-.party-glyph {
+.party-glyph,
+.party-mobile {
   display: none;
 }
 /* phones: the arena gets the middle of the screen. Mode and party share one row, the footer panels sit close
@@ -5541,8 +5542,14 @@ button.notch-pill:hover {
     color: var(--text);
   }
   .lobby-party-btn .party-count {
-    margin: 0;
+    display: none;
+  }
+  .lobby-party-btn .party-mobile {
+    display: block;
     font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   .lobby-footer {
     gap: 8px;

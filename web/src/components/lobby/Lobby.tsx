@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { REAL_TRADING, TRADING_BUDGET, CHARACTERS, CHARACTER_INFO, CLASSES, ENTRY_TIERS, MODES, Mode, characterOf, classOf, liqMove, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
+import { PARTY_MAX, REAL_TRADING, TRADING_BUDGET, CHARACTERS, CHARACTER_INFO, CLASSES, ENTRY_TIERS, MODES, Mode, characterOf, classOf, liqMove, payouts, shortAddr, type ClassId, STAKE } from '@longshort/shared';
 import { Hint, PanelHeader } from '../ui/Hint';
 import { useWallet } from '@/lib/wallet';
 import { useSocket } from '@/lib/socket';
@@ -621,10 +621,12 @@ function SocialDrawer({ me, online }: { me?: string; online: string[] }) {
           <path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5" />
           <path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.6.7 2.6 2.2 3 4.6" />
         </svg>
+        {/* who is online, and the party only once there is one: a lone "1/3" read like the match's seats */}
         <span className="party-count num ml-auto text-[11px] text-muted">
-          <span className="text-green">●</span> <span className="party-online">{t('lb.online', { n: online.length })} · </span>
-          {party?.members.length ?? 1}/3
+          <span className="text-green">●</span> {t('lb.online', { n: online.length })}
+          {(party?.members.length ?? 1) > 1 && <> · {party!.members.length}/{PARTY_MAX}</>}
         </span>
+        <span className="party-mobile num">{(party?.members.length ?? 1) > 1 ? `${party!.members.length}/${PARTY_MAX}` : t('pt.invite')}</span>
         <span className="party-caret text-dim">{open ? '▴' : '▾'}</span>
       </button>
       {typeof document !== 'undefined' && createPortal(<AnimatePresence>
@@ -660,7 +662,7 @@ function PartyPanel({ me }: { me?: string }) {
   if (!party)
     return (
       <div className="panel grid gap-2 p-2.5">
-        <PanelHeader title={t('pt.title')} sub={t('pt.sub')} hint="A party queues together. In Squad you're on the same team, in Duel you face each other, and in Royale you share a lobby. Up to 3 players; the leader picks the mode." />
+        <PanelHeader title={t('pt.title')} sub={t('pt.sub')} hint={`A party queues together. In Squad you're on the same team, in Duel you face each other, and in Royale you share a lobby. Up to ${PARTY_MAX} players; the leader picks the mode.`} />
         <p className="text-xs text-muted">{t('pt.pitch')}</p>
         <button className="gbtn sm" onClick={() => (sfx.click(), send({ t: 'party:create' }))}>
           {t('pt.create')}
@@ -671,7 +673,7 @@ function PartyPanel({ me }: { me?: string }) {
   return (
     <div className="panel grid gap-1.5 p-2.5">
       <div className="flex items-center justify-between">
-        <PanelHeader title={t('pt.count', { n: party.members.length })} hint="Share the invite link or invite someone online. The ★ leader chooses the mode and presses PLAY for everyone." />
+        <PanelHeader title={t('pt.count', { n: party.members.length, max: PARTY_MAX })} hint="Share the invite link or invite someone online. The ★ leader chooses the mode and presses PLAY for everyone." />
         <button className="text-[11px] text-dim hover:text-red" onClick={() => send({ t: 'party:leave' })}>
           {t('pt.leave')}
         </button>
