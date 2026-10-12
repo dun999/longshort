@@ -8,13 +8,12 @@ import {
   LineStyle,
   createChart,
   createSeriesMarkers,
-  createTextWatermark,
+  createImageWatermark,
   type CandlestickData,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
-  type ITextWatermarkPluginApi,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -23,6 +22,7 @@ import { MARKETS, fmtPx, liqPrice, type MarketSymbol, type Pos } from '@longshor
 import { useSocket, type Tick } from '@/lib/socket';
 import type { TradeRow } from '@/lib/match';
 import { useT } from '@/lib/i18n';
+import { PERPL_PATH } from '../landing/SponsorLogos';
 
 const UP = '#4aa37c';
 const DOWN = '#d25a55';
@@ -38,6 +38,11 @@ const PRECISION: Record<MarketSymbol, { precision: number; minMove: number }> = 
 };
 
 type Candle = CandlestickData<UTCTimestamp>;
+
+/** The Perpl logo behind the candles: every order in the arena fills on Perpl. */
+const PERPL_MARK = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="2879" height="788" viewBox="0 0 2879 788"><g transform="translate(0,788) scale(0.1,-0.1)" fill="#e7e5e0"><path d="${PERPL_PATH}"/></g></svg>`,
+)}`;
 interface Flow { ts: number; notional: number; isLong: boolean }
 
 /** OHLC candles from Perpl mark ticks. Empty buckets carry the last close forward, like a real feed. */
@@ -89,7 +94,6 @@ export function PriceChart({
   const candles = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volume = useRef<ISeriesApi<'Histogram'> | null>(null);
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  const watermark = useRef<ITextWatermarkPluginApi<Time> | null>(null);
   const lines = useRef<IPriceLine[]>([]);
   const [tf, setTf] = useState<number>(5);
   const [hover, setHover] = useState<Candle | null>(null);
@@ -143,11 +147,7 @@ export function PriceChart({
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     markers.current = createSeriesMarkers(candles.current, []);
-    watermark.current = createTextWatermark(c.panes()[0], {
-      horzAlign: 'center',
-      vertAlign: 'center',
-      lines: [{ text: '', color: 'rgba(231,229,224,0.045)', fontSize: 64, fontStyle: '700' }],
-    });
+    createImageWatermark(c.panes()[0], PERPL_MARK, { maxWidth: 340, padding: 40, alpha: 0.05 });
     c.subscribeCrosshairMove((p) => {
       const d = p.time && candles.current ? (p.seriesData.get(candles.current) as Candle | undefined) : undefined;
       setHover(d ?? null);
@@ -156,7 +156,7 @@ export function PriceChart({
     return () => {
       c.remove();
       chart.current = candles.current = volume.current = null;
-      markers.current = watermark.current = null;
+      markers.current = null;
       lines.current = [];
     };
   }, []);
@@ -164,7 +164,6 @@ export function PriceChart({
   // ─── market / timeframe ────────────────────────────────────────────────
   useEffect(() => {
     candles.current?.applyOptions({ priceFormat: { type: 'price', ...PRECISION[market] } });
-    watermark.current?.applyOptions({ lines: [{ text: `${market}-PERP`, color: 'rgba(231,229,224,0.045)', fontSize: 64, fontStyle: '700' }] });
     chart.current?.timeScale().applyOptions({ secondsVisible: tf < 60 });
     chart.current?.timeScale().scrollToRealTime();
   }, [market, tf]);

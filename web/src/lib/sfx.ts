@@ -65,6 +65,8 @@ export const sfx = {
   error: () => tone(160, 0.25, { type: 'square', gain: 0.06, slide: -60 }),
   boom: () => (noise(0.9, 0.35), tone(90, 0.8, { type: 'sine', gain: 0.25, slide: -60 })),
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.45, { type: 'triangle', gain: 0.1, delay: i * 0.11 })),
+  /** one tick of the prize counter, rising in pitch as it fills (p: 0..1) */
+  tally: (p: number) => tone(880 + p * 1100, 0.035, { type: 'triangle', gain: 0.03 }),
   lose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.5, { type: 'sine', gain: 0.1, delay: i * 0.16 })),
   isMuted: () => muted,
   toggle: () => {

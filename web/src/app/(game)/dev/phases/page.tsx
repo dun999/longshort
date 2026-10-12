@@ -44,7 +44,16 @@ function Harness() {
   const q = useSearchParams();
   const phase = q.get('phase') ?? 'waiting';
   const mode = ({ duel: Mode.DUEL, squad: Mode.SQUAD, royale: Mode.ROYALE } as Record<string, Mode>)[q.get('mode') ?? 'duel'] ?? Mode.DUEL;
-  const m = useMemo(() => sample(mode, Number(q.get('filled') ?? 99)), [mode, q]);
+  const m = useMemo(() => {
+    const base = sample(mode, Number(q.get('filled') ?? 99));
+    // ?me=<seat> plays as another seat (a loss, say); ?me=-1 watches. ?draw=1 refunds everyone. ?practice=1: no stake.
+    const seat = Number(q.get('me') ?? 0);
+    const players = base.players.map((p, i) => ({ ...p, isMe: i === seat }));
+    const practice = !!q.get('practice');
+    const results = q.get('draw') ? base.results?.map((r) => ({ ...r, result: 'draw', payout: base.entry, xp_delta: 0 })) : practice ? base.results?.map((r) => ({ ...r, payout: 0, xp_delta: 0 })) : base.results;
+    const accounts = REAL_TRADING && !practice ? players.map((p) => ({ addr: p.addr, account: p.addr, account_id: '1119', budget: MARGIN, final_balance: p.equity, returned: p.equity })) : undefined;
+    return { ...base, id: practice ? 0 : base.id, players, me: players[seat], results, accounts };
+  }, [mode, q]);
   const [lev, setLev] = useState(25);
   useEffect(() => useScene.getState().set({ shot: SHOT[phase] ?? 'lobby', slots: [] }), [phase]);
   const now = Date.now() / 1000;

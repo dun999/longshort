@@ -70,7 +70,7 @@ export function parseCode(code: string): ParsedCode | null {
 }
 
 export const signedPct = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(2)}%`;
-const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+export const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 const WHAT: Record<Mode, string> = { [Mode.DUEL]: '1v1 perp duel', [Mode.SQUAD]: '2v2 perp squad match', [Mode.ROYALE]: '8-player perp royale' };
 
 /** The post text. `self` is the sharer's own result (first person); otherwise it reads as a report. */

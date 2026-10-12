@@ -118,6 +118,17 @@ export function compute(match: any, players: any[], trades: Row[], fills: {addr:
   });
 }
 
+/** Whole-match sums for the report: trading volume and fees as filled on Perpl, positions opened. */
+export function totals(stats: Stats[]) {
+  return stats.reduce((t, s) => ({ volume: t.volume + s.volume, fees: t.fees + s.fees, trades: t.trades + s.opens }), { volume: 0, fees: 0, trades: 0 });
+}
+
+/** Duel and Squad go to the side with more final equity (a Squad side's total): how far the winners finished ahead. */
+export function winMargin(rows: { team: number; equity: number }[]) {
+  const side = (t: number) => rows.filter((r) => r.team === t).reduce((sum, r) => sum + r.equity, 0);
+  return Math.abs(side(0) - side(1));
+}
+
 export interface Award {
   k: string;
   d: string;
