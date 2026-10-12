@@ -61,8 +61,3 @@ longshort.fun {
 www.longshort.fun {
     redir https://longshort.fun{uri} permanent
 }
-
-# The Envio explainer is a page of the app (/envio), so it shares the access session set on longshort.fun.
-envio.longshort.fun {
-    redir https://longshort.fun/envio 302
-}
