@@ -12,10 +12,13 @@ import { rpcTransport } from './rpc';
 
 export const pub = createPublicClient({ chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl, { timeout: 10_000, retryCount: 2 }) });
 export const perplPub = createPublicClient({ chain: monadTestnet, transport: rpcTransport(env.perplRpcUrl, env.perplRpcBackupUrl, { timeout: 8000 }) });
+// Every player click waits on sends and receipts, so they go to TX_RPC_URL when set (falling back to RPC_URL).
+// Log scans stay on `pub`: low-latency public endpoints cap eth_getLogs ranges well below LOG_RANGE.
+const txTransport = (config = {}) => (env.txRpcUrl ? rpcTransport(env.txRpcUrl, env.rpcUrl, config) : rpcTransport(env.rpcUrl, env.rpcBackupUrl, config));
+export const txPub = env.txRpcUrl ? createPublicClient({ chain: activeChain, transport: txTransport({ timeout: 10_000, retryCount: 2 }) }) : pub;
 
 export const keeperAccount = privateKeyToAccount(env.keeperKey, { nonceManager });
-export const walletFor = (account: Account) =>
-  createWalletClient({ account, chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl) });
+export const walletFor = (account: Account) => createWalletClient({ account, chain: activeChain, transport: txTransport() });
 export const keeper = walletFor(keeperAccount);
 
 // Own nonce sequence. Sharing the settlement key here collides with settle/liquidate.

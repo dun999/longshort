@@ -24,7 +24,7 @@ import {
   RELAY_NAME,
   RELAY_VERSION,
 } from '@longshort/shared';
-import { log, pub, relayer } from './chain';
+import { log, relayer, txPub as pub } from './chain';
 import { env } from './env';
 import { db } from './db';
 
@@ -34,7 +34,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS relay_requests (
 );`);
 type Submitted = {scope:string;addr:string;nonce:string;digest:Hex;hash:Hex;raw:Hex|null;status:string};
 const scope = `${activeChain.id}:${ADDR.relayDelegate?.toLowerCase()}`;
-// Every click waits on this. viem's block watch polls every 500 ms; a Monad block lands in under half a
+// Every click waits on this (on TX_RPC_URL when set, see chain.ts). viem's block watch polls every 500 ms; a Monad block lands in under half a
 // second, so ask for the receipt every 100 ms instead, without waiting for the previous answer (at most
 // two in flight): the receipt is seen within ~100 ms of existing whatever the RPC's round trip, at about
 // ten requests a second per pending trade, which keeps a busy Royale inside the RPC's rate limit.
