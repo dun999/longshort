@@ -184,7 +184,7 @@ function LiveRules() {
 
     <Section t="Bots and fairness">
       <p>Every player in a match has the same entry, the same {TRADING_BUDGET} AUSD trading balance, the same market and the same clock. The arena contract enforces the formats, the leverage classes and the Squad leader rule; nobody can trade before the bell or after it.</p>
-      <p>Bots are labelled <b>BOT</b>. They only fill empty seats, after about 12 seconds, when you turn on <b>Match with bots</b> in Settings. Bots trade real Perpl orders from their own AUSD, follow the same rules, and can win or lose like anyone else.</p>
+      <p>Bots are labelled <b>BOT</b>. They only fill empty seats, after about 12 seconds, while <b>Match with bots</b> is on in Settings (the default). Bots trade real Perpl orders from their own AUSD, follow the same rules, and can win or lose like anyone else.</p>
     </Section>
 
     <Section t="Accounts">

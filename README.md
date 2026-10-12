@@ -28,9 +28,9 @@
 ## Try it in three minutes
 
 1. Open [longshort.fun](https://longshort.fun) and enter the access code from our submission.
-2. Press **Play testnet** and create a passkey (Face ID, Touch ID or a device PIN) through Mera. If the device has no passkey support, choose **Try as a guest**: a wallet kept in that browser, with its key exportable from the account menu.
-3. Press **Claim 200 AUSD** to receive test AUSD for entries and trading.
-4. Pick **Duel**, a 5 AUSD entry, a character and a leverage. Playing alone? Turn on **Match with bots** in Settings; bot opponents are labelled.
+2. Press **Play testnet** and create a passkey (Face ID, Touch ID or a device PIN) through Mera. If the device has no passkey support, choose **Play as a guest**: a wallet kept in that browser, with its key exportable from the account menu.
+3. Keep the suggested name or type your own, then press **Claim 200 AUSD** to receive test AUSD for entries and trading. Rivals see the name, never an address.
+4. Pick **Duel**, a 5 AUSD entry, a character and a leverage. Playing alone? A labelled bot takes the empty seat after about 12 seconds (**Match with bots** in Settings, on by default).
 5. After the 15-second countdown, trade with **Long**, **Short** and **Close** at 25%, 50% or 100% size. No prompt appears: each click is a sponsored onchain transaction, and the **Ping** meter shows its measured confirmation time.
 6. At the bell, open positions are flattened on Perpl, the pot is paid and your remaining trading capital returns to your account. The report links every transaction.
 
@@ -152,7 +152,7 @@ The full disclosure is on the site's Rules & Risks page.
 - **A central coordinator.** The keeper runs matchmaking, the price stream, bots and gas sponsorship. If it is offline no new rounds start and sponsored trades stop, although settlement and recovery stay permissionless.
 - **Sponsored gas has limits.** Rate limits and a per-call gas cap apply, and relayed actions pause if the sponsor wallet runs low.
 - **Passkeys need PRF support.** Without it, the guest wallet keeps its key in browser storage, which is weaker than a passkey. Passkeys are not verified onchain (Monad's P-256 precompile is not used): Mera derives the keys in the browser, and there is no social recovery if a passkey is lost.
-- **Royale needs eight players.** Empty seats fill with labelled bots only when **Match with bots** is on.
+- **Royale needs eight players.** Empty seats fill with labelled bots unless **Match with bots** is turned off.
 - **Practice is a simulation** in the browser on live prices, not an onchain round.
 - **Private preview.** During judging every page, shared result and API needs the access code.
 
@@ -173,7 +173,7 @@ npm run keeper                             # terminal 2: API on :8787
 npm run web                                # terminal 3: http://localhost:3000
 ```
 
-Open `http://localhost:3000/play`, choose **Sign in → Quick guest** (funded with 200 tUSD), switch on **Settings → Match with bots** in the account menu, then press **Play**. A labelled bot takes the empty seat after 12 seconds; the keeper funds its bots during its first minute or two (log line `bots funded & approved`).
+Open `http://localhost:3000/play`, choose **Sign in → Quick guest** (funded with 200 tUSD), pick a name, then press **Play**. A labelled bot takes the empty seat after 12 seconds; the keeper funds its bots during its first minute or two (log line `bots funded & approved`).
 
 - `use:local` and `deploy:local` rewrite `packages/shared/src/addresses.json`; `git checkout packages/shared/src/addresses.json` restores the live profile.
 - After restarting anvil, run `deploy:local` again and delete `keeper/longshort.db`.

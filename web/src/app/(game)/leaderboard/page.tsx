@@ -14,7 +14,7 @@ import { PlayerSearch } from '@/components/PlayerSearch';
 export default function Leaderboard() {
   const { data } = useIndexed<any[]>(envioLeaderboard, '/leaderboard', 10_000);
   const me = useWallet((s) => s.address?.toLowerCase());
-  const [humans, setHumans] = useState(false);
+  const [humans, setHumans] = useState(true); // labelled bots stay one tap away
   const rows = (data ?? []).filter((r) => !humans || !r.bot);
   const top = rows.slice(0, 3);
   const live = (data as any)?.source === 'envio';
@@ -154,11 +154,11 @@ export default function Leaderboard() {
           </NotchBlock>
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <Pill on={!humans} onClick={() => setHumans(false)}>
-              All traders
-            </Pill>
             <Pill on={humans} onClick={() => setHumans(true)}>
-              Humans only
+              Humans
+            </Pill>
+            <Pill on={!humans} onClick={() => setHumans(false)}>
+              Include bots
             </Pill>
             <Pill>Season 0</Pill>
           </div>

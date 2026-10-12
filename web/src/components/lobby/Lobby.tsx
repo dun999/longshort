@@ -463,7 +463,7 @@ export function Lobby() {
           {pay ? (
             <>
               {t('lb.winUpTo')} <span className="text-gold">{pay.first.toFixed(2)} {STAKE}</span> · {t(REAL_TRADING ? 'live.entry' : 'lb.maxLoss')} {effEntry} {STAKE}
-              <Hint text={`PLAY commits the entry and separate trading budget. The trading budget can lose value; what is left returns after the round. Enable bot matching in Settings before joining to let a labelled bot fill the other seat after about 12 seconds. Live trades confirm only after their actual Perpl execution.${REAL_TRADING ? ` ${t('live.session')}` : ''}`} />
+              <Hint text={`PLAY commits the entry and separate trading budget. The trading budget can lose value; what is left returns after the round. If nobody else is queueing, a labelled bot fills the other seat after about 12 seconds (Match with bots in Settings). Live trades confirm only after their actual Perpl execution.${REAL_TRADING ? ` ${t('live.session')}` : ''}`} />
             </>
           ) : (
             <>{t('lb.freePractice')}</>

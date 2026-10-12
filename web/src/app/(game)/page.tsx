@@ -92,7 +92,7 @@ const FAQ = [
   ['How are winners paid?', 'Each pot is every entry added together, minus a 2.5% rake. A Duel winner takes it all, the winning Squad team splits it, and Royale pays the top three 60%, 30% and 10%. Ties get their entries back. The full math is on the Rules & Risks page.'],
   ['Who holds the pot?', REAL_TRADING ? 'The PerplArena contract escrows entries and pays prizes onchain after settlement. A separate trading account holds each player’s 100 AUSD budget. Trading and fees can reduce it; remaining capital returns to that player. Settlement is coordinated by the keeper.' : 'The arena contract escrows stakes and pays prizes after settlement.'],
   ['What happens if I get liquidated?', REAL_TRADING ? 'Perpl closes the position and the round uses the actual remaining trading balance. Entry and trading capital are both at risk. The report shows returned capital separately from the prize.' : 'The position closes when it reaches its liquidation threshold.'],
-  ['How long does matchmaking take?', 'By default, matchmaking waits for human players. Enable Match with bots in Settings to let labelled sparring bots fill empty seats after about 12 seconds.'],
+  ['How long does matchmaking take?', 'If no other player is around, a labelled sparring bot fills the empty seat after about 12 seconds. Turn off Match with bots in Settings to wait for human players only.'],
 ];
 
 /**
