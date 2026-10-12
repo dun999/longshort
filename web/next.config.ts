@@ -20,6 +20,16 @@ function assetHashes() {
 const nextConfig: NextConfig = {
   transpilePackages: ['@longshort/shared'],
   reactStrictMode: false, // r3f canvas + websockets double-mount noisily in dev
+  poweredByHeader: false,
+  // nothing embeds the game: refusing frames stops another site overlaying it to steer taps (clickjacking)
+  headers: async () => [{
+    source: '/:path*',
+    headers: [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+      { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
+    ],
+  }],
   devIndicators: { position: 'bottom-right' }, // keep the dev badge off the loadout panel
   // production: a self-contained server bundle; a separate dist dir keeps `next dev` untouched
   output: 'standalone',

@@ -10,12 +10,18 @@ export interface ClaimChain {
   wait: (hash: Hash) => Promise<{ status: 'success' | 'reverted' }>;
 }
 type Row = { addr: Address; amount: string; before_balance: string; after_balance: string | null; status: string; tx: Hash | null; raw: Hex | null };
+/**
+ * New wallets cost nothing, so one claim per wallet does not protect the funding wallet on its own. Claims are capped
+ * per IP (friends often share one network), and across everyone per hour and per day, so a flood of fresh wallets
+ * waits for the window to roll over instead of emptying the faucet.
+ */
+export const CLAIM_LIMITS = { perIp: 12, perHour: 40, perDay: 150 };
 
 /** One transfer per wallet. Signed bytes are durable BEFORE broadcasting, so a restart cannot duplicate a drip. */
 export class AUSDClaims {
   private tail: Promise<unknown> = Promise.resolve();
   private scope: string;
-  constructor(private db: DatabaseSync, private chain: ClaimChain, token: Address, private amount = 200_000_000n) {
+  constructor(private db: DatabaseSync, private chain: ClaimChain, token: Address, private amount = 200_000_000n, private limits = CLAIM_LIMITS) {
     this.scope = `10143:${token.toLowerCase()}`;
     db.exec(`CREATE TABLE IF NOT EXISTS ausd_claims (
       scope TEXT, addr TEXT, amount TEXT NOT NULL, before_balance TEXT NOT NULL, after_balance TEXT,
@@ -48,9 +54,16 @@ export class AUSDClaims {
     let row = this.row(address);
     if (row?.status === 'confirmed') return { ok: true, alreadyClaimed: true, ...await this.status(address) };
     if (!row || row.status === 'failed') {
+      const now = Date.now();
       const count = this.db.prepare("SELECT COUNT(*) n FROM ausd_claims WHERE scope=? AND ip=? AND created_at>? AND status!='failed'")
-        .get(this.scope,ip,Date.now()-3_600_000) as { n: number };
-      if (count.n >= 12) throw new Error('Claim limit reached. Try again later.');
+        .get(this.scope,ip,now-3_600_000) as { n: number };
+      if (count.n >= this.limits.perIp) throw new Error('Claim limit reached. Try again later.');
+      for (const [window, cap] of [[3_600_000, this.limits.perHour], [86_400_000, this.limits.perDay]]) {
+        const all = this.db.prepare("SELECT COUNT(*) n, MIN(created_at) first FROM ausd_claims WHERE scope=? AND created_at>? AND status!='failed'")
+          .get(this.scope,now-window) as { n: number; first: number | null };
+        const wait = Math.max(1, Math.ceil((all.first! + window - now) / 60_000));
+        if (all.n >= cap) throw new Error(`The faucet is busy. Try again in ${wait > 90 ? `${Math.ceil(wait / 60)} hours` : `${wait} minutes`}.`);
+      }
       const before = await this.chain.balance(address);
       this.db.prepare('INSERT OR REPLACE INTO ausd_claims(scope,addr,amount,before_balance,status,ip,created_at) VALUES(?,?,?,?,?,?,?)')
         .run(this.scope,address,this.amount.toString(),before.toString(),'pending',ip,Date.now());

@@ -27,6 +27,7 @@ import {
 import { log, relayer, txPub as pub } from './chain';
 import { env } from './env';
 import { db } from './db';
+import { allow } from './ratelimit';
 
 db.exec(`CREATE TABLE IF NOT EXISTS relay_requests (
   scope TEXT, addr TEXT, nonce TEXT, digest TEXT, hash TEXT, raw TEXT, status TEXT,
@@ -119,15 +120,20 @@ let nextSponsorNonce: number | undefined;
 // Monad bills the gas limit of every submission, including ones that later revert.
 const PER_ADDR = { n: 90, ms: 10 * 60_000 };
 const PER_IP = { n: 360, ms: 10 * 60_000 };
-const hits = new Map<string, number[]>();
 
-function limited(key: string, rule: { n: number; ms: number }) {
-  const now = Date.now();
-  const xs = (hits.get(key) ?? []).filter((t) => t > now - rule.ms);
-  if (xs.length >= rule.n) return false;
-  xs.push(now);
-  hits.set(key, xs);
-  return true;
+// New wallets cost nothing, so per-address caps alone cannot protect the sponsor. Its spend is capped per hour
+// overall and per IP: a flood of fresh wallets slows sponsored play for a while instead of emptying the sponsor.
+const spent: { at: number; ip: string; cost: bigint }[] = [];
+function overBudget(ip: string, cost: bigint, now = Date.now()) {
+  while (spent.length && spent[0].at <= now - 3_600_000) spent.shift();
+  const budget = parseEther(env.relayHourlyMon);
+  let all = cost;
+  let mine = cost;
+  for (const s of spent) {
+    all += s.cost;
+    if (s.ip === ip) mine += s.cost;
+  }
+  return all > budget || mine > budget / 4n;
 }
 
 const userTail = new Map<string, Promise<unknown>>();
@@ -231,11 +237,11 @@ export function relay(body: any, ip: string): Promise<Relayed> {
   if (!env.relayerKey) throw new Error('relay not configured');
   const req = parse(body);
   if (!relayAllowed(ADDR.arena, ADDR.stake, req.target, req.data)) throw new Error('BadCall');
-  if (!limited(`a:${req.from.toLowerCase()}`, PER_ADDR) || !limited(`ip:${ip}`, PER_IP)) throw new Error('relay busy');
-  return userLock(req.from.toLowerCase(), () => submit(req));
+  if (!allow(`a:${req.from.toLowerCase()}`, PER_ADDR) || !allow(`ip:${ip}`, PER_IP)) throw new Error('relay busy');
+  return userLock(req.from.toLowerCase(), () => submit(req, ip));
 }
 
-async function submit(req: Request): Promise<Relayed> {
+async function submit(req: Request, ip: string): Promise<Relayed> {
   const delegate = ADDR.relayDelegate as Address;
   const now = BigInt(Math.floor(Date.now() / 1000));
   const typed = {
@@ -321,6 +327,8 @@ async function submit(req: Request): Promise<Relayed> {
     // flight are held in `reserved` until their receipt, so a balance read before them stays safe.
     cost = gas * price * 2n;
     if (bal < parseEther('10') + reserved + cost) throw new Error('relay dry');
+    // Monad bills the whole gas limit
+    if (overBudget(ip, gas * price)) throw new Error('relay dry for now: hourly sponsor budget reached');
     reserved += cost;
     held = true;
     try {
@@ -338,6 +346,7 @@ async function submit(req: Request): Promise<Relayed> {
       } as Parameters<typeof account.signTransaction>[0]);
       const hash = keccak256(raw);
       db.prepare('INSERT OR REPLACE INTO relay_requests VALUES(?,?,?,?,?,?,?)').run(scope,req.from.toLowerCase(),String(req.nonce),digest,hash,raw,'pending');
+      spent.push({ at: Date.now(), ip, cost: gas * price });
       nextSponsorNonce = nonce + 1;
       // Signed bytes and their hash exist on disk before the first broadcast.
       await pub.sendRawTransaction({serializedTransaction:raw}).catch((error)=>{

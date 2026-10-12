@@ -25,6 +25,13 @@ export function tokenOwner(token: unknown) {
   return row?.addr;
 }
 
+/** Signing out forgets the token here too, so a copy of it stops working. */
+export function revoke(body: any) {
+  signedIn(body);
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(body.token);
+  return { ok: true };
+}
+
 /** The caller's address, if the request carries this address's sign-in token. */
 export function signedIn(body: any) {
   const owner = tokenOwner(body?.token);

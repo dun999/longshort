@@ -19,7 +19,7 @@ import { ADDR, REAL_TRADING, OWNER_GAS_LOW, activeChain, erc20Abi, relayLive } f
 import { publicClient, GAS } from './clients';
 import { RPC_URL } from './config';
 import { api } from './api';
-import { saveToken, useSocket } from './socket';
+import { saveToken, tokenFor, useSocket } from './socket';
 import * as mera from './mera';
 import { friendly } from './errors';
 import { needsDelegation, relayTx, sponsorAccount } from './relay';
@@ -252,6 +252,9 @@ export const useWallet = create<WalletState>((set, get) => ({
 
   disconnect() {
     const address = get().address;
+    const token = address && tokenFor(address);
+    // the keeper forgets this sign-in too, so a copy of the token stops working
+    if (token) void api('/auth/revoke', { addr: address, token }).catch(() => {});
     if (address) saveToken(address, undefined);
     mera.lock();
     store.set(LS.kind, null);

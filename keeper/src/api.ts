@@ -12,19 +12,25 @@ import { history, onTick } from './prices';
 import { onChainEvent } from './indexer';
 import { heartbeat, requestCancel } from './lobby';
 import { configureLobby, lobbyOptions, releaseRematch, rematchInvites, reserveRematch, roster } from './matchmaking';
-import { signedIn, signIn, tokenOwner } from './auth';
+import { revoke, signedIn, signIn, tokenOwner } from './auth';
 import { followersOf, matchmake, opened, pendingFor, release } from './queue';
 import { relay } from './relay';
 import { ausdClaims } from './faucet';
 import { recoverCapital } from './recovery';
 import { readMatchKey, saveMatchKey } from './passkeys';
 import { JournalError, readJournal, saveJournal } from './journal';
+import { allow, clientIp } from './ratelimit';
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 type Handler = (req: IncomingMessage, params: string[], body: any) => unknown | Promise<unknown>;
-const routes: [string, RegExp, Handler][] = [];
-const route = (method: string, path: string, h: Handler) =>
-  routes.push([method, new RegExp('^' + path.replace(/:\w+/g, '([^/]+)') + '$'), h]);
+const routes: [string, RegExp, Handler, boolean][] = [];
+/** `chain`: the route reads the chain before (or without) checking a signature, so it spends the keeper's RPC quota. */
+const route = (method: string, path: string, h: Handler, chain = false) =>
+  routes.push([method, new RegExp('^' + path.replace(/:\w+/g, '([^/]+)') + '$'), h, chain]);
+// Per client IP. A player polls their match every second and asks for a lobby every second while searching;
+// these leave room for a few players behind one network and stop a script from starving the RPC or the database.
+const HTTP_PER_IP = { n: 1200, ms: 60_000 };
+const CHAIN_PER_IP = { n: 120, ms: 60_000 };
 
 // profiles.avatar holds the player's character pick (cosmetic, any character at any leverage)
 const nameOf = (addr: string) => (db.prepare('SELECT name, bot, avatar FROM profiles WHERE addr = ?').get(addr) as { name: string | null; bot: number; avatar: string | null } | undefined);
@@ -37,7 +43,7 @@ function playersOf(matchId: number) {
 
 route('GET', '/health', () => ({ ok: true, chainId:ADDR.chainId, arena:ADDR.arena, asset:ADDR.stakeSymbol??'tUSD', realTrading:REAL_TRADING, accountLayer:'mera', recoveryMetadata:1, privateJournal:1,
   gate: { version: 2, required: !gateConfig().bypass, configured: gateConfig().ready } }));
-route('GET', '/faucet/:addr', (_r, [addr]) => ausdClaims().status(addr));
+route('GET', '/faucet/:addr', (_r, [addr]) => ausdClaims().status(addr), true);
 // Caddy's forward_auth asks this before serving the Envio GraphQL; handle() has already checked the gate
 route('GET', '/gate', (req) => ({ ok: true, expiresAt: gateAccess(req.headers.cookie).expiresAt }));
 route('GET', '/gate/page', () => ({ ok: true }));
@@ -52,19 +58,17 @@ route('POST', '/lobby-options', async (_r, _p, body) => {
     }
   }
   return { ok: true };
-});
-route('POST', '/rematch', (_r, _p, body) => reserveRematch(body));
+}, true);
+route('POST', '/rematch', (_r, _p, body) => reserveRematch(body), true);
 route('POST', '/rematch-release', (_r, _p, body) => releaseRematch(body));
 route('POST', '/auth', (_r, _p, body) => signIn(body));
+route('POST', '/auth/revoke', (_r, _p, body) => revoke(body));
 route('POST', '/passkey/match-key', (_r, _p, body) => saveMatchKey(body));
 route('GET', '/passkey/match-key/:owner/:session', (_r, [owner, session]) => readMatchKey(owner, session));
 route('POST', '/journal/read', (_r, _p, body) => readJournal(body));
-route('POST', '/journal/save', (_r, _p, body) => saveJournal(body));
-route('POST', '/recover', (_r, _p, body) => recoverCapital(Number(body?.id), signedIn(body)));
-route('POST', '/relay', (req, _p, body) => {
-  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
-  return relay(body, ip);
-});
+route('POST', '/journal/save', (_r, _p, body) => saveJournal(body), true);
+route('POST', '/recover', (_r, _p, body) => recoverCapital(Number(body?.id), signedIn(body)), true);
+route('POST', '/relay', (req, _p, body) => relay(body, clientIp(req)));
 
 // Play: the keeper picks the lobby, so simultaneous players meet instead of each opening their own.
 route('POST', '/matchmake', async (_r, _p, body) => {
@@ -80,7 +84,7 @@ route('POST', '/matchmake', async (_r, _p, body) => {
   }
   const lobby = body.lobby === undefined ? undefined : Number(body.lobby);
   return matchmake({ addr, mode: Number(body.mode), entry: Number(body.entry), allowBots: body.allowBots === true, party: members, lobby, avoid: Number(body.avoid) || undefined });
-});
+}, true);
 route('POST', '/matchmake/release', (_r, _p, body) => {
   release(signedIn(body), typeof body.lease === 'string' ? body.lease : undefined, Number(body.matchId) || undefined);
   return { ok: true };
@@ -101,7 +105,7 @@ route('POST', '/cancel', async (_r, _p, body) => {
   const { id, addr, ts, sig } = body ?? {};
   if (!isAddress(String(addr)) || typeof sig !== 'string') return { error: 'bad request' };
   return requestCancel(Number(id), String(addr), Number(ts), sig as `0x${string}`);
-});
+}, true);
 
 route('GET', '/stats', () => {
   const one = (sql: string, ...a: any[]) => Object.values(db.prepare(sql).get(...a) as object)[0] as number;
@@ -118,7 +122,8 @@ route('GET', '/stats', () => {
     rake: one('SELECT COALESCE(SUM(rake),0) FROM matches'),
     escrow: one('SELECT COALESCE(SUM(m.entry),0) FROM players p JOIN matches m ON m.id=p.match_id WHERE m.state IN (0,1,4)'),
     staked: one('SELECT COALESCE(SUM(m.entry), 0) FROM players pl JOIN matches m ON m.id = pl.match_id'),
-    wallets: one('SELECT COUNT(*) FROM profiles WHERE bot = 0'),
+    // players who finished a match: a wallet that only signed in, or a profile someone looked up, is not a trader
+    wallets: one('SELECT COUNT(*) FROM profiles WHERE bot = 0 AND matches > 0'),
     bots: one('SELECT COUNT(*) FROM profiles WHERE bot = 1'),
     trades24h: one("SELECT COUNT(*) FROM trades WHERE kind = 'open' AND ts > ?", since),
     liquidations: one("SELECT COUNT(*) FROM trades WHERE kind = 'liquidated'"),
@@ -138,9 +143,10 @@ route('GET', '/leaderboard', () =>
 route('GET', '/profile/:addr', (_r, [addr]) => {
   if (!isAddress(addr)) return { error: 'bad address' };
   const a = addr.toLowerCase();
-  ensureProfile(a);
-  const profile = db.prepare('SELECT * FROM profiles WHERE addr = ?').get(a);
-  const rank = (db.prepare('SELECT COUNT(*) + 1 r FROM profiles WHERE matches > 0 AND xp > (SELECT xp FROM profiles WHERE addr = ?)').get(a) as { r: number }).r;
+  // reading never creates a row: any address can be looked up, and a lookup is not a player
+  const profile = (db.prepare('SELECT * FROM profiles WHERE addr = ?').get(a) as { xp: number } | undefined)
+    ?? { addr: a, name: null, xp: 1000, wins: 0, losses: 0, matches: 0, volume: 0, earned: 0, bot: 0, created_at: null, avatar: null };
+  const rank = (db.prepare('SELECT COUNT(*) + 1 r FROM profiles WHERE matches > 0 AND xp > ?').get(profile.xp) as { r: number }).r;
   const matches = db.prepare(
     `SELECT m.id, m.mode, m.entry, m.state, m.start_at, m.settle_tx, p.team, p.leverage, p.result, p.payout, p.final_equity, p.xp_delta
      FROM players p JOIN matches m ON m.id = p.match_id WHERE p.addr = ? ORDER BY m.id DESC LIMIT 30`,
@@ -200,7 +206,7 @@ const ipHits = new Map<string, number[]>(); // ip → drip times in the last hou
 route('POST', '/faucet', async (req, _p, body) => {
   const addr = String(body?.addr ?? '').toLowerCase() as `0x${string}`;
   if (!isAddress(addr)) return { error: 'bad address' };
-  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress).split(',')[0].trim();
+  const ip = clientIp(req);
   if (REAL_TRADING) return ausdClaims().claim(signedIn(body), ip);
   const now = Date.now();
   // friends often share one network: allow a dozen sign-ups per IP per hour, not one
@@ -234,7 +240,7 @@ route('POST', '/faucet', async (req, _p, body) => {
   await Promise.all(txs.map((hash) => pub.waitForTransactionReceipt({ hash: hash as `0x${string}` })));
   log('faucet', addr, txs.length, 'txs', note ?? '');
   return { ok: true, txs, note };
-});
+}, true);
 
 async function readBody(req: IncomingMessage) {
   let s = '';
@@ -245,6 +251,13 @@ async function readBody(req: IncomingMessage) {
     s += c;
   }
   return s ? JSON.parse(s) : undefined;
+}
+
+function tooMany(res: ServerResponse) {
+  res.statusCode = 429;
+  res.setHeader('retry-after', '10');
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ error: 'Too many requests. Wait a moment and try again.' }));
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
@@ -268,15 +281,20 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('content-type', 'application/json');
     return void res.end(JSON.stringify({ error: 'Access code required', code: access.code }));
   }
-  for (const [method, re, h] of routes) {
+  // Caddy asks /gate and /gate/page before serving every page and media file: never throttle those checks
+  const ip = clientIp(req);
+  if (!['/gate', '/gate/page', '/health'].includes(path) && !allow(`http:${ip}`, HTTP_PER_IP)) return tooMany(res);
+  for (const [method, re, h, chain] of routes) {
     const m = path.match(re);
     if (!m || method !== req.method) continue;
+    if (chain && !allow(`chain:${ip}`, CHAIN_PER_IP)) return tooMany(res);
     try {
       const out = await h(req, m.slice(1), req.method === 'POST' ? await readBody(req) : undefined);
       res.setHeader('content-type', 'application/json');
       return void res.end(JSON.stringify(out));
     } catch (e) {
-      res.statusCode = e instanceof JournalError ? e.status : 500;
+      // a body that is not JSON is the caller's mistake, not ours
+      res.statusCode = e instanceof JournalError ? e.status : e instanceof SyntaxError ? 400 : 500;
       res.setHeader('content-type', 'application/json');
       return void res.end(JSON.stringify({ error: (e as Error).message, ...(e instanceof JournalError ? { code: e.code } : {}) }));
     }
@@ -286,12 +304,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 }
 
 // ─── WebSocket: presence, parties, live events ─────────────────────────────
-interface Client { ws: WebSocket; request: IncomingMessage; addr?: string; name?: string; partyId?: string }
+interface Client { ws: WebSocket; request: IncomingMessage; id: string; ip: string; addr?: string; name?: string; partyId?: string }
 interface Member { addr: string; name?: string; ready: boolean; leverage: number; character?: string }
 interface Party { id: string; leader: string; members: Member[]; mode: number; entry: number; chat: { from: string; text: string; at: number }[] }
 
 const clients = new Set<Client>();
 const parties = new Map<string, Party>();
+// A tab holds one socket and sends a heartbeat every 4 s. Frames are small JSON: chat is cut at 200 characters.
+const WS_PER_IP = 32;
+const WS_MESSAGES = { n: 60, ms: 10_000 };
+const WS_MAX_BYTES = 16 * 1024;
 const send = (c: Client, msg: object) => {
   if (!gateAllows(c.request)) return c.ws.close(4001, 'Access code required');
   if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg));
@@ -304,7 +326,15 @@ const broadcast = (msg: object) => {
   }
 };
 const clientsOf = (addr: string) => [...clients].filter((c) => c.addr === addr);
-const online = () => [...new Set([...clients].flatMap((c) => (c.addr ? [c.addr] : [])))];
+const online = () => [...new Set([...clients].flatMap((c) => (c.addr ? [c.addr] : [])))].sort();
+let shownOnline = '';
+/** Tell everyone who is online only when that changed: a burst of hellos or reconnects is not a burst of broadcasts. */
+function presence() {
+  const now = online();
+  if (now.join() === shownOnline) return;
+  shownOnline = now.join();
+  broadcast({ t: 'presence', online: now });
+}
 /** Send a party member to the lobby their leader is seated in. */
 const follow = (addr: string, matchId: number, team: number) => {
   for (const c of clientsOf(addr)) send(c, { t: 'join-match', matchId, team });
@@ -342,7 +372,7 @@ function onMessage(c: Client, msg: any) {
       c.addr = ok ? addr : undefined;
       c.name = ok ? (nameOf(addr)?.name ?? undefined) : undefined;
       send(c, { t: 'auth', ok });
-      broadcast({ t: 'presence', online: online() });
+      presence();
       if (!ok) return;
       ensureProfile(addr);
       const p = partyOf(addr);
@@ -356,7 +386,7 @@ function onMessage(c: Client, msg: any) {
       if (!me) return;
       if (!clientsOf(me).some((x) => x !== c)) leaveParty(me);
       c.addr = c.name = undefined;
-      broadcast({ t: 'presence', online: online() });
+      presence();
       return;
     }
     case 'party:create': {
@@ -446,10 +476,14 @@ function onMessage(c: Client, msg: any) {
 
 export function startApi() {
   const server = createServer((req, res) => void handle(req, res));
-  const wss = new WebSocketServer({ noServer: true, verifyClient: ({ req }, done) => {
+  const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_BYTES, verifyClient: ({ req }, done) => {
     const access = gateAccess(req.headers.cookie);
     const originAllowed = !req.headers.origin || gateConfig().bypass || req.headers.origin === gateOrigin('http://localhost');
-    done(access.allowed && originAllowed, access.allowed ? 403 : access.status, 'Access code required');
+    if (!access.allowed || !originAllowed) return done(false, access.allowed ? 403 : access.status, 'Access code required');
+    // every socket gets every broadcast: a script opening thousands of them would turn one tick into thousands of sends
+    const ip = clientIp(req);
+    if ([...clients].filter((c) => c.ip === ip).length >= WS_PER_IP) return done(false, 429, 'Too many connections');
+    done(true);
   } });
   // Only /ws upgrades. Anything else is refused with 403: Caddy's forward_auth copies a client's Upgrade header onto
   // its /gate check, so a GraphQL subscription attempt lands here (ws on its own would answer 400).
@@ -458,19 +492,20 @@ export function startApi() {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
   wss.on('connection', (ws, request) => {
-    const c: Client = { ws, request };
+    const c: Client = { ws, request, id: randomUUID(), ip: clientIp(request) };
     watchGateSocket(ws, request);
     clients.add(c);
     send(c, { t: 'presence', online: online() });
     ws.on('message', (raw) => {
       if (!gateAllows(request)) return ws.close(4001, 'Access code required');
+      if (!allow(`ws:${c.id}`, WS_MESSAGES)) return ws.close(1008, 'Too many messages');
       try {
         onMessage(c, JSON.parse(String(raw)));
       } catch {}
     });
     ws.on('close', () => {
       clients.delete(c);
-      broadcast({ t: 'presence', online: online() });
+      presence();
     });
     // A bad frame (Caddy closes proxied sockets with an unmasked frame when it reloads; any client can send one)
     // fails that socket only. Without a listener, ws re-throws it and takes the whole keeper down mid-round.

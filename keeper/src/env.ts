@@ -54,5 +54,7 @@ export const env = {
   faucetGasLow: process.env.FAUCET_GAS_LOW ?? OWNER_GAS_LOW,
   // Pays player gas. Must be a different key from KEEPER_KEY (nonce clashes).
   relayerKey: (process.env.RELAYER_KEY ?? '') as `0x${string}`,
+  // most the relayer may spend on player gas in any hour (MON); one IP may use a quarter of it
+  relayHourlyMon: process.env.RELAY_HOURLY_MON ?? '20',
   faucetKey: (process.env.FAUCET_KEY ?? '') as `0x${string}`,
 };
