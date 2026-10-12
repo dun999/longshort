@@ -6,6 +6,7 @@ import { arena, publicClient } from './clients';
 import { api } from './api';
 import { onChainEvent, useMarketPrices } from './socket';
 import { useWallet } from './wallet';
+import { useCharacter } from './character';
 
 export interface PlayerView {
   addr: string;
@@ -79,6 +80,7 @@ const MKT = (m: number) => MARKETS[m] ?? '?';
 
 export function useMatch(id: number): MatchView {
   const me = useWallet((s) => s.address?.toLowerCase());
+  const myCharacter = useCharacter((c) => c.id);
   const [raw, setRaw] = useState<{ m: any; ps: readonly any[] } | null>(null);
   const [meta, setMeta] = useState<{ names: Record<string, { name: string | null; bot: boolean; character?: string | null }>; match?: any; players?: any[]; trades?: TradeRow[]; accounts?:MatchView['accounts'];fills?:MatchView['fills'] }>({ names: {} });
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -155,11 +157,13 @@ export function useMatch(id: number): MatchView {
       const realized = e18(BigInt(p.realized));
       const equity = REAL_TRADING || p.out ? e18(BigInt(p.frozenEquity)) : equityOf(realized, pos, pos ? prices[MKT(pos.market) as MarketSymbol] : undefined);
       const n = meta.names[addr];
+      const isMe = addr === me || String(p.session).toLowerCase() === me;
       return {
         addr,
         name: n?.name ?? shortAddr(addr),
         bot: !!n?.bot,
-        character: characterOf(addr, n?.character),
+        // the keeper's record wins; until it loads, my own seat shows this browser's pick, not the address fallback
+        character: characterOf(addr, n?.character ?? (isMe ? myCharacter : undefined)),
         team: Number(p.team),
         leverage: Number(p.leverage),
         out: p.out,
@@ -168,7 +172,7 @@ export function useMatch(id: number): MatchView {
         pos,
         equity,
         pnl: equity - MARGIN,
-        isMe: addr === me || String(p.session).toLowerCase() === me,
+        isMe,
         session: String(p.session).toLowerCase(),
       };
     });
@@ -198,7 +202,7 @@ export function useMatch(id: number): MatchView {
       fills: meta.fills,
       refresh: () => void (load(), loadMeta()),
     };
-  }, [raw, meta, prices, feed, me, id, load, loadMeta]);
+  }, [raw, meta, prices, feed, me, myCharacter, id, load, loadMeta]);
 }
 
 const nm = (addr: string, names: Record<string, { name: string | null }>) => names[addr]?.name ?? shortAddr(addr);

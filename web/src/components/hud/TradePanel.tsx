@@ -6,6 +6,7 @@ import type { PlayerView } from '@/lib/match';
 import { sfx } from '@/lib/sfx';
 import { useScene } from '@/lib/scene';
 import { Hint } from '../ui/Hint';
+import { PerplLogo } from '../landing/SponsorLogos';
 import { friendly } from '@/lib/errors';
 import { useT } from '@/lib/i18n';
 
@@ -178,7 +179,13 @@ export function TradePanel({
         </button>
       </div>
       <div className="dock-foot">
-        <span>{real ? t('live.execution') : t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}</span>
+        {real ? (
+          <a className="venue" href={PERPL_APP} target="_blank" rel="noreferrer" title={t('live.execution')}>
+            {t('live.ordersOn')} <PerplLogo className="venue-mark" title="Perpl" /> <span className="venue-terms">{t('live.terms')}</span>
+          </a>
+        ) : (
+          <span>{t('hud.fills', { bp: FEE_BPS, fee: fmtUsd(feeFor(notional)) })}</span>
+        )}
         <Hint text="Pick a market and how much of your equity to use, then go LONG (profit if price rises) or SHORT (profit if price falls). CLOSE locks in your PnL. A new trade closes the open one first. Keyboard: 1-3 market, Z/V/C size, Q long, E short, Space close." />
       </div>
     </div>
@@ -193,7 +200,12 @@ function PositionStrip({ me, px, real }: { me?: PlayerView; px?: number; real: b
   const t = useT();
   const pos = me?.pos;
   if (!me || me.out || !pos)
-    return <div className={`ps ps-idle ${me?.out ? 'down' : ''}`}>{t(!me ? 'hud.spectating' : me.out ? 'hud.outNow' : 'hud.flatHint')}</div>;
+    return (
+      <div className={`ps ps-idle ${me?.out ? 'down' : ''}`}>
+        <span>{t(!me ? 'hud.spectating' : me.out ? 'hud.outNow' : 'hud.flatHint')}</span>
+        {real && me && !me.out && <Venue label={t('live.fillsOn')} />}
+      </div>
+    );
   const pnl = real ? me.pnl - me.realized : px ? upnl(pos, px) : 0;
   const liq = liqPrice(me.realized, pos);
   const dist = px ? Math.abs(px - liq) / px : 1;
@@ -209,12 +221,24 @@ function PositionStrip({ me, px, real }: { me?: PlayerView; px?: number; real: b
         {kUsd(pos.notional)} · {me.leverage}x · {t('hud.entryAt', { px: fmtPx(pos.entryPx) })}
       </span>
       <b className={`ps-pnl num ${pnl >= 0 ? 'up' : 'down'}`}>{fmtUsd(pnl, true)}</b>
-      {real ? <span className="ps-liq text-muted">{t('live.isolated')}</span> : <span className={`ps-liq ${risk}`} title={`${t('hud.liqPrice')} ${fmtPx(liq)}`}>
+      {real ? <Venue label={t('live.isolatedOn')} /> : <span className={`ps-liq ${risk}`} title={`${t('hud.liqPrice')} ${fmtPx(liq)}`}>
         <i>
           <b style={{ width: `${safe * 100}%` }} />
         </i>
         <span className="num">{t('hud.toLiq', { p: (dist * 100).toFixed(1) })}</span>
       </span>}
     </motion.div>
+  );
+}
+
+const PERPL_APP = 'https://testnet.perpl.xyz';
+
+/** Where the order actually lives: every match account is an isolated account on Perpl's order book. */
+function Venue({ label }: { label: string }) {
+  const t = useT();
+  return (
+    <span className="ps-liq venue" title={t('live.execution')}>
+      {label} <PerplLogo className="venue-mark" title="Perpl" />
+    </span>
   );
 }

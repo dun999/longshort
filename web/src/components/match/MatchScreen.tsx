@@ -57,7 +57,7 @@ export function MatchScreen({ id }: { id: number }) {
 
   // ─── 3D scene direction ─────────────────────────────────────────────────
   const teams = m.mode !== Mode.ROYALE;
-  const sceneKey = `${phase}|${m.players.map((p) => `${p.addr}${p.leverage}${p.out ? 1 : 0}`).join()}|${m.maxPlayers}|${m.results?.length ?? 0}`;
+  const sceneKey = `${phase}|${m.players.map((p) => `${p.addr}${p.leverage}${p.character}${p.out ? 1 : 0}`).join()}|${m.maxPlayers}|${m.results?.length ?? 0}`;
   useEffect(() => {
     const set = useScene.getState().set;
     const maxPnl = Math.max(1, ...m.players.map((p) => Math.abs(p.pnl)));

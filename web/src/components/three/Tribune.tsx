@@ -4,10 +4,12 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useScene } from '@/lib/scene';
+import { PERPL_PATH } from '../landing/SponsorLogos';
 
 /*
  * The tribune: an octagonal grandstand that follows the stage's eight sides. Seven straight blocks of
- * stepped concrete with empty seats (one instanced mesh), radial aisles with step lights, a ribbon board on
+ * stepped concrete with empty seats (one instanced mesh), radial aisles with step lights, a ribbon board
+ * (our wordmark alternating with "TRADES ON perpl", where every order fills) on
  * the front wall, a back wall on pillars and a cantilevered roof with a lit edge. The back side is left open:
  * that's the players' gate (Gate.tsx). Seats in each block carry a chevron, up (long) and down
  * (short) in turn. Flat-shaded and unlit-cheap: no extra lights, no shadows.
@@ -161,25 +163,55 @@ function ribbonTexture() {
   t.anisotropy = 4;
   const family = getComputedStyle(document.documentElement).getPropertyValue('--font-saira').trim() || 'sans-serif';
   const font = `italic 800 44px ${family}`;
+  const label = `italic 700 32px ${family}`;
+  const mark = new Path2D(PERPL_PATH);
+  const markH = 40;
+  const markW = (markH * 2879) / 788;
   const draw = () => {
     g.fillStyle = '#0b0b10';
     g.fillRect(0, 0, 2048, 64);
-    g.font = font;
     g.textBaseline = 'middle';
-    let x = 30;
-    for (let i = 0; i < 4; i++) {
-      g.fillStyle = '#d9d3c6';
-      g.fillText('LONGSHORT', x, 34);
-      x += g.measureText('LONGSHORT').width;
+    // two boards' worth: the wordmark, then where every trade fills (Perpl), spaced evenly so the wrap is seamless
+    g.font = font;
+    const name = g.measureText('LONGSHORT.FUN').width;
+    g.font = label;
+    const venue = g.measureText('TRADES ON').width + 20 + markW;
+    const units = [name, venue, name, venue];
+    const gap = (2048 - units.reduce((a, b) => a + b, 0)) / units.length;
+    const diamond = (x: number) => {
       g.fillStyle = '#8f75ff';
-      g.fillText('.FUN', x, 34);
-      x += g.measureText('.FUN').width + 70;
       g.save();
-      g.translate(x - 35, 32);
+      g.translate(x, 32);
       g.rotate(Math.PI / 4);
       g.fillRect(-6, -6, 12, 12);
       g.restore();
-    }
+    };
+    let x = 0;
+    units.forEach((w, i) => {
+      diamond(x);
+      const at = x + gap / 2;
+      if (i % 2 === 0) {
+        g.font = font;
+        g.fillStyle = '#d9d3c6';
+        g.fillText('LONGSHORT', at, 34);
+        g.fillStyle = '#8f75ff';
+        g.fillText('.FUN', at + g.measureText('LONGSHORT').width, 34);
+      } else {
+        g.font = label;
+        g.fillStyle = '#8d889a';
+        g.fillText('TRADES ON', at, 34);
+        g.save();
+        g.translate(at + w - markW, 32 - markH / 2);
+        g.scale(markH / 788, markH / 788);
+        g.translate(0, 788);
+        g.scale(0.1, -0.1);
+        g.fillStyle = '#d9d3c6';
+        g.fill(mark);
+        g.restore();
+      }
+      x += w + gap;
+    });
+    diamond(2048); // the other half of the first diamond, across the wrap
     t.needsUpdate = true;
   };
   draw();
@@ -196,7 +228,7 @@ function Ribbon() {
       const hw = D0 * T;
       const y0 = 0.38, y1 = 0.88, d = D0 - 0.02;
       const p = [at(k, d, -hw, y0), at(k, d, hw, y0), at(k, d, hw, y1), at(k, d, -hw, y1)];
-      const reps = (2 * hw) / 7; // one strip of four wordmarks per ~7 m
+      const reps = (2 * hw) / 7; // one strip (two wordmarks, two Perpl boards) per ~7 m
       for (const [i, q] of [0, 1, 2, 0, 2, 3].entries()) {
         void i;
         b.push(...p[q]);
