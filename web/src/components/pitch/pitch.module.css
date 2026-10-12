@@ -1,0 +1,218 @@
+/* /pitch: one slide per screen, 1920×1080 scaled to fit, moved sideways, never scrolled. */
+.deck {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #050507;
+  touch-action: none;
+  user-select: none;
+}
+.track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    transition: none;
+  }
+}
+.panel {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  /* flex, not grid: a centred flex item wider than the window overflows evenly on both sides before the scale */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.stage {
+  position: relative;
+  flex: none;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: center center;
+}
+.slide,
+.slide > section {
+  position: absolute;
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+.slide * {
+  box-sizing: border-box;
+}
+.slide :where(h1, h2, h3, p) {
+  margin: 0;
+}
+.slide img {
+  display: block;
+  max-width: none;
+}
+
+/* the first slide: the pitch video */
+.video {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, #17142a 0%, #0b0b0e 60%);
+  color: #f1ece2;
+  font-family: var(--font-inter), Arial, sans-serif;
+}
+.videoEyebrow {
+  position: absolute;
+  left: 128px;
+  top: 64px;
+  font-family: var(--font-jet), 'Courier New', monospace;
+  font-size: 24px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: #a991ff;
+}
+.videoMark {
+  position: absolute;
+  right: 128px;
+  top: 56px;
+  font-size: 36px;
+  font-weight: 700;
+}
+.videoMark i {
+  font-style: normal;
+  color: #8160f9;
+}
+.frame {
+  position: absolute;
+  left: 236px;
+  top: 128px;
+  width: 1448px;
+  height: 815px;
+  overflow: hidden;
+  border: 1px solid #2e2b3a;
+  border-radius: 6px;
+  background: #000;
+}
+.frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.videoFoot {
+  position: absolute;
+  left: 128px;
+  right: 128px;
+  bottom: 52px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-jet), 'Courier New', monospace;
+  font-size: 24px;
+  color: #8c889a;
+}
+.videoFoot b {
+  font-weight: 400;
+  color: #f1ece2;
+}
+
+/* controls */
+.controls {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid #2e2b3a;
+  border-radius: 999px;
+  background: rgba(11, 11, 14, 0.82);
+  backdrop-filter: blur(8px);
+  transform: translateX(-50%);
+  transition: opacity 0.3s;
+}
+.idle .controls:not(:focus-within),
+.idle .full:not(:focus-visible) {
+  opacity: 0;
+  pointer-events: none;
+}
+.btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #f1ece2;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: #1d1b26;
+}
+.btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.btn:focus-visible,
+.dot:focus-visible,
+.full:focus-visible {
+  outline: 2px solid #8160f9;
+  outline-offset: 2px;
+}
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+.dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: #4a4658;
+  cursor: pointer;
+  transition: width 0.25s, background 0.25s;
+}
+/* a bigger target than the mark */
+.dot::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+.dotOn {
+  width: 22px;
+  background: #8160f9;
+}
+.count {
+  min-width: 44px;
+  padding-right: 6px;
+  font-family: var(--font-jet), 'Courier New', monospace;
+  font-size: 12px;
+  text-align: center;
+  color: #8c889a;
+}
+.full {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  right: 14px;
+  z-index: 5;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #2e2b3a;
+  border-radius: 999px;
+  background: rgba(11, 11, 14, 0.82);
+  color: #b9b5c4;
+  font-family: var(--font-jet), 'Courier New', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.full:hover {
+  color: #f1ece2;
+}
