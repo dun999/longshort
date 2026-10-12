@@ -1,6 +1,6 @@
 /**
  * Media URLs carry their file's content hash: `?v=` + the first 12 hex of its SHA-256, computed by
- * next.config.ts at build time for public/models, public/cast and public/brand. The middleware lets a
+ * next.config.ts at build time for public/models, public/cast, public/brand and public/audio. The middleware lets a
  * browser holding a valid access session keep a versioned file privately until it changes; every request
  * still passes the gate, and an unversioned or stale URL is never cached. scripts/check-gate.mjs checks
  * the same rule with the same hash.

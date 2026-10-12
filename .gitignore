@@ -18,3 +18,6 @@ contracts/cache/
 *.sqlite3
 *.log
 _legacy/.openai/
+
+# soundfont for scripts/bgm (downloaded, see compose.mjs)
+*.sf2

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { NextConfig } from 'next';
 
-/** `/models/sniper.glb` → first 12 hex of its SHA-256, for the 3D cast and its 2D renders (see src/lib/asset.ts). */
+/** `/models/sniper.glb` → first 12 hex of its SHA-256, for the 3D cast, its 2D renders and the music (see src/lib/asset.ts). */
 function assetHashes() {
   const out: Record<string, string> = {};
   const walk = (dir: string) => {
@@ -13,7 +13,7 @@ function assetHashes() {
       else out['/' + path.relative('public', file).split(path.sep).join('/')] = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 12);
     }
   };
-  for (const d of ['models', 'cast', 'brand']) walk(path.join('public', d));
+  for (const d of ['models', 'cast', 'brand', 'audio']) walk(path.join('public', d));
   return out;
 }
 
