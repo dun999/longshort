@@ -40,7 +40,7 @@ export const matchEntityId = (id: number) => `${ADDR.arena.toLowerCase()}-${id}`
 export async function envioMatch(id: number, options: { finalized?: boolean } = {}) {
   const d = await gql<{ Match_by_pk: any }>(
     `query($id: String!) { Match_by_pk(id: $id) {
-        matchId mode entry duration state startAt endAt rake settleTx createTx asset tradingBudget
+        matchId mode entry duration state startAt endAt settledAt rake settleTx createTx asset tradingBudget
         players { trader_id team leverage result payout xpDelta finalEquity out }
         accounts { id trader_id address budget finalBalance returned }
         fills(order_by: { blockNumber: asc }) { id trader_id account_id orderType price lots notional fee txHash blockNumber timestamp }
@@ -58,7 +58,7 @@ export async function envioMatch(id: number, options: { finalized?: boolean } = 
     source: 'envio' as const,
     accounts:m.accounts.map((a:any)=>({addr:addressOf(a.trader_id),account:a.address,account_id:a.id,budget:nStake(a.budget),final_balance:a.finalBalance===null?null:nStake(a.finalBalance),returned:nStake(a.returned)})),
     fills:m.fills.map((f:any)=>({addr:addressOf(f.trader_id),account_id:f.account_id,order_type:f.orderType,price:Number(f.price)/10,lots:f.lots,notional:nStake(f.notional),fee:nStake(f.fee),tx:f.txHash,log_index:Number(f.id.split('-').at(-1)),block:f.blockNumber,ts:f.timestamp})),
-    match: { id: Number(m.matchId), mode: m.mode, entry: nStake(m.entry), duration: m.duration, state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3, CLOSING:4 }[m.state as string], start_at: m.startAt, end_at: m.endAt, asset:m.asset,trading_budget:nStake(m.tradingBudget),rake: nStake(m.rake), settle_tx: m.settleTx },
+    match: { id: Number(m.matchId), mode: m.mode, entry: nStake(m.entry), duration: m.duration, state: { OPEN: 0, LIVE: 1, SETTLED: 2, CANCELLED: 3, CLOSING:4 }[m.state as string], start_at: m.startAt, end_at: m.endAt, settled_at: m.settledAt as number | null, asset:m.asset,trading_budget:nStake(m.tradingBudget),rake: nStake(m.rake), settle_tx: m.settleTx },
     players: m.players.map((p: any) => ({
       addr: addressOf(p.trader_id),
       name: names[addressOf(p.trader_id)]?.name ?? null,
@@ -113,12 +113,68 @@ export async function envioStats() {
     : null;
 }
 
+/** The leaderboard's own query, shown verbatim on /envio. */
+export const LEADERBOARD_QUERY = `query Leaderboard($arena: String!) {
+  Trader(
+    where: { arena: { _eq: $arena }, matches: { _gt: 0 } }
+    order_by: [{ xp: desc }, { wins: desc }]
+    limit: 100
+  ) { id address xp wins losses matches volume earned }
+}`;
+export const ARENA_ID = currentArena;
+
 /** Leaderboard rows (keeper shape: addr, name, xp, wins, losses, matches, volume, earned, bot). */
 export async function envioLeaderboard() {
-  const d = await gql<{ Trader: any[] }>(`query($arena:String!){ Trader(where: {arena:{_eq:$arena}, matches: { _gt: 0 } }, order_by: [{ xp: desc }, { wins: desc }], limit: 100) { id address xp wins losses matches volume earned } }`,{arena:currentArena});
+  const d = await gql<{ Trader: any[] }>(LEADERBOARD_QUERY, { arena: currentArena });
   const names = await profiles(d.Trader.map((t) => t.address));
   return d.Trader.map((t) => ({ addr: t.address, name: names[t.address]?.name ?? null, bot: names[t.address]?.bot ? 1 : 0, xp: t.xp, wins: t.wins, losses: t.losses, matches: t.matches, volume: n18(t.volume) ?? 0, earned: nStake(t.earned) }));
 }
+
+/** A raw read for the /envio explainer: the response and the round trip it took. */
+export async function envioQuery<T = unknown>(query: string, variables: Record<string, unknown> = {}) {
+  const t0 = performance.now();
+  const data = await gql<T>(query, variables);
+  return { data, ms: Math.round(performance.now() - t0) };
+}
+
+const ROW_CAP = 2000;
+/** Everything /envio draws: sync state, arena totals, daily activity, rows per entity and recent rounds. */
+export async function envioOverview() {
+  const d = await gql<any>(
+    `query Overview($arena: String!, $cap: Int!) {
+      chain_metadata { block_height latest_processed_block is_hyper_sync }
+      ArenaStats(where: { arena: { _eq: $arena } }) { matchesCreated matchesSettled matchesCancelled players trades liquidations eliminations volume paidOut rake }
+      DailyStat(where: { arena: { _eq: $arena } }, order_by: { date: desc }, limit: 14) { date trades volume matchesSettled }
+      matches: Match(where: { arena: { _eq: $arena } }, limit: $cap) { mode state }
+      players: MatchPlayer(where: { match: { arena: { _eq: $arena } } }, limit: $cap) { id }
+      trades: Trade(where: { match: { arena: { _eq: $arena } } }, limit: $cap) { id }
+      accounts: TradingAccount(where: { match: { arena: { _eq: $arena } } }, limit: $cap) { id }
+      orders: PerplOrder(where: { account: { match: { arena: { _eq: $arena } } } }, limit: $cap) { id }
+      fills: PerplFill(where: { match: { arena: { _eq: $arena } } }, limit: $cap) { id }
+      vaults: VaultAddress(where: { account: { match: { arena: { _eq: $arena } } } }, limit: $cap) { id }
+      traders: Trader(where: { arena: { _eq: $arena } }, limit: $cap) { id }
+      recent: Match(where: { arena: { _eq: $arena }, state: { _eq: "SETTLED" } }, order_by: { settledAt: desc }, limit: 8) { matchId mode playerCount settledAt volume }
+    }`,
+    { arena: currentArena, cap: ROW_CAP },
+  );
+  const m = d.chain_metadata[0];
+  const s = d.ArenaStats[0];
+  const n = (rows: unknown[]) => ({ n: rows.length, capped: rows.length >= ROW_CAP });
+  return {
+    sync: m ? { block: Number(m.latest_processed_block), head: Number(m.block_height), hyperSync: !!m.is_hyper_sync } : null,
+    stats: s
+      ? { created: s.matchesCreated, settled: s.matchesSettled, cancelled: s.matchesCancelled, players: s.players, trades: s.trades, liquidations: s.liquidations, eliminations: s.eliminations, volume: n18(s.volume) ?? 0, paidOut: nStake(s.paidOut), rake: nStake(s.rake) }
+      : null,
+    daily: [...d.DailyStat].reverse().map((r: any) => ({ date: r.date as string, trades: r.trades as number, volume: n18(r.volume) ?? 0, settled: r.matchesSettled as number })),
+    byMode: [0, 1, 2].map((mode) => d.matches.filter((x: any) => x.mode === mode && x.state === 'SETTLED').length),
+    rows: {
+      Match: n(d.matches), MatchPlayer: n(d.players), Trade: n(d.trades), TradingAccount: n(d.accounts), PerplOrder: n(d.orders),
+      PerplFill: n(d.fills), VaultAddress: n(d.vaults), Trader: n(d.traders), ArenaStats: { n: d.ArenaStats.length, capped: false }, DailyStat: { n: d.DailyStat.length, capped: d.DailyStat.length >= 14 },
+    } as Record<string, { n: number; capped: boolean }>,
+    recent: d.recent.map((r: any) => ({ id: Number(r.matchId), mode: r.mode as number, players: r.playerCount as number, settledAt: r.settledAt as number, volume: n18(r.volume) ?? 0 })) as { id: number; mode: number; players: number; settledAt: number; volume: number }[],
+  };
+}
+export type EnvioOverview = Awaited<ReturnType<typeof envioOverview>>;
 
 /** A trader's lifetime record + match history (keeper profile shape). */
 export async function envioProfile(addr: string) {
