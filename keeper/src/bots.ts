@@ -33,7 +33,8 @@ export async function fundBot(b: Bot) {
     pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'balanceOf', args: [addr] }),
     pub.readContract({ address: ADDR.stake, abi: erc20Abi, functionName: 'allowance', args: [addr, ADDR.arena] }),
   ]);
-  if (mon < parseEther(env.botFundMon) / 2n) {
+  // live orders bill their whole gas limit, so a live bot starts every round with a full tank
+  if (mon < parseEther(env.botFundMon) / (REAL_TRADING ? 1n : 2n)) {
     const hash = await send('fund', () => keeper.sendTransaction({ to: addr, value: parseEther(env.botFundMon), gas: 21_000n }));
     if (!hash || (await pub.waitForTransactionReceipt({ hash })).status !== 'success') throw new Error('Bot gas funding did not confirm');
   }
@@ -82,6 +83,24 @@ const claim = (b: Bot, matchId?: number) => {
   const n = cur && cur.until > Date.now() ? cur.n + 1 : 1;
   pendingSeats.set(matchId, { n, until: Date.now() + 6000 });
 };
+
+// Live bots are topped up and approved while idle, so filling a waiting player's lobby is one join, not a
+// funding round trip on a slow RPC. A join spends the approval; the bot is prepared again once it is free.
+const ready = new Set<string>();
+const retryAt = new Map<string, number>();
+const readyBots = () => (REAL_TRADING ? freeBots().filter((b) => ready.has(b.name)) : freeBots());
+async function prepareBots() {
+  for (const b of freeBots()) {
+    if (ready.has(b.name) || (retryAt.get(b.name) ?? 0) > Date.now() || !freeBots().includes(b)) continue;
+    try {
+      await fundBot(b);
+      ready.add(b.name);
+    } catch (e) {
+      retryAt.set(b.name, Date.now() + 30_000);
+      log('bots', `${b.name} not ready yet: ${(e as Error).message.split('\n')[0].slice(0, 160)}`);
+    }
+  }
+}
 const LEVS = LEVERAGES; // a Squad bot's pick is overridden by its side's leader on-chain
 const RESERVE = 6; // bots kept free so a human never waits on a full fleet
 
@@ -105,10 +124,10 @@ export async function fillLobbies(now: number) {
       if (previous.some((p) => !p.bot && !present.some((s) => s.addr === p.addr && s.team === p.team))) continue;
       for (const p of previous.filter((p) => p.bot && !present.some((s) => s.addr === p.addr))) {
         if (holdFill(m.id)) break;
-        const b = freeBots().find((b) => b.account.address.toLowerCase() === p.addr);
+        const b = readyBots().find((b) => b.account.address.toLowerCase() === p.addr);
         if (!b) continue;
         const args = [BigInt(m.id), p.team, p.leverage, '0x0000000000000000000000000000000000000000'] as const;
-        if(REAL_TRADING) await fundBot(b);
+        ready.delete(b.name);
         const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
         if (!ok) continue;
         const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -118,7 +137,7 @@ export async function fillLobbies(now: number) {
       continue;
     }
     const seated = db.prepare('SELECT addr, team FROM players WHERE match_id = ?').all(m.id) as { addr: string; team: number }[];
-    const free = freeBots();
+    const free = readyBots();
     const pend = pendingSeats.get(m.id);
     // seats held for players the matchmaker already sent here count as taken
     const teamCount = heldSeats(m.id, new Set(seated.map((s) => s.addr)));
@@ -131,8 +150,8 @@ export async function fillLobbies(now: number) {
       const team = m.mode === Mode.ROYALE ? 0 : teamCount[1] < teamSize ? 1 : 0; // bots fill the away side first
       teamCount[team]++;
       claim(b, m.id);
+      ready.delete(b.name);
       const args = [BigInt(m.id), team, pick(LEVS), '0x0000000000000000000000000000000000000000'] as const;
-      if(REAL_TRADING) await fundBot(b);
       const ok = await pub.simulateContract({ ...arena, functionName: 'joinMatch', args, account: b.account }).then(() => true, () => false);
       if (!ok) continue;
       const gas = await estimateGas('joinMatch', { ...arena, functionName: 'joinMatch', args, account: b.account });
@@ -226,12 +245,17 @@ export async function startBots() {
     ensureProfile(account.address, true, name);
     db.prepare('UPDATE profiles SET name = ?, bot = 1 WHERE addr = ?').run(name, account.address.toLowerCase());
   }
-  let ready = 0;
   for (const b of bots) {
-    try { await fundBot(b); ready++; }
-    catch { log('bots', `${b.name} funding/approval pending; retrying before its next match`); }
+    try { await fundBot(b); ready.add(b.name); }
+    catch { log('bots', `${b.name} funding/approval pending; retrying while idle`); }
   }
-  log('bots', `${ready}/${bots.length} bots funded & approved`);
+  log('bots', `${ready.size}/${bots.length} bots funded & approved`);
+  // its own loop: a slow top-up never holds up lobby fills or bots trading in live rounds
+  const prep = async () => {
+    try { if (REAL_TRADING) await prepareBots(); } catch (e) { log('bots', 'prepare error', (e as Error).message.slice(0, 200)); }
+    setTimeout(prep, 3000);
+  };
+  void prep();
   const loop = async () => {
     try {
       const now = await chainNow();
