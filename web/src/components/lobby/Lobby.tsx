@@ -412,6 +412,10 @@ export function Lobby() {
     }
   };
 
+  // signed in on another browser or device mid-round: the seat lives onchain, so offer the way back to it
+  const { data: mine } = useApi<{ matches: { id: number; mode: Mode; state: number }[] }>(me ? `/profile/${me}` : null, 5000);
+  const seated = queuedAt ? undefined : mine?.matches?.find((m) => m.state === 0 || m.state === 1);
+
   const pay = effMode === 'practice' ? null : payouts(effMode, effEntry, MODES[effMode].maxPlayers);
   const legacy = REAL_TRADING && address && kind === 'injected';
   // only once the balance has actually loaded: a read in flight is not an empty wallet
@@ -434,6 +438,11 @@ export function Lobby() {
       {/* the one primary action */}
       <div className="lobby-cta pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-1.5">
         {legacy && effMode !== 'practice' && <Link href="/recover" className="pointer-events-auto max-w-sm text-center text-xs text-gold underline">Existing account detected · finish rounds or recover capital</Link>}
+        {seated && (
+          <Link href={`/match/${seated.id}`} className="gbtn green sm pointer-events-auto" onClick={() => sfx.click()} onMouseEnter={sfx.hover}>
+            {t(seated.state === 1 ? 'lb.backLive' : 'lb.backOpen', { mode: MODES[seated.mode].name, id: seated.id })}
+          </Link>
+        )}
         <AnimatePresence>
           {queuedAt && (cancelQueued ? (
             <motion.div key="cancel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="font-display text-xs tracking-[0.4em] text-muted uppercase">
