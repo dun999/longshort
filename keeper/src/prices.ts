@@ -2,6 +2,7 @@ import { parseUnits } from 'viem';
 import { ADDR, MARKETS, mockOracleAbi, readPerplPrices, type MarketSymbol } from '@longshort/shared';
 import { GAS, keeper, log, perplPub, send } from './chain';
 import { db } from './db';
+import { pause } from './pace';
 
 // ticks persist so charts open with real history even right after a restart
 db.exec('CREATE TABLE IF NOT EXISTS ticks (market TEXT, t INTEGER, px REAL)');
@@ -57,5 +58,13 @@ export async function startPrices() {
   db.prepare('DELETE FROM ticks WHERE t < ?').run(Date.now() - 86_400_000);
   await pollOnce();
   log('prices', 'live', MARKETS.map((m) => `${m}=${latest(m)}`).join(' '), ADDR.mockOracleActive ? '(mirroring → MockOracle)' : '');
-  setInterval(() => void pollOnce(), 1000);
+  // 1 s while anyone is around; 5 s when idle still gives every 5 s chart candle a tick.
+  let last = Date.now();
+  const loop = async () => {
+    await pause(Math.max(0, 1000 - (Date.now() - last)), 5000);
+    last = Date.now();
+    await pollOnce().catch(() => {});
+    void loop();
+  };
+  void loop();
 }

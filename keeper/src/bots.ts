@@ -8,6 +8,7 @@ import { history } from './prices';
 import { holdFill } from './lobby';
 import { lobbyOptions, roster } from './matchmaking';
 import { heldSeats } from './queue';
+import { matchesOpen } from './pace';
 
 const NAMES = ['Vega', 'Nyx', 'Orca', 'Kestrel', 'Onyx', 'Rook', 'Viper', 'Echo', 'Jinx', 'Talon', 'Mako', 'Zephyr', 'Cinder', 'Pike', 'Wraith', 'Lux', 'Nova', 'Hex', 'Blitz', 'Quill', 'Rune', 'Sable', 'Tempo', 'Volt'];
 const STRATS = ['momentum', 'meanrev', 'degen'] as const;
@@ -258,10 +259,13 @@ export async function startBots() {
   void prep();
   const loop = async () => {
     try {
-      const now = await chainNow();
-      await fillLobbies(now);
-      await trade(now);
-      await ambient(now);
+      // No lobby to fill, no round to trade and no ambient lobbies to open: skip the head read
+      if (matchesOpen() || (!REAL_TRADING && env.ambientEvery)) {
+        const now = await chainNow();
+        await fillLobbies(now);
+        await trade(now);
+        await ambient(now);
+      }
     } catch (e) {
       log('bots', 'error', (e as Error).message.slice(0, 200));
     }

@@ -3,6 +3,7 @@ import { ADDR, REAL_TRADING, MARGIN, STAKE_DECIMALS, XP, arenaAbi, perplExecutio
 import { arena, log, pub } from './chain';
 import { env } from './env';
 import { db, ensureProfile, getMeta, setMeta } from './db';
+import { pause } from './pace';
 
 const e18 = (x: bigint) => Number(formatUnits(x, 18));
 const usd = (x: bigint) => Number(formatUnits(x, STAKE_DECIMALS));
@@ -193,8 +194,9 @@ export async function startIndexer() {
   };
   await tick();
   const loop = async () => {
+    await pause(700, 10_000);
     await tick();
-    setTimeout(loop, 700);
+    void loop();
   };
   void loop();
 }

@@ -11,7 +11,8 @@ import { env } from './env';
 import { rpcTransport } from './rpc';
 
 export const pub = createPublicClient({ chain: activeChain, transport: rpcTransport(env.rpcUrl, env.rpcBackupUrl, { timeout: 10_000, retryCount: 2 }) });
-export const perplPub = createPublicClient({ chain: monadTestnet, transport: rpcTransport(env.perplRpcUrl, env.perplRpcBackupUrl, { timeout: 8000 }) });
+// multicall: the per-market price reads issued together go out as one eth_call
+export const perplPub = createPublicClient({ chain: monadTestnet, batch: { multicall: true }, transport: rpcTransport(env.perplRpcUrl, env.perplRpcBackupUrl, { timeout: 8000 }) });
 // Every player click waits on sends and receipts, so they go to TX_RPC_URL when set (falling back to RPC_URL).
 // Log scans stay on `pub`: low-latency public endpoints cap eth_getLogs ranges well below LOG_RANGE.
 const txTransport = (config = {}) => (env.txRpcUrl ? rpcTransport(env.txRpcUrl, env.rpcUrl, config) : rpcTransport(env.rpcUrl, env.rpcBackupUrl, config));

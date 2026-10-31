@@ -20,6 +20,7 @@ import { recoverCapital } from './recovery';
 import { readMatchKey, saveMatchKey } from './passkeys';
 import { JournalError, readJournal, saveJournal } from './journal';
 import { allow, clientIp } from './ratelimit';
+import { setSockets, touch } from './pace';
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 type Handler = (req: IncomingMessage, params: string[], body: any) => unknown | Promise<unknown>;
@@ -281,6 +282,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('content-type', 'application/json');
     return void res.end(JSON.stringify({ error: 'Access code required', code: access.code }));
   }
+  if (!localHealth) touch();
   // Caddy asks /gate and /gate/page before serving every page and media file: never throttle those checks
   const ip = clientIp(req);
   if (!['/gate', '/gate/page', '/health'].includes(path) && !allow(`http:${ip}`, HTTP_PER_IP)) return tooMany(res);
@@ -495,6 +497,7 @@ export function startApi() {
     const c: Client = { ws, request, id: randomUUID(), ip: clientIp(request) };
     watchGateSocket(ws, request);
     clients.add(c);
+    setSockets(clients.size);
     send(c, { t: 'presence', online: online() });
     ws.on('message', (raw) => {
       if (!gateAllows(request)) return ws.close(4001, 'Access code required');
@@ -505,6 +508,7 @@ export function startApi() {
     });
     ws.on('close', () => {
       clients.delete(c);
+      setSockets(clients.size);
       presence();
     });
     // A bad frame (Caddy closes proxied sockets with an unmasked frame when it reloads; any client can send one)

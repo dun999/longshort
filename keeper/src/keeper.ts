@@ -2,6 +2,7 @@ import { REAL_TRADING, MAINT, MARGIN, Mode, royaleRounds } from '@longshort/shar
 import { formatUnits } from 'viem';
 import { arena, chainNow, estimateGas, keeper, log, pub, send } from './chain';
 import { db } from './db';
+import { matchesOpen } from './pace';
 
 const inflight = new Set<string>();
 async function once(key: string, fn: () => Promise<unknown>) {
@@ -28,6 +29,7 @@ async function tryWrite(scope: string, functionName: 'settle' | 'eliminate' | 'c
 }
 
 async function tick() {
+  if (!matchesOpen()) return; // nothing to settle, liquidate or expire: skip the head read
   const now = await chainNow();
   const live = db.prepare('SELECT id, mode, max_players, duration, start_at, end_at FROM matches WHERE state IN (1,4)').all() as {
     id: number; mode: number; max_players: number; duration: number; start_at: number; end_at: number;
